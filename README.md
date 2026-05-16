@@ -12,6 +12,11 @@ own because it is a launched desktop-style tool, not an imported library API.
 
 ## Requirements
 
+The native macOS and Windows beta downloads include Python and the required
+runtime dependencies.
+
+For the Python install path:
+
 - Python 3.11 or newer
 - Tkinter support in your Python installation
 - NumPy, SciPy, and SymPy, installed automatically by the package metadata
@@ -22,16 +27,44 @@ install your platform's Tk package, for example `python3-tk` on Debian/Ubuntu.
 
 ## Installation
 
-From a local checkout:
+### Option 1: Native Desktop Download
+
+For macOS and Windows users who do not want to manage Python environments,
+download the latest beta build from
+[GitHub Releases](https://github.com/joanjcaceres/bbq-circuit-designer/releases).
+
+- macOS: download `BBQ-Circuit-Designer-macOS.zip`, unzip it, and double-click
+  `BBQ Circuit Designer.app`.
+- Windows: download `BBQ-Circuit-Designer-Windows.zip`, unzip it, and
+  double-click `BBQ Circuit Designer.exe`.
+
+These first desktop builds are unsigned beta artifacts. macOS and Windows may
+show security warnings until code signing/notarization is added in a later
+release.
+
+Linux users should use the Python install path for now; a native Linux bundle
+can be added after the macOS and Windows release flow is stable.
+
+### Option 2: Python Tool Install
+
+After the first PyPI release, the recommended terminal install is:
 
 ```bash
-python -m pip install -e .
+pipx install bbq-circuit-designer
+bbq-circuit-designer
 ```
 
-From GitHub:
+Before the PyPI release is available, run directly from GitHub:
+
+```bash
+pipx run --spec git+https://github.com/joanjcaceres/bbq-circuit-designer.git bbq-circuit-designer
+```
+
+If you prefer `pip`:
 
 ```bash
 python -m pip install "bbq-circuit-designer @ git+https://github.com/joanjcaceres/bbq-circuit-designer.git"
+bbq-circuit-designer
 ```
 
 To install the app together with the SCCircuits package for analysis examples:
@@ -40,9 +73,11 @@ To install the app together with the SCCircuits package for analysis examples:
 python -m pip install "bbq-circuit-designer[sccircuits] @ git+https://github.com/joanjcaceres/bbq-circuit-designer.git"
 ```
 
-For development and tests:
+### Option 3: Local Development
 
 ```bash
+git clone https://github.com/joanjcaceres/bbq-circuit-designer.git
+cd bbq-circuit-designer
 python -m pip install -e ".[dev]"
 pytest
 ```
@@ -59,6 +94,12 @@ You can also launch it as a module:
 
 ```bash
 python -m bbq_circuit_designer
+```
+
+To verify an install without opening the GUI:
+
+```bash
+bbq-circuit-designer --version
 ```
 
 ## Basic Workflow
@@ -98,11 +139,34 @@ package available in the same environment.
 
 ## Development
 
-Run the test suite with:
-
 ```bash
+python -m pip install -e ".[dev]"
 pytest
 ```
 
-The tests cover matrix assembly, generated snippet behavior, and node merge
-logic without opening the Tkinter window.
+Regenerate icon assets after editing `scripts/generate_icons.py`:
+
+```bash
+python scripts/generate_icons.py
+```
+
+Build local Python distributions:
+
+```bash
+python -m build
+```
+
+Create a release by pushing a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds Python distributions, macOS and Windows unsigned
+beta artifacts, and uploads them to GitHub Releases. It also publishes to PyPI
+through Trusted Publishing after the PyPI project is configured with this
+repository and the `release.yml` workflow.
+
+The tests cover matrix assembly, generated snippet behavior, CLI version
+handling, and node merge logic without opening the Tkinter window.

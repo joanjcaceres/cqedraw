@@ -1,0 +1,6 @@
+include LICENSE
+include README.md
+recursive-include assets *
+recursive-include packaging *.py
+recursive-include scripts *.py
+recursive-include tests *.py

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Tkinter GUI for drawing BBQ circuits and generating capacitance and inverse-inductance matrix snippets."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Joan Caceres", email = "contact@joancaceres.com"}
 ]
@@ -25,7 +25,6 @@ classifiers = [
     "Environment :: Win32 (MS Windows)",
     "Environment :: X11 Applications",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -42,12 +41,22 @@ dependencies = [
 sccircuits = [
     "sccircuits @ git+https://github.com/joanjcaceres/sccircuits.git",
 ]
+native = [
+    "pillow>=10,<12",
+    "pyinstaller>=6.0,<7",
+]
+test = [
+    "pytest>=8.4,<9",
+]
 dev = [
+    "build>=1.2,<2",
+    "pillow>=10,<12",
+    "pyinstaller>=6.0,<7",
     "pytest>=8.4,<9",
 ]
 
 [project.scripts]
-bbq-circuit-designer = "bbq_circuit_designer.app:main"
+bbq-circuit-designer = "bbq_circuit_designer.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/joanjcaceres/bbq-circuit-designer"

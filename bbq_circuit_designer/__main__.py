@@ -1,6 +1,6 @@
 """Run BBQ Circuit Designer with ``python -m bbq_circuit_designer``."""
 
-from .app import main
+from .cli import main
 
 
 if __name__ == "__main__":

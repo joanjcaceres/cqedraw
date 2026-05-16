@@ -39,6 +39,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+sccircuits = [
+    "sccircuits @ git+https://github.com/joanjcaceres/sccircuits.git",
+]
 dev = [
     "pytest>=8.4,<9",
 ]

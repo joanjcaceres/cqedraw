@@ -144,7 +144,7 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
-Regenerate icon assets after editing `scripts/generate_icons.py`:
+Regenerate icon assets after replacing `assets/icon-source.png`:
 
 ```bash
 python scripts/generate_icons.py

@@ -163,10 +163,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow builds Python distributions, macOS and Windows unsigned
-beta artifacts, and uploads them to GitHub Releases. It also publishes to PyPI
-through Trusted Publishing after the PyPI project is configured with this
-repository and the `release.yml` workflow.
+The release workflow builds Python distributions plus macOS and Windows
+unsigned beta artifacts, then uploads them to GitHub Releases. PyPI publishing
+is intentionally disabled for the first beta release.
 
 The tests cover matrix assembly, generated snippet behavior, CLI version
 handling, and node merge logic without opening the Tkinter window.

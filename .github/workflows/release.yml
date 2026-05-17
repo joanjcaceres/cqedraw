@@ -136,25 +136,8 @@ jobs:
           files: release-artifacts/*
           body: |
             Unsigned beta desktop builds are attached for macOS and Windows.
+            Python wheel and source distributions are attached for advanced
+            users, but PyPI publishing is not enabled for this beta release.
 
             macOS and Windows may show security warnings because the beta builds
             are not code signed or notarized yet.
-
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build-python-dists
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/cqedraw
-    permissions:
-      id-token: write
-    steps:
-      - name: Download Python distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: python-distributions
-          path: dist/
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1

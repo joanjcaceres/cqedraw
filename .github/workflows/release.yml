@@ -70,12 +70,15 @@ jobs:
           --windowed
           --onedir
           --icon "${{ matrix.platform.icon }}"
+          --copy-metadata mpmath
           --osx-bundle-identifier "com.joancaceres.cqedraw"
           packaging/pyinstaller_entry.py
 
       - name: Smoke-test macOS bundle executable
         if: runner.os == 'macOS'
-        run: '"dist/cQEDraw.app/Contents/MacOS/cQEDraw" --version'
+        run: |
+          "dist/cQEDraw.app/Contents/MacOS/cQEDraw" --version
+          "dist/cQEDraw.app/Contents/MacOS/cQEDraw" --check-gui-import
 
       - name: Package macOS app bundle
         if: runner.os == 'macOS'
@@ -95,12 +98,15 @@ jobs:
           --windowed
           --onedir
           --icon "${{ matrix.platform.icon }}"
+          --copy-metadata mpmath
           packaging/pyinstaller_entry.py
 
       - name: Smoke-test Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '& "dist/cQEDraw/cQEDraw.exe" --version'
+        run: |
+          & "dist/cQEDraw/cQEDraw.exe" --version
+          & "dist/cQEDraw/cQEDraw.exe" --check-gui-import
 
       - name: Package Windows executable bundle
         if: runner.os == 'Windows'

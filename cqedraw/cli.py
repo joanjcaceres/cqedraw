@@ -18,10 +18,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="Print the installed version and exit.",
     )
+    parser.add_argument(
+        "--check-gui-import",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args(argv)
 
     if args.version:
         print(f"cqedraw {__version__}")
+        return
+
+    if args.check_gui_import:
+        from . import app as _app
+
+        print("cqedraw gui import ok")
         return
 
     from .app import main as launch_app

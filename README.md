@@ -29,8 +29,8 @@ install your platform's Tk package, for example `python3-tk` on Debian/Ubuntu.
 
 ### Option 1: Native Desktop Download
 
-For macOS and Windows users who do not want to manage Python environments,
-download the latest beta build from
+This is the recommended path for non-developers. It does not require Python,
+Pixi, or any terminal setup. Download the latest beta build from
 [GitHub Releases](https://github.com/joanjcaceres/cqedraw/releases).
 
 - macOS: download `cQEDraw-macOS.zip`, unzip it, and double-click
@@ -42,19 +42,13 @@ These first desktop builds are unsigned beta artifacts. macOS and Windows may
 show security warnings until code signing/notarization is added in a later
 release.
 
-Linux users should use the Python install path for now; a native Linux bundle
-can be added after the macOS and Windows release flow is stable.
+Linux users should use the Python install path for now. A native Linux bundle
+can be added later.
 
-### Option 2: Python Tool Install
+### Option 2: Python Install
 
-After the first PyPI release, the recommended terminal install is:
-
-```bash
-pipx install cqedraw
-cqedraw
-```
-
-Before the PyPI release is available, run directly from GitHub:
+For advanced users who prefer a Python install before cQEDraw is published on
+PyPI, run directly from GitHub:
 
 ```bash
 pipx run --spec git+https://github.com/joanjcaceres/cqedraw.git cqedraw

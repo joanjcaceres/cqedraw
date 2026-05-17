@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cqedraw"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tkinter GUI for drawing superconducting circuit graphs and generating capacitance and inverse-inductance matrix snippets."
 readme = "README.md"
 requires-python = ">=3.11"

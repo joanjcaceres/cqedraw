@@ -153,8 +153,8 @@ python -m build
 Create a release by pushing a version tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The release workflow builds Python distributions plus macOS and Windows

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from collections import deque
 import struct
 
 try:
@@ -29,6 +30,12 @@ ICNS_PATH = ASSET_DIR / "icon.icns"
 
 PNG_SIZE = 1024
 ICO_SIZES = (16, 32, 48, 64, 128, 256)
+# The source image has a slight white matte at the outside edge.
+# Overscan crops it out without changing the central circuit artwork.
+ICON_OVERSCAN = 1.06
+EDGE_SOLID_BACKGROUND_THRESHOLD = 235
+EDGE_ANTIALIAS_BACKGROUND_THRESHOLD = 175
+EDGE_ANTIALIAS_ALPHA_THRESHOLD = 245
 ICNS_ENTRIES = (
     ("icp4", 16),
     ("icp5", 32),
@@ -49,16 +56,79 @@ def _load_source(path: Path) -> Image.Image:
         raise FileNotFoundError(f"Missing source icon: {path}")
 
     with Image.open(path) as image:
-        return image.convert("RGBA")
+        source = image.convert("RGBA")
+        return _remove_edge_background(_apply_overscan(source))
+
+
+def _apply_overscan(image: Image.Image) -> Image.Image:
+    if ICON_OVERSCAN <= 1:
+        return image
+
+    width, height = image.size
+    crop_width = round(width / ICON_OVERSCAN)
+    crop_height = round(height / ICON_OVERSCAN)
+    left = (width - crop_width) // 2
+    top = (height - crop_height) // 2
+    return image.crop((left, top, left + crop_width, top + crop_height))
+
+
+def _is_edge_background(pixel: tuple[int, int, int, int]) -> bool:
+    red, green, blue, alpha = pixel
+    if alpha == 0:
+        return True
+
+    if min(red, green, blue) >= EDGE_SOLID_BACKGROUND_THRESHOLD:
+        return True
+
+    return (
+        alpha < EDGE_ANTIALIAS_ALPHA_THRESHOLD
+        and min(red, green, blue) >= EDGE_ANTIALIAS_BACKGROUND_THRESHOLD
+    )
+
+
+def _remove_edge_background(image: Image.Image) -> Image.Image:
+    pixels = image.load()
+    width, height = image.size
+    queue: deque[tuple[int, int]] = deque()
+    seen: set[tuple[int, int]] = set()
+
+    for x in range(width):
+        queue.append((x, 0))
+        queue.append((x, height - 1))
+    for y in range(1, height - 1):
+        queue.append((0, y))
+        queue.append((width - 1, y))
+
+    while queue:
+        x, y = queue.popleft()
+        if (x, y) in seen:
+            continue
+        seen.add((x, y))
+        if not _is_edge_background(pixels[x, y]):
+            continue
+
+        pixels[x, y] = 0, 0, 0, 0
+
+        if x > 0:
+            queue.append((x - 1, y))
+        if x < width - 1:
+            queue.append((x + 1, y))
+        if y > 0:
+            queue.append((x, y - 1))
+        if y < height - 1:
+            queue.append((x, y + 1))
+
+    return image
 
 
 def _resize_icon(image: Image.Image, size: int) -> Image.Image:
-    return ImageOps.fit(
+    resized = ImageOps.fit(
         image,
         (size, size),
         method=Image.Resampling.LANCZOS,
         centering=(0.5, 0.5),
     )
+    return _remove_edge_background(resized)
 
 
 def _png_bytes(image: Image.Image) -> bytes:

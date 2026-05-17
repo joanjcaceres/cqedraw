@@ -2,7 +2,7 @@ import numpy as np
 import sympy as sp
 from scipy import sparse
 
-from bbq_circuit_designer.app import CircuitGraphApp, Edge, GROUND_NODE_ID, Node
+from cqedraw.app import CircuitGraphApp, Edge, GROUND_NODE_ID, Node
 
 
 def _make_app() -> CircuitGraphApp:

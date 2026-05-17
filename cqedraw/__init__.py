@@ -1,4 +1,4 @@
-"""Standalone BBQ circuit designer application."""
+"""Standalone cQEDraw application."""
 
 __version__ = "0.1.0"
 

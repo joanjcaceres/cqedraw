@@ -3,9 +3,9 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bbq-circuit-designer"
+name = "cqedraw"
 version = "0.1.0"
-description = "Tkinter GUI for drawing BBQ circuits and generating capacitance and inverse-inductance matrix snippets."
+description = "Tkinter GUI for drawing superconducting circuit graphs and generating capacitance and inverse-inductance matrix snippets."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -56,15 +56,15 @@ dev = [
 ]
 
 [project.scripts]
-bbq-circuit-designer = "bbq_circuit_designer.cli:main"
+cqedraw = "cqedraw.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/joanjcaceres/bbq-circuit-designer"
-Repository = "https://github.com/joanjcaceres/bbq-circuit-designer"
-Issues = "https://github.com/joanjcaceres/bbq-circuit-designer/issues"
+Homepage = "https://github.com/joanjcaceres/cqedraw"
+Repository = "https://github.com/joanjcaceres/cqedraw"
+Issues = "https://github.com/joanjcaceres/cqedraw/issues"
 
 [tool.setuptools.packages.find]
-include = ["bbq_circuit_designer*"]
+include = ["cqedraw*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

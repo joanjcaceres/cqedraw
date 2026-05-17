@@ -30,4 +30,4 @@ jobs:
         run: pytest
 
       - name: Verify CLI version command
-        run: bbq-circuit-designer --version
+        run: cqedraw --version

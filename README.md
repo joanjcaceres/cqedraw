@@ -1,6 +1,6 @@
-# BBQ Circuit Designer
+# cQEDraw
 
-BBQ Circuit Designer is a standalone Tkinter application for drawing
+cQEDraw is a standalone Tkinter application for drawing
 superconducting circuit graphs and generating sparse/dense capacitance and
 inverse-inductance matrix snippets for Black Box Quantization workflows.
 
@@ -31,12 +31,12 @@ install your platform's Tk package, for example `python3-tk` on Debian/Ubuntu.
 
 For macOS and Windows users who do not want to manage Python environments,
 download the latest beta build from
-[GitHub Releases](https://github.com/joanjcaceres/bbq-circuit-designer/releases).
+[GitHub Releases](https://github.com/joanjcaceres/cqedraw/releases).
 
-- macOS: download `BBQ-Circuit-Designer-macOS.zip`, unzip it, and double-click
-  `BBQ Circuit Designer.app`.
-- Windows: download `BBQ-Circuit-Designer-Windows.zip`, unzip it, and
-  double-click `BBQ Circuit Designer.exe`.
+- macOS: download `cQEDraw-macOS.zip`, unzip it, and double-click
+  `cQEDraw.app`.
+- Windows: download `cQEDraw-Windows.zip`, unzip it, and
+  double-click `cQEDraw.exe`.
 
 These first desktop builds are unsigned beta artifacts. macOS and Windows may
 show security warnings until code signing/notarization is added in a later
@@ -50,34 +50,34 @@ can be added after the macOS and Windows release flow is stable.
 After the first PyPI release, the recommended terminal install is:
 
 ```bash
-pipx install bbq-circuit-designer
-bbq-circuit-designer
+pipx install cqedraw
+cqedraw
 ```
 
 Before the PyPI release is available, run directly from GitHub:
 
 ```bash
-pipx run --spec git+https://github.com/joanjcaceres/bbq-circuit-designer.git bbq-circuit-designer
+pipx run --spec git+https://github.com/joanjcaceres/cqedraw.git cqedraw
 ```
 
 If you prefer `pip`:
 
 ```bash
-python -m pip install "bbq-circuit-designer @ git+https://github.com/joanjcaceres/bbq-circuit-designer.git"
-bbq-circuit-designer
+python -m pip install "cqedraw @ git+https://github.com/joanjcaceres/cqedraw.git"
+cqedraw
 ```
 
 To install the app together with the SCCircuits package for analysis examples:
 
 ```bash
-python -m pip install "bbq-circuit-designer[sccircuits] @ git+https://github.com/joanjcaceres/bbq-circuit-designer.git"
+python -m pip install "cqedraw[sccircuits] @ git+https://github.com/joanjcaceres/cqedraw.git"
 ```
 
 ### Option 3: Local Development
 
 ```bash
-git clone https://github.com/joanjcaceres/bbq-circuit-designer.git
-cd bbq-circuit-designer
+git clone https://github.com/joanjcaceres/cqedraw.git
+cd cqedraw
 python -m pip install -e ".[dev]"
 pytest
 ```
@@ -87,19 +87,19 @@ pytest
 After installation, run:
 
 ```bash
-bbq-circuit-designer
+cqedraw
 ```
 
 You can also launch it as a module:
 
 ```bash
-python -m bbq_circuit_designer
+python -m cqedraw
 ```
 
 To verify an install without opening the GUI:
 
 ```bash
-bbq-circuit-designer --version
+cqedraw --version
 ```
 
 ## Basic Workflow
@@ -122,7 +122,7 @@ then pass the generated matrices into `sccircuits.BBQ`:
 ```python
 from sccircuits import BBQ
 
-# Paste the snippet copied from BBQ Circuit Designer above this line.
+# Paste the snippet copied from cQEDraw above this line.
 # Replace these keyword names and values with the symbols used in your drawing.
 C_matrix = C_matrix_func(Cj=40e-15, Cg=2e-15)
 L_inv_matrix = L_inv_matrix_func(Lj=1.23e-9)

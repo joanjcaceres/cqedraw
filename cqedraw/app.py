@@ -188,7 +188,7 @@ class CircuitGraphApp:
 
     def __init__(self) -> None:
         self.root = tk.Tk()
-        self.root.title("BBQ Matrix Builder")
+        self.root.title("cQEDraw")
 
         # Set window size to be larger and screen-independent
         window_width = 1200

@@ -1,1 +1,1 @@
-"""Tests for BBQ Circuit Designer."""
+"""Tests for cQEDraw."""

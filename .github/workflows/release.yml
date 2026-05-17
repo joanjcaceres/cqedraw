@@ -42,11 +42,11 @@ jobs:
           - name: macOS
             os: macos-latest
             icon: assets/icon.icns
-            artifact: BBQ-Circuit-Designer-macOS.zip
+            artifact: cQEDraw-macOS.zip
           - name: Windows
             os: windows-latest
             icon: assets/icon.ico
-            artifact: BBQ-Circuit-Designer-Windows.zip
+            artifact: cQEDraw-Windows.zip
 
     steps:
       - uses: actions/checkout@v6
@@ -65,23 +65,23 @@ jobs:
           pyinstaller
           --noconfirm
           --clean
-          --name "BBQ Circuit Designer"
+          --name "cQEDraw"
           --paths .
           --windowed
           --onedir
           --icon "${{ matrix.platform.icon }}"
-          --osx-bundle-identifier "com.joancaceres.bbq-circuit-designer"
+          --osx-bundle-identifier "com.joancaceres.cqedraw"
           packaging/pyinstaller_entry.py
 
       - name: Smoke-test macOS bundle executable
         if: runner.os == 'macOS'
-        run: '"dist/BBQ Circuit Designer.app/Contents/MacOS/BBQ Circuit Designer" --version'
+        run: '"dist/cQEDraw.app/Contents/MacOS/cQEDraw" --version'
 
       - name: Package macOS app bundle
         if: runner.os == 'macOS'
         run: >
           ditto -c -k --sequesterRsrc --keepParent
-          "dist/BBQ Circuit Designer.app"
+          "dist/cQEDraw.app"
           "dist/${{ matrix.platform.artifact }}"
 
       - name: Build Windows executable bundle
@@ -90,7 +90,7 @@ jobs:
           pyinstaller
           --noconfirm
           --clean
-          --name "BBQ Circuit Designer"
+          --name "cQEDraw"
           --paths .
           --windowed
           --onedir
@@ -100,12 +100,12 @@ jobs:
       - name: Smoke-test Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '& "dist/BBQ Circuit Designer/BBQ Circuit Designer.exe" --version'
+        run: '& "dist/cQEDraw/cQEDraw.exe" --version'
 
       - name: Package Windows executable bundle
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "dist/BBQ Circuit Designer" -DestinationPath "dist/${{ matrix.platform.artifact }}"
+        run: Compress-Archive -Path "dist/cQEDraw" -DestinationPath "dist/${{ matrix.platform.artifact }}"
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/bbq-circuit-designer
+      url: https://pypi.org/p/cqedraw
     permissions:
       id-token: write
     steps:

@@ -10,90 +10,74 @@ the linear circuit, then paste the generated matrices into a Python analysis
 that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
 
-## Requirements
+## Install And Open
 
-The native macOS and Windows beta downloads include Python and the required
-runtime dependencies.
+### macOS And Windows
 
-For the Python install path:
+This is the recommended path for most users. It does not require Python, Pixi,
+or any terminal setup.
 
-- Python 3.11 or newer
-- Tkinter support in your Python installation
-- NumPy, SciPy, and SymPy, installed automatically by the package metadata
+1. Open the latest release: https://github.com/joanjcaceres/cqedraw/releases/latest
+2. Download `cQEDraw-macOS.zip` on macOS or `cQEDraw-Windows.zip` on Windows.
+3. Unzip the downloaded file.
+4. Open `cQEDraw.app` on macOS or `cQEDraw.exe` on Windows.
 
-Tkinter is part of the Python standard library, but some Linux distributions
-ship it separately. If the app fails with `ModuleNotFoundError: tkinter`,
-install your platform's Tk package, for example `python3-tk` on Debian/Ubuntu.
+The desktop downloads include Python plus the required NumPy, SciPy, and SymPy
+runtime dependencies. They are unsigned beta builds, so macOS or Windows may
+show a security warning the first time you open them.
 
-## Installation
+### Linux Or Python Install
 
-### Option 1: Native Desktop Download
+Use this path on Linux, or if you prefer to manage Python applications from the
+terminal. It requires Python 3.11 or newer and either `pipx` or `pip`. It does
+not require Pixi.
 
-This is the recommended path for non-developers. It does not require Python,
-Pixi, or any terminal setup. Download the latest beta build from
-[GitHub Releases](https://github.com/joanjcaceres/cqedraw/releases).
-
-- macOS: download `cQEDraw-macOS.zip`, unzip it, and double-click
-  `cQEDraw.app`.
-- Windows: download `cQEDraw-Windows.zip`, unzip it, and
-  double-click `cQEDraw.exe`.
-
-These first desktop builds are unsigned beta artifacts. macOS and Windows may
-show security warnings until code signing/notarization is added in a later
-release.
-
-Linux users should use the Python install path for now. A native Linux bundle
-can be added later.
-
-### Option 2: Python Install
-
-For advanced users who prefer a Python install before cQEDraw is published on
-PyPI, run directly from GitHub:
+Run without a permanent install using `pipx`:
 
 ```bash
 pipx run --spec git+https://github.com/joanjcaceres/cqedraw.git cqedraw
 ```
 
-If you prefer `pip`:
+Install with `pip`:
 
 ```bash
 python -m pip install "cqedraw @ git+https://github.com/joanjcaceres/cqedraw.git"
 cqedraw
 ```
 
-To install the app together with the SCCircuits package for analysis examples:
+Install together with SCCircuits for analysis examples:
 
 ```bash
 python -m pip install "cqedraw[sccircuits] @ git+https://github.com/joanjcaceres/cqedraw.git"
 ```
 
-### Option 3: Local Development
+For Python installs only, Tkinter must be available in your Python
+installation. Tkinter is part of the Python standard library, but some Linux
+distributions ship it separately. If the app fails with
+`ModuleNotFoundError: tkinter`, install your platform's Tk package, for example
+`python3-tk` on Debian/Ubuntu.
+
+You can also launch a Python install as a module:
+
+```bash
+python -m cqedraw
+```
+
+To verify a Python install without opening the GUI:
+
+```bash
+cqedraw --version
+```
+
+### Local Development
+
+Use this path only if you want to modify cQEDraw or run the test suite.
 
 ```bash
 git clone https://github.com/joanjcaceres/cqedraw.git
 cd cqedraw
 python -m pip install -e ".[dev]"
 pytest
-```
-
-## Launching
-
-After installation, run:
-
-```bash
-cqedraw
-```
-
-You can also launch it as a module:
-
-```bash
-python -m cqedraw
-```
-
-To verify an install without opening the GUI:
-
-```bash
-cqedraw --version
 ```
 
 ## Basic Workflow

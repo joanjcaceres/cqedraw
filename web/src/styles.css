@@ -98,6 +98,12 @@ textarea {
   color: #001018;
 }
 
+.tool-button.tutorial-highlight {
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 5px #f6c343;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -121,6 +127,13 @@ textarea {
   min-height: 520px;
   touch-action: none;
   width: 100%;
+}
+
+.circuit-canvas.tutorial-highlight-surface {
+  border-color: #f6c343;
+  box-shadow:
+    0 1px 2px rgba(20, 36, 54, 0.1),
+    0 0 0 4px rgba(246, 195, 67, 0.38);
 }
 
 .node-circle {
@@ -232,6 +245,11 @@ textarea {
   width: 100%;
 }
 
+.form-grid input.tutorial-highlight-control {
+  border-color: #c28a00;
+  box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+}
+
 .metrics {
   display: flex;
   gap: 12px;
@@ -279,6 +297,104 @@ textarea {
 
 .hidden-file {
   display: none;
+}
+
+.tutorial-prompt,
+.tutorial-callout {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(7, 19, 39, 0.22);
+  color: #172033;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 14px;
+  position: fixed;
+  z-index: 8;
+}
+
+.tutorial-prompt {
+  bottom: 18px;
+  left: 18px;
+}
+
+.tutorial-prompt strong {
+  display: block;
+  font-size: 15px;
+}
+
+.tutorial-prompt p,
+.tutorial-callout p,
+.help-dialog p {
+  color: #40536b;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
+.tutorial-prompt div,
+.tutorial-callout div,
+.dialog-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tutorial-prompt div,
+.tutorial-callout div {
+  margin-top: 12px;
+}
+
+.tutorial-prompt button,
+.tutorial-callout button {
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.tutorial-prompt button:hover,
+.tutorial-callout button:hover {
+  background: #1a3150;
+}
+
+.tutorial-callout {
+  z-index: 9;
+}
+
+.tutorial-callout-canvas {
+  bottom: 18px;
+  left: 18px;
+}
+
+.tutorial-callout-tools {
+  left: 216px;
+  top: 76px;
+}
+
+.tutorial-callout-actions {
+  right: 18px;
+  top: 76px;
+}
+
+.tutorial-callout-inspector {
+  right: 374px;
+  top: 92px;
+}
+
+.tutorial-callout span {
+  color: #66778c;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tutorial-callout h2 {
+  font-size: 17px;
+  margin: 5px 0 0;
 }
 
 .dialog-backdrop {
@@ -329,6 +445,10 @@ textarea {
   background: #1a3150;
 }
 
+.dialog-actions {
+  justify-content: flex-end;
+}
+
 .help-dialog ol {
   margin: 16px 0 0;
   padding-left: 22px;
@@ -359,5 +479,14 @@ textarea {
 
   .circuit-canvas {
     max-height: none;
+  }
+
+  .tutorial-prompt,
+  .tutorial-callout {
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    top: auto;
   }
 }

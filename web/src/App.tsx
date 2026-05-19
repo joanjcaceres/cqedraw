@@ -46,6 +46,23 @@ import {
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 620;
 const NODE_RADIUS = 11;
+const TUTORIAL_STORAGE_KEY = "cqedraw.tutorial.v1";
+
+type TutorialStep =
+  | "welcome"
+  | "first-node"
+  | "second-node"
+  | "edge-mode"
+  | "connect-edge"
+  | "edge-values"
+  | "ground-mode"
+  | "add-ground"
+  | "ground-values"
+  | "edit-edge"
+  | "generate"
+  | "copy"
+  | "finish";
+type TutorialPlacement = "canvas" | "tools" | "actions" | "inspector";
 
 export function App() {
   const [project, setProject] = useState<CircuitProject>(() => emptyProject());
@@ -57,6 +74,10 @@ export function App() {
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [tutorialPromptOpen, setTutorialPromptOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
+  const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
+  const [tutorialCopied, setTutorialCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
@@ -72,6 +93,12 @@ export function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isTutorialDismissed()) {
+      setTutorialPromptOpen(true);
+    }
+  }, []);
+
   const selectedNode = useMemo(
     () => project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null,
     [project, selectedNodeId],
@@ -80,6 +107,34 @@ export function App() {
     () => project.state.edges.find((edge) => edge.identifier === selectedEdgeId) ?? null,
     [project, selectedEdgeId],
   );
+  useEffect(() => {
+    if (project.state.nodes.length > 0 && tutorialPromptOpen && tutorialStep === null) {
+      dismissTutorial();
+    }
+  }, [project.state.nodes.length, tutorialPromptOpen, tutorialStep]);
+
+  useEffect(() => {
+    if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {
+      return;
+    }
+
+    const nextStep = nextTutorialStep({
+      step: tutorialStep,
+      project,
+      mode,
+      output,
+      selectedEdgeId,
+      tutorialCopied,
+    });
+    if (nextStep === "generate" && mode !== "select") {
+      setMode("select");
+      setPendingEdgeNodeId(null);
+      setDraggingNodeId(null);
+    }
+    if (nextStep && nextStep !== tutorialStep) {
+      setTutorialStep(nextStep);
+    }
+  }, [mode, output, project, selectedEdgeId, tutorialCopied, tutorialStep]);
 
   function setModeAndReset(nextMode: ToolMode) {
     setMode(nextMode);
@@ -214,6 +269,7 @@ export function App() {
     }
     await navigator.clipboard.writeText(result.snippet);
     setEngineStatus("Snippet copied.");
+    setTutorialCopied(true);
   }
 
   function saveProject() {
@@ -245,6 +301,54 @@ export function App() {
     window.requestAnimationFrame(() => helpButtonRef.current?.focus());
   }
 
+  function beginTutorial() {
+    setProject(emptyProject());
+    setMode("node");
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setDraggingNodeId(null);
+    setOutput(null);
+    setEngineStatus("Ready.");
+    setTutorialCopied(false);
+    setTutorialPromptOpen(false);
+    setTutorialResetOpen(false);
+    setTutorialStep("welcome");
+  }
+
+  function requestTutorialStart() {
+    setHelpOpen(false);
+    if (project.state.nodes.length > 0 || project.state.edges.length > 0) {
+      setTutorialResetOpen(true);
+      return;
+    }
+    beginTutorial();
+  }
+
+  function dismissTutorial() {
+    rememberTutorialDismissed();
+    setTutorialPromptOpen(false);
+    setTutorialStep(null);
+    setTutorialResetOpen(false);
+  }
+
+  function finishTutorial() {
+    rememberTutorialDismissed();
+    setTutorialStep(null);
+  }
+
+  function closeTutorialReset() {
+    setTutorialResetOpen(false);
+    window.requestAnimationFrame(() => helpButtonRef.current?.focus());
+  }
+
+  function confirmTutorialReset() {
+    beginTutorial();
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('[data-testid="tutorial-callout"] button')?.focus(),
+    );
+  }
+
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
       ? `Ground ${selectedEdge.nodes[0]}`
@@ -270,26 +374,39 @@ export function App() {
           />
           <ToolButton
             active={mode === "node"}
+            highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
             icon={<Circle size={17} />}
             label="Node"
             onClick={() => setModeAndReset("node")}
           />
           <ToolButton
             active={mode === "edge"}
+            highlight={tutorialStep === "edge-mode"}
             icon={<GitBranch size={17} />}
             label="Edge"
             onClick={() => setModeAndReset("edge")}
           />
           <ToolButton
             active={mode === "ground"}
+            highlight={tutorialStep === "ground-mode"}
             icon={<Home size={17} />}
             label="Ground"
             onClick={() => setModeAndReset("ground")}
           />
         </div>
         <div className="toolbar actions" aria-label="Project actions">
-          <ToolButton icon={<Play size={17} />} label="Generate" onClick={generateOutput} />
-          <ToolButton icon={<Copy size={17} />} label="Copy" onClick={copySnippet} />
+          <ToolButton
+            highlight={tutorialStep === "generate"}
+            icon={<Play size={17} />}
+            label="Generate"
+            onClick={generateOutput}
+          />
+          <ToolButton
+            highlight={tutorialStep === "copy"}
+            icon={<Copy size={17} />}
+            label="Copy"
+            onClick={copySnippet}
+          />
           <ToolButton icon={<Download size={17} />} label="Save" onClick={saveProject} />
           <ToolButton
             icon={<Upload size={17} />}
@@ -326,7 +443,12 @@ export function App() {
       <section className="workspace">
         <div className="canvas-pane">
           <svg
-            className="circuit-canvas"
+            className={[
+              "circuit-canvas",
+              tutorialStep === "first-node" || tutorialStep === "second-node"
+                ? "tutorial-highlight-surface"
+                : "",
+            ].join(" ")}
             data-testid="canvas"
             viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
             onPointerDown={handleCanvasPointerDown}
@@ -387,6 +509,11 @@ export function App() {
                 <label>
                   <span>Capacitance</span>
                   <input
+                    className={
+                      tutorialStep === "edge-values" || tutorialStep === "ground-values"
+                        ? "tutorial-highlight-control"
+                        : undefined
+                    }
                     data-testid="cap-input"
                     value={selectedEdge.capacitance_text ?? ""}
                     onChange={(event) => {
@@ -402,6 +529,11 @@ export function App() {
                 <label>
                   <span>Inductance</span>
                   <input
+                    className={
+                      tutorialStep === "edge-values"
+                        ? "tutorial-highlight-control"
+                        : undefined
+                    }
                     data-testid="ind-input"
                     value={selectedEdge.inductance_text ?? ""}
                     onChange={(event) => {
@@ -454,7 +586,25 @@ export function App() {
           </section>
         </aside>
       </section>
-      {helpOpen ? <HelpDialog onClose={closeHelp} /> : null}
+      {tutorialPromptOpen && tutorialStep === null && project.state.nodes.length === 0 ? (
+        <TutorialPrompt onSkip={dismissTutorial} onStart={beginTutorial} />
+      ) : null}
+      {tutorialStep ? (
+        <TutorialCallout
+          step={tutorialStep}
+          placement={tutorialPlacement(tutorialStep)}
+          onFinish={finishTutorial}
+          onNext={() => setTutorialStep("first-node")}
+          onSkip={dismissTutorial}
+        />
+      ) : null}
+      {tutorialResetOpen ? (
+        <TutorialResetDialog
+          onCancel={closeTutorialReset}
+          onConfirm={confirmTutorialReset}
+        />
+      ) : null}
+      {helpOpen ? <HelpDialog onClose={closeHelp} onStartTutorial={requestTutorialStart} /> : null}
     </main>
   );
 }
@@ -480,7 +630,130 @@ function CanvasHint() {
   );
 }
 
-function HelpDialog({ onClose }: { onClose: () => void }) {
+function TutorialPrompt({
+  onSkip,
+  onStart,
+}: {
+  onSkip: () => void;
+  onStart: () => void;
+}) {
+  return (
+    <aside
+      aria-label="Tutorial prompt"
+      className="tutorial-prompt"
+      data-testid="tutorial-prompt"
+    >
+      <strong>New to cQEDraw?</strong>
+      <p>Follow a short tutorial to create a small circuit and copy the matrix snippet.</p>
+      <div>
+        <button type="button" onClick={onStart}>
+          Start tutorial
+        </button>
+        <button type="button" onClick={onSkip}>
+          Skip
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function TutorialCallout({
+  onFinish,
+  onNext,
+  onSkip,
+  placement,
+  step,
+}: {
+  onFinish: () => void;
+  onNext: () => void;
+  onSkip: () => void;
+  placement: TutorialPlacement;
+  step: TutorialStep;
+}) {
+  const details = TUTORIAL_STEPS[step];
+  const isWelcome = step === "welcome";
+  const isFinish = step === "finish";
+
+  return (
+    <aside
+      aria-live="polite"
+      className={`tutorial-callout tutorial-callout-${placement}`}
+      data-testid="tutorial-callout"
+    >
+      <span>{details.progress}</span>
+      <h2>{details.title}</h2>
+      <p>{details.body}</p>
+      <div>
+        {isWelcome ? (
+          <button type="button" onClick={onNext}>
+            Start
+          </button>
+        ) : null}
+        {isFinish ? (
+          <button type="button" onClick={onFinish}>
+            Done
+          </button>
+        ) : (
+          <button type="button" onClick={onSkip}>
+            Skip
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function TutorialResetDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="tutorial-reset-title"
+        aria-modal="true"
+        className="help-dialog"
+        onKeyDown={(event) => handleDialogKeyDown(event, dialogRef.current, onCancel)}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <header>
+          <h2 id="tutorial-reset-title">Start tutorial?</h2>
+        </header>
+        <p>
+          Starting the tutorial clears the current drawing. Save the project first if you
+          want to keep it.
+        </p>
+        <div className="dialog-actions">
+          <button ref={cancelRef} type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}>
+            Start tutorial
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HelpDialog({
+  onClose,
+  onStartTutorial,
+}: {
+  onClose: () => void;
+  onStartTutorial: () => void;
+}) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -489,37 +762,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
   }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-
-    if (event.key !== "Tab" || !dialogRef.current) {
-      return;
-    }
-
-    const focusable = Array.from(
-      dialogRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((element) => !element.hasAttribute("disabled"));
-
-    if (focusable.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    handleDialogKeyDown(event, dialogRef.current, onClose);
   }
 
   return (
@@ -534,9 +777,14 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       >
         <header>
           <h2 id="help-dialog-title">Help</h2>
-          <button ref={closeButtonRef} type="button" onClick={onClose}>
-            Close
-          </button>
+          <div className="dialog-actions">
+            <button type="button" onClick={onStartTutorial}>
+              Start tutorial
+            </button>
+            <button ref={closeButtonRef} type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </header>
         <ol>
           <li>Use Node and click the canvas to place circuit nodes.</li>
@@ -552,22 +800,66 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+function handleDialogKeyDown(
+  event: KeyboardEvent<HTMLElement>,
+  dialogElement: HTMLElement | null,
+  onEscape: () => void,
+) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    onEscape();
+    return;
+  }
+
+  if (event.key !== "Tab" || !dialogElement) {
+    return;
+  }
+
+  const focusable = Array.from(
+    dialogElement.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("disabled"));
+
+  if (focusable.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function ToolButton({
   active = false,
   buttonRef,
+  highlight = false,
   icon,
   label,
   onClick,
 }: {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
+  highlight?: boolean;
   icon?: ReactNode;
   label: string;
   onClick: () => void;
 }) {
   return (
     <button
-      className={active ? "tool-button active" : "tool-button"}
+      className={[
+        "tool-button",
+        active ? "active" : "",
+        highlight ? "tutorial-highlight" : "",
+      ].join(" ")}
       ref={buttonRef}
       type="button"
       onClick={onClick}
@@ -682,4 +974,159 @@ function svgPoint(event: PointerEvent<SVGSVGElement>) {
   point.y = event.clientY;
   const transformed = point.matrixTransform(matrix.inverse());
   return { x: transformed.x, y: transformed.y };
+}
+
+const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; body: string }> = {
+  welcome: {
+    progress: "Tutorial",
+    title: "Build a small circuit",
+    body:
+      "This walkthrough creates two nodes, one edge, one ground reference, " +
+      "and a Python snippet. You can skip it anytime.",
+  },
+  "first-node": {
+    progress: "Step 1 of 11",
+    title: "Place the first node",
+    body: "Use Node mode and click the canvas to place the first circuit node.",
+  },
+  "second-node": {
+    progress: "Step 2 of 11",
+    title: "Place the second node",
+    body: "Click another point on the canvas to place a second node.",
+  },
+  "edge-mode": {
+    progress: "Step 3 of 11",
+    title: "Switch to Edge",
+    body: "Click Edge in the toolbar so the next node clicks create a connection.",
+  },
+  "connect-edge": {
+    progress: "Step 4 of 11",
+    title: "Connect the nodes",
+    body: "Click the first node, then click the second node to create one edge between them.",
+  },
+  "edge-values": {
+    progress: "Step 5 of 11",
+    title: "Enter edge values",
+    body: "With the edge selected, enter C for Capacitance and L for Inductance.",
+  },
+  "ground-mode": {
+    progress: "Step 6 of 11",
+    title: "Switch to Ground",
+    body: "Click Ground in the toolbar to add a reference connection.",
+  },
+  "add-ground": {
+    progress: "Step 7 of 11",
+    title: "Add the ground reference",
+    body: "Click the second node to attach a ground reference to it.",
+  },
+  "ground-values": {
+    progress: "Step 8 of 11",
+    title: "Enter ground capacitance",
+    body: "For this tutorial, enter Cg for Capacitance and leave Inductance empty.",
+  },
+  "edit-edge": {
+    progress: "Step 9 of 11",
+    title: "Edit existing values",
+    body: "Click the edge between the two nodes again. Its C and L values reopen in the Inspector for editing.",
+  },
+  generate: {
+    progress: "Step 10 of 11",
+    title: "Generate matrices",
+    body:
+      "Click Generate to build the C and L_inv entries with the same engine used " +
+      "by the desktop app.",
+  },
+  copy: {
+    progress: "Step 11 of 11",
+    title: "Copy the snippet",
+    body: "Click Copy to place the generated Python matrix snippet on the clipboard.",
+  },
+  finish: {
+    progress: "Done",
+    title: "Tutorial complete",
+    body: "Use Save and Load in the toolbar to store and reopen cQEDraw JSON projects.",
+  },
+};
+
+function nextTutorialStep({
+  mode,
+  output,
+  project,
+  selectedEdgeId,
+  step,
+  tutorialCopied,
+}: {
+  mode: ToolMode;
+  output: OutputResult | null;
+  project: CircuitProject;
+  selectedEdgeId: number | null;
+  step: TutorialStep;
+  tutorialCopied: boolean;
+}): TutorialStep | null {
+  const regularEdge = project.state.edges.find((edge) => !edge.is_ground);
+  const groundEdge = project.state.edges.find((edge) => edge.is_ground);
+
+  switch (step) {
+    case "first-node":
+      return project.state.nodes.length >= 1 ? "second-node" : null;
+    case "second-node":
+      return project.state.nodes.length >= 2 ? "edge-mode" : null;
+    case "edge-mode":
+      return mode === "edge" ? "connect-edge" : null;
+    case "connect-edge":
+      return regularEdge ? "edge-values" : null;
+    case "edge-values":
+      return hasEdgeValues(regularEdge) ? "ground-mode" : null;
+    case "ground-mode":
+      return mode === "ground" ? "add-ground" : null;
+    case "add-ground":
+      return groundEdge ? "ground-values" : null;
+    case "ground-values":
+      return hasCapacitanceValue(groundEdge) ? "edit-edge" : null;
+    case "edit-edge":
+      return regularEdge && selectedEdgeId === regularEdge.identifier ? "generate" : null;
+    case "generate":
+      return output ? "copy" : null;
+    case "copy":
+      return tutorialCopied ? "finish" : null;
+    default:
+      return null;
+  }
+}
+
+function hasEdgeValues(edge: CircuitEdge | null | undefined): boolean {
+  return Boolean(edge?.capacitance_text?.trim() && edge.inductance_text?.trim());
+}
+
+function hasCapacitanceValue(edge: CircuitEdge | null | undefined): boolean {
+  return Boolean(edge?.capacitance_text?.trim());
+}
+
+function tutorialPlacement(step: TutorialStep): TutorialPlacement {
+  if (step === "edge-mode" || step === "ground-mode") {
+    return "tools";
+  }
+  if (step === "generate" || step === "copy") {
+    return "actions";
+  }
+  if (step === "edge-values" || step === "ground-values") {
+    return "inspector";
+  }
+  return "canvas";
+}
+
+function isTutorialDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === "dismissed";
+  } catch {
+    return false;
+  }
+}
+
+function rememberTutorialDismissed() {
+  try {
+    window.localStorage.setItem(TUTORIAL_STORAGE_KEY, "dismissed");
+  } catch {
+    // Ignore storage failures; the tutorial remains fully usable in-memory.
+  }
 }

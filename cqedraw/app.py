@@ -8,10 +8,19 @@ from types import SimpleNamespace
 from typing import Dict, Optional, Tuple
 
 import sympy as sp
-from sympy.printing.pycode import pycode
 
-GROUND_NODE_ID = -1
-MatrixEntries = Dict[Tuple[int, int], sp.Expr]
+from .core import (
+    GROUND_NODE_ID,
+    CircuitEdgeData,
+    MatrixEntries,
+    accumulate_matrix_entry,
+    build_snippet,
+    compute_matrices,
+    compute_matrix_entries,
+    finalize_matrix_entries,
+    matrix_function_snippet,
+    matrix_snippet_support_functions,
+)
 
 
 class ToolTip:
@@ -2148,106 +2157,31 @@ class CircuitGraphApp:
     def _accumulate_matrix_entry(
         entries: MatrixEntries, row: int, col: int, value: sp.Expr
     ) -> None:
-        key = (row, col)
-        existing = entries.get(key)
-        entries[key] = value if existing is None else existing + value
+        accumulate_matrix_entry(entries, row, col, value)
 
     @staticmethod
     def _finalize_matrix_entries(entries: MatrixEntries) -> MatrixEntries:
-        finalized: MatrixEntries = {}
-        for key, value in entries.items():
-            simplified = sp.simplify(value)
-            if simplified != 0:
-                finalized[key] = simplified
-        return finalized
+        return finalize_matrix_entries(entries)
+
+    def _core_edges(self) -> list[CircuitEdgeData]:
+        return [
+            CircuitEdgeData(
+                nodes=edge.nodes,
+                capacitance_expr=edge.capacitance_expr,
+                l_inverse_expr=edge.l_inverse_expr,
+            )
+            for edge in self.edges.values()
+        ]
 
     def _compute_matrix_entries(self) -> Tuple[int, MatrixEntries, MatrixEntries]:
-        node_ids = sorted(self.nodes.keys())
-        index_map = {node_id: idx for idx, node_id in enumerate(node_ids)}
-        size = len(node_ids)
-        c_entries: MatrixEntries = {}
-        l_inv_entries: MatrixEntries = {}
-        for edge in self.edges.values():
-            first_node, second_node = edge.nodes
-            if first_node not in index_map:
-                continue
-            i = index_map[first_node]
-
-            if second_node == GROUND_NODE_ID:
-                if edge.capacitance_expr is not None:
-                    self._accumulate_matrix_entry(
-                        c_entries, i, i, edge.capacitance_expr
-                    )
-                if edge.l_inverse_expr is not None:
-                    self._accumulate_matrix_entry(
-                        l_inv_entries, i, i, edge.l_inverse_expr
-                    )
-                continue
-
-            if second_node not in index_map:
-                continue
-            j = index_map[second_node]
-            if edge.capacitance_expr is not None:
-                value = edge.capacitance_expr
-                self._accumulate_matrix_entry(c_entries, i, i, value)
-                self._accumulate_matrix_entry(c_entries, j, j, value)
-                self._accumulate_matrix_entry(c_entries, i, j, -value)
-                self._accumulate_matrix_entry(c_entries, j, i, -value)
-            if edge.l_inverse_expr is not None:
-                value = edge.l_inverse_expr
-                self._accumulate_matrix_entry(l_inv_entries, i, i, value)
-                self._accumulate_matrix_entry(l_inv_entries, j, j, value)
-                self._accumulate_matrix_entry(l_inv_entries, i, j, -value)
-                self._accumulate_matrix_entry(l_inv_entries, j, i, -value)
-        return (
-            size,
-            self._finalize_matrix_entries(c_entries),
-            self._finalize_matrix_entries(l_inv_entries),
-        )
+        return compute_matrix_entries(self.nodes.keys(), self._core_edges())
 
     def _compute_matrices(self) -> Tuple[sp.Matrix, sp.Matrix]:
-        size, c_entries, l_inv_entries = self._compute_matrix_entries()
-        return (
-            sp.SparseMatrix(size, size, c_entries),
-            sp.SparseMatrix(size, size, l_inv_entries),
-        )
+        return compute_matrices(self.nodes.keys(), self._core_edges())
 
     @staticmethod
     def _matrix_snippet_support_functions() -> list[str]:
-        indent = " " * 4
-        return [
-            "def _matrix_triplets_from_entries(entries):",
-            f"{indent}if not entries:",
-            f"{indent*2}return (",
-            f"{indent*3}np.array([], dtype=int),",
-            f"{indent*3}np.array([], dtype=int),",
-            f"{indent*3}np.array([], dtype=float),",
-            f"{indent*2})",
-            f"{indent}rows, cols, data = zip(*entries)",
-            f"{indent}return (",
-            f"{indent*2}np.array(rows, dtype=int),",
-            f"{indent*2}np.array(cols, dtype=int),",
-            f"{indent*2}np.array(data, dtype=float),",
-            f"{indent})",
-            "",
-            "def _sparse_matrix_from_entries(entries, shape):",
-            f"{indent}matrix = sparse.csr_matrix(shape, dtype=float)",
-            f"{indent}if not entries:",
-            f"{indent*2}return matrix",
-            f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)",
-            f"{indent}return matrix + sparse.coo_matrix(",
-            f"{indent*2}(data, (rows, cols)),",
-            f"{indent*2}shape=shape,",
-            f"{indent}).tocsr()",
-            "",
-            "def _dense_matrix_from_entries(entries, shape):",
-            f"{indent}matrix = np.zeros(shape, dtype=float)",
-            f"{indent}if not entries:",
-            f"{indent*2}return matrix",
-            f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)",
-            f"{indent}np.add.at(matrix, (rows, cols), data)",
-            f"{indent}return matrix",
-        ]
+        return matrix_snippet_support_functions()
 
     def _matrix_function_snippet(
         self,
@@ -2258,116 +2192,18 @@ class CircuitGraphApp:
         size: int,
         entries: MatrixEntries,
     ) -> Tuple[list[str], list[str]]:
-        sorted_entries = sorted(entries.items())
-        symbols = sorted(
-            {symbol for _, expr in sorted_entries for symbol in expr.free_symbols},
-            key=lambda sym: sym.name,
+        return matrix_function_snippet(
+            entries_func_name,
+            triplet_func_name,
+            sparse_func_name,
+            dense_func_name,
+            size,
+            entries,
         )
-        param_names = [symbol.name for symbol in symbols]
-        args = ", ".join(param_names)
-        indent = " " * 4
-        shape_literal = f"({size}, {size})"
-        entries_signature = (
-            f"def {entries_func_name}({args}):"
-            if args
-            else f"def {entries_func_name}():"
-        )
-        triplet_signature = (
-            f"def {triplet_func_name}({args}):"
-            if args
-            else f"def {triplet_func_name}():"
-        )
-        sparse_signature = (
-            f"def {sparse_func_name}({args}):" if args else f"def {sparse_func_name}():"
-        )
-        dense_signature = (
-            f"def {dense_func_name}({args}):" if args else f"def {dense_func_name}():"
-        )
-        call_suffix = f"({args})" if args else "()"
-        lines: list[str] = [entries_signature]
-
-        if not sorted_entries:
-            lines.append(f"{indent}return []")
-        else:
-            lines.append(f"{indent}return [")
-            for (row, col), expr in sorted_entries:
-                lines.append(f"{indent*2}({row}, {col}, {pycode(expr)}),")
-            lines.append(f"{indent}]")
-
-        lines.append("")
-        lines.append(triplet_signature)
-        lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-        lines.append(
-            f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)"
-        )
-        lines.append(f"{indent}return rows, cols, data, {shape_literal}")
-        lines.append("")
-        lines.append(sparse_signature)
-        lines.append(
-            f"{indent}matrix = sparse.csr_matrix({shape_literal}, dtype=float)"
-        )
-        lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-        lines.append(f"{indent}if not entries:")
-        lines.append(f"{indent*2}return matrix")
-        lines.append(
-            f"{indent}return _sparse_matrix_from_entries(entries, {shape_literal})"
-        )
-        lines.append("")
-        lines.append(dense_signature)
-        lines.append(f"{indent}matrix = np.zeros({shape_literal}, dtype=float)")
-        lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-        lines.append(f"{indent}if not entries:")
-        lines.append(f"{indent*2}return matrix")
-        lines.append(
-            f"{indent}return _dense_matrix_from_entries(entries, {shape_literal})"
-        )
-        return lines, param_names
 
     def _build_snippet(self) -> str:
         size, c_entries, l_inv_entries = self._compute_matrix_entries()
-        snippet_lines = [
-            "import math",
-            "import numpy as np",
-            "from scipy import sparse",
-            "",
-            f"# Matrix size: {size} x {size}",
-            "# Nonzero-entry helpers keep the representation sparse until you call",
-            "# the dense wrappers below.",
-            "",
-        ]
-        snippet_lines.extend(self._matrix_snippet_support_functions())
-        snippet_lines.append("")
-
-        c_func_lines, c_params = self._matrix_function_snippet(
-            "C_matrix_entries",
-            "C_matrix_triplets",
-            "C_matrix_sparse",
-            "C_matrix_func",
-            size,
-            c_entries,
-        )
-        l_func_lines, l_params = self._matrix_function_snippet(
-            "L_inv_matrix_entries",
-            "L_inv_matrix_triplets",
-            "L_inv_matrix_sparse",
-            "L_inv_matrix_func",
-            size,
-            l_inv_entries,
-        )
-
-        if c_params:
-            snippet_lines.append(f"# C_matrix_func parameters: {', '.join(c_params)}")
-        if l_params:
-            snippet_lines.append(
-                f"# L_inv_matrix_func parameters: {', '.join(l_params)}"
-            )
-        if c_params or l_params:
-            snippet_lines.append("")
-
-        snippet_lines.extend(c_func_lines)
-        snippet_lines.append("")
-        snippet_lines.extend(l_func_lines)
-        return "\n".join(snippet_lines)
+        return build_snippet(size, c_entries, l_inv_entries)
 
     def _copy_snippet(self) -> None:
         if not self.nodes:

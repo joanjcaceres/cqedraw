@@ -3,6 +3,12 @@ import sympy as sp
 from scipy import sparse
 
 from cqedraw.app import CircuitGraphApp, Edge, GROUND_NODE_ID, Node
+from cqedraw.core import (
+    CircuitEdgeData,
+    build_snippet,
+    compute_matrices,
+    compute_matrix_entries,
+)
 
 
 def _make_app() -> CircuitGraphApp:
@@ -79,6 +85,25 @@ def test_compute_matrix_entries_accumulates_sparse_contributions():
     assert sp.simplify(l_inv_entries[(0, 1)] + sp.Symbol("L1_inv")) == 0
     assert sp.simplify(l_inv_entries[(1, 0)] + sp.Symbol("L1_inv")) == 0
     assert sp.simplify(l_inv_entries[(2, 2)] - sp.Symbol("Lg_inv")) == 0
+
+
+def test_app_matrix_wrappers_delegate_to_core_output_logic():
+    app = _make_app()
+    core_edges = [
+        CircuitEdgeData(
+            nodes=edge.nodes,
+            capacitance_expr=edge.capacitance_expr,
+            l_inverse_expr=edge.l_inverse_expr,
+        )
+        for edge in app.edges.values()
+    ]
+    size, c_entries, l_inv_entries = compute_matrix_entries(
+        app.nodes.keys(), core_edges
+    )
+
+    assert app._compute_matrix_entries() == (size, c_entries, l_inv_entries)
+    assert app._compute_matrices() == compute_matrices(app.nodes.keys(), core_edges)
+    assert app._build_snippet() == build_snippet(size, c_entries, l_inv_entries)
 
 
 def _numeric_matrix(

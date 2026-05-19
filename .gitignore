@@ -15,6 +15,7 @@ dist/
 .venv/
 venv/
 web/node_modules/
+web/.vite/
 web/dist/
 web/playwright-report/
 web/test-results/

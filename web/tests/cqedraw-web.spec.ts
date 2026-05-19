@@ -164,6 +164,56 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("tutorial-prompt")).toBeHidden();
 });
 
+test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+
+  const initialView = parseViewBox(await canvas.getAttribute("viewBox"));
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(zoomedView.width).toBeLessThan(initialView.width);
+
+  await page.getByRole("button", { name: "Select" }).click();
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) {
+    throw new Error("Canvas box is unavailable.");
+  }
+
+  await page.mouse.move(canvasBox.x + 300, canvasBox.y + 260);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 440, canvasBox.y + 320);
+  await page.mouse.up();
+
+  const pannedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(pannedView.x).toBeLessThan(zoomedView.x);
+
+  await page.getByRole("button", { name: "Fit view" }).click();
+  const fittedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(fittedView.width).toBeGreaterThanOrEqual(899);
+
+  const node = page.getByTestId("node-0");
+  const nodeBox = await node.boundingBox();
+  if (!nodeBox) {
+    throw new Error("Node box is unavailable.");
+  }
+
+  await page.mouse.move(nodeBox.x + nodeBox.width / 2, nodeBox.y + nodeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 1, canvasBox.y + 1);
+  await page.mouse.up();
+
+  const draggedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  const cx = Number(await node.getAttribute("cx"));
+  const cy = Number(await node.getAttribute("cy"));
+  expect(cx).toBeGreaterThanOrEqual(draggedView.x + 14);
+  expect(cy).toBeGreaterThanOrEqual(draggedView.y + 14);
+});
+
 test("creates a small circuit and generates matching C and L_inv entries", async ({
   page,
 }) => {
@@ -185,6 +235,8 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await page.getByTestId("cap-input").fill("Cg");
   await page.getByTestId("ind-input").fill("1/Lg_inv");
 
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.getByRole("button", { name: "Fit view" }).click();
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
@@ -221,3 +273,11 @@ test("does not create duplicate edges between the same two nodes", async ({ page
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).not.toContainText("2*C12");
 });
+
+function parseViewBox(value: string | null) {
+  if (!value) {
+    throw new Error("Missing viewBox value.");
+  }
+  const [x, y, width, height] = value.split(" ").map(Number);
+  return { x, y, width, height };
+}

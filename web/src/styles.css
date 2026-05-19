@@ -115,6 +115,33 @@ textarea {
   grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   padding: 14px;
+  position: relative;
+}
+
+.canvas-controls {
+  display: flex;
+  gap: 6px;
+  position: absolute;
+  right: 26px;
+  top: 26px;
+  z-index: 2;
+}
+
+.icon-button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.icon-button:hover {
+  background: #e6eef6;
 }
 
 .circuit-canvas {
@@ -127,6 +154,14 @@ textarea {
   min-height: 520px;
   touch-action: none;
   width: 100%;
+}
+
+.circuit-canvas.pan-ready {
+  cursor: grab;
+}
+
+.circuit-canvas.panning {
+  cursor: grabbing;
 }
 
 .circuit-canvas.tutorial-highlight-surface {

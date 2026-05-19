@@ -1,6 +1,7 @@
 __pycache__/
 .DS_Store
 *.py[cod]
+*.tsbuildinfo
 *.egg-info/
 *.spec
 .pytest_cache/
@@ -13,3 +14,7 @@ build/
 dist/
 .venv/
 venv/
+web/node_modules/
+web/dist/
+web/playwright-report/
+web/test-results/

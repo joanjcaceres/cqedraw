@@ -1,0 +1,86 @@
+import { CircuitProject, OutputResult } from "./types";
+
+type WorkerResult<T> = {
+  id: number;
+  ok: boolean;
+  result?: T;
+  error?: string;
+};
+
+type PendingRequest<T> = {
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+};
+
+export class PyodideBridgeClient {
+  private worker: Worker;
+  private failure: Error | null = null;
+  private nextId = 1;
+  private pending = new Map<number, PendingRequest<unknown>>();
+
+  constructor() {
+    this.worker = new Worker(new URL("./workers/pyodideWorker.ts", import.meta.url), {
+      type: "module",
+    });
+    this.worker.onmessage = (event: MessageEvent<WorkerResult<unknown>>) => {
+      const request = this.pending.get(event.data.id);
+      if (!request) {
+        return;
+      }
+      this.pending.delete(event.data.id);
+      if (event.data.ok) {
+        request.resolve(event.data.result);
+      } else {
+        request.reject(new Error(event.data.error ?? "Pyodide worker failed."));
+      }
+    };
+    this.worker.onerror = (event) => {
+      this.handleWorkerFailure(
+        new Error(event.message || "Pyodide worker failed."),
+      );
+    };
+    this.worker.onmessageerror = () => {
+      this.handleWorkerFailure(new Error("Pyodide worker sent an invalid message."));
+    };
+  }
+
+  generate(project: CircuitProject): Promise<OutputResult> {
+    return this.send<OutputResult>("generate", project);
+  }
+
+  normalize(project: unknown): Promise<CircuitProject> {
+    return this.send<CircuitProject>("normalize", project);
+  }
+
+  dispose(): void {
+    this.worker.terminate();
+    this.rejectPending(new Error("Pyodide worker disposed."));
+  }
+
+  private send<T>(type: "generate" | "normalize", project: unknown): Promise<T> {
+    if (this.failure) {
+      return Promise.reject(this.failure);
+    }
+    const id = this.nextId++;
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      });
+      this.worker.postMessage({ id, type, project });
+    });
+  }
+
+  private handleWorkerFailure(error: Error): void {
+    this.failure = error;
+    this.worker.terminate();
+    this.rejectPending(error);
+  }
+
+  private rejectPending(error: Error): void {
+    for (const request of this.pending.values()) {
+      request.reject(error);
+    }
+    this.pending.clear();
+  }
+}

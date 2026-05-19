@@ -1,0 +1,18 @@
+{
+  "name": "cQEDraw",
+  "short_name": "cQEDraw",
+  "description": "Draw superconducting circuit graphs and generate cQED matrix snippets.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#071327",
+  "theme_color": "#071327",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

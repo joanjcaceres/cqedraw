@@ -1,8 +1,9 @@
 # cQEDraw
 
-cQEDraw is a standalone Tkinter application for drawing
-superconducting circuit graphs and generating sparse/dense capacitance and
-inverse-inductance matrix snippets for Black Box Quantization workflows.
+cQEDraw is an application for drawing superconducting circuit graphs and
+generating sparse/dense capacitance and inverse-inductance matrix snippets for
+Black Box Quantization workflows. It is available as a browser app and as a
+standalone Tkinter desktop app.
 
 It is the companion GUI matrix-builder for
 [`sccircuits`](https://github.com/joanjcaceres/sccircuits): use the app to draw
@@ -11,6 +12,17 @@ that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
 
 ## Install And Open
+
+### Web App
+
+This is the lowest-friction path once GitHub Pages deployment is enabled:
+
+1. Open https://joanjcaceres.github.io/cqedraw/
+2. Use cQEDraw in the browser.
+3. Install it from the browser menu if you want it in the ChromeOS or desktop launcher.
+
+The web app runs the same Python/SymPy output logic in the browser through
+Pyodide. It does not require Python, Pixi, or a terminal on the user's machine.
 
 ### macOS And Windows
 
@@ -80,6 +92,14 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
+For the web app:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
 ## Basic Workflow
 
 Use the toolbar or keyboard shortcuts to create nodes, edges, and ground
@@ -147,3 +167,16 @@ is intentionally disabled for the first beta release.
 
 The tests cover matrix assembly, generated snippet behavior, CLI version
 handling, and node merge logic without opening the Tkinter window.
+
+Run the web checks from `web/`:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+```
+
+The web app is deployed to GitHub Pages by `.github/workflows/pages.yml` after
+changes land on `main`. The repository's Pages source must be set to GitHub
+Actions once in the GitHub settings.

@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+  python-test:
+    name: Python test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -31,3 +31,37 @@ jobs:
 
       - name: Verify CLI version command
         run: cqedraw --version
+
+  web-test:
+    name: Web test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck web app
+        run: npm run typecheck
+
+      - name: Run web unit tests
+        run: npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Run web browser tests
+        run: npm run test:e2e

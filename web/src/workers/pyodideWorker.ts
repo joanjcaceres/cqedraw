@@ -24,7 +24,15 @@ async function ensureReady() {
     return readyPromise;
   }
 
-  readyPromise = (async () => {
+  readyPromise = initializePyodide().catch((error) => {
+    readyPromise = null;
+    pyodideRuntime = null;
+    throw error;
+  });
+  return readyPromise;
+}
+
+async function initializePyodide() {
     pyodideRuntime = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.4/full/",
     });
@@ -36,13 +44,13 @@ async function ensureReady() {
       "/home/pyodide/cqedraw/web_bridge.py",
       bridgeSource,
     );
-    pyodideRuntime.runPython(`
-import sys
-sys.path.insert(0, "/home/pyodide")
-from cqedraw.web_bridge import generate_output_json, normalize_project_json
-`);
-  })();
-  return readyPromise;
+    pyodideRuntime.runPython(
+      [
+        "import sys",
+        'sys.path.insert(0, "/home/pyodide")',
+        "from cqedraw.web_bridge import generate_output_json, normalize_project_json",
+      ].join("\n"),
+    );
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {

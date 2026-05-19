@@ -28,7 +28,9 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           if (response.ok && new URL(event.request.url).origin === self.location.origin) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)),
+            );
           }
           return response;
         })

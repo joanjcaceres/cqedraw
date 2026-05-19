@@ -108,8 +108,13 @@ export function App() {
         setProject((current) => {
           const before = current.state.edge_counter;
           const next = addEdge(current, pendingEdgeNodeId, nodeId);
-          setSelectedEdgeId(before);
-          setSelectedNodeId(null);
+          if (next.state.edge_counter > before) {
+            setSelectedEdgeId(before);
+            setSelectedNodeId(null);
+          } else {
+            setSelectedEdgeId(null);
+            setSelectedNodeId(nodeId);
+          }
           return next;
         });
         setPendingEdgeNodeId(null);
@@ -207,8 +212,10 @@ export function App() {
     const link = document.createElement("a");
     link.href = url;
     link.download = "cqedraw-project.json";
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   async function loadProject(file: File) {
@@ -549,9 +556,18 @@ function edgeLabel(edge: CircuitEdge): string {
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement>) {
-  const rect = event.currentTarget.getBoundingClientRect();
-  return {
-    x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-    y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
-  };
+  const svg = event.currentTarget;
+  const matrix = svg.getScreenCTM();
+  if (!matrix) {
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
+      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+    };
+  }
+  const point = svg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  const transformed = point.matrixTransform(matrix.inverse());
+  return { x: transformed.x, y: transformed.y };
 }

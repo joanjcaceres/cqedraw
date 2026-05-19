@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   base: process.env.VITE_BASE_PATH ?? "/",
@@ -9,7 +10,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [".."],
+      allow: [fileURLToPath(new URL("../cqedraw", import.meta.url))],
     },
   },
   test: {

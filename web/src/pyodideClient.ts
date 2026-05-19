@@ -14,6 +14,7 @@ type PendingRequest<T> = {
 
 export class PyodideBridgeClient {
   private worker: Worker;
+  private failure: Error | null = null;
   private nextId = 1;
   private pending = new Map<number, PendingRequest<unknown>>();
 
@@ -33,6 +34,14 @@ export class PyodideBridgeClient {
         request.reject(new Error(event.data.error ?? "Pyodide worker failed."));
       }
     };
+    this.worker.onerror = (event) => {
+      this.handleWorkerFailure(
+        new Error(event.message || "Pyodide worker failed."),
+      );
+    };
+    this.worker.onmessageerror = () => {
+      this.handleWorkerFailure(new Error("Pyodide worker sent an invalid message."));
+    };
   }
 
   generate(project: CircuitProject): Promise<OutputResult> {
@@ -45,13 +54,13 @@ export class PyodideBridgeClient {
 
   dispose(): void {
     this.worker.terminate();
-    for (const request of this.pending.values()) {
-      request.reject(new Error("Pyodide worker disposed."));
-    }
-    this.pending.clear();
+    this.rejectPending(new Error("Pyodide worker disposed."));
   }
 
   private send<T>(type: "generate" | "normalize", project: unknown): Promise<T> {
+    if (this.failure) {
+      return Promise.reject(this.failure);
+    }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, {
@@ -60,5 +69,18 @@ export class PyodideBridgeClient {
       });
       this.worker.postMessage({ id, type, project });
     });
+  }
+
+  private handleWorkerFailure(error: Error): void {
+    this.failure = error;
+    this.worker.terminate();
+    this.rejectPending(error);
+  }
+
+  private rejectPending(error: Error): void {
+    for (const request of this.pending.values()) {
+      request.reject(error);
+    }
+    this.pending.clear();
   }
 }

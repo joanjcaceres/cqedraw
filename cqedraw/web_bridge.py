@@ -8,7 +8,7 @@ data comes back out.
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import sympy as sp
 
@@ -57,7 +57,7 @@ def _edge_data(state: dict[str, Any]) -> list[CircuitEdgeData]:
         capacitance_expr = _parse_expr(_expression_text(edge, "capacitance"))
         inductance_expr = _parse_expr(_expression_text(edge, "inductance"))
         l_inverse_expr = (
-            sp.simplify(sp.Integer(1) / inductance_expr)
+            sp.Integer(1) / inductance_expr
             if inductance_expr is not None
             else None
         )
@@ -110,7 +110,7 @@ def generate_output_json(project_json: str) -> str:
     try:
         project = json.loads(project_json)
         result = generate_output(project)
-    except Exception as exc:  # type: ignore[catching-non-exception]
+    except Exception as exc:
         result = {"error": str(exc)}
     return json.dumps(result)
 
@@ -182,6 +182,6 @@ def normalize_project_json(project_json: str) -> str:
     try:
         project = json.loads(project_json)
         result = normalize_project(project)
-    except Exception as exc:  # type: ignore[catching-non-exception]
+    except Exception as exc:
         result = {"error": str(exc)}
     return json.dumps(result)

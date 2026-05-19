@@ -1,5 +1,6 @@
 import {
   Circle,
+  CircleHelp,
   Copy,
   Download,
   GitBranch,
@@ -46,6 +47,7 @@ export function App() {
   const [draggingNodeId, setDraggingNodeId] = useState<number | null>(null);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
+  const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
 
@@ -284,6 +286,11 @@ export function App() {
             label="Delete"
             onClick={deleteSelection}
           />
+          <ToolButton
+            icon={<CircleHelp size={17} />}
+            label="Help"
+            onClick={() => setHelpOpen(true)}
+          />
         </div>
         <input
           ref={fileInputRef}
@@ -317,6 +324,7 @@ export function App() {
               </pattern>
             </defs>
             <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#grid)" />
+            {project.state.nodes.length === 0 ? <CanvasHint /> : null}
             {project.state.edges.map((edge) => (
               <CircuitEdgeShape
                 key={edge.identifier}
@@ -430,7 +438,58 @@ export function App() {
           </section>
         </aside>
       </section>
+      {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
     </main>
+  );
+}
+
+function CanvasHint() {
+  return (
+    <g className="canvas-hint" data-testid="canvas-hint">
+      <text x={CANVAS_WIDTH / 2} y={250} textAnchor="middle">
+        <tspan className="canvas-hint-title" x={CANVAS_WIDTH / 2}>
+          Click the canvas to place nodes.
+        </tspan>
+        <tspan x={CANVAS_WIDTH / 2} dy="28">
+          Use Edge to connect nodes, Ground to add a reference,
+        </tspan>
+        <tspan x={CANVAS_WIDTH / 2} dy="24">
+          then select an edge to enter C/L.
+        </tspan>
+        <tspan x={CANVAS_WIDTH / 2} dy="28">
+          Generate and Copy create the Python matrix snippet.
+        </tspan>
+      </text>
+    </g>
+  );
+}
+
+function HelpDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="help-dialog-title"
+        aria-modal="true"
+        className="help-dialog"
+        role="dialog"
+      >
+        <header>
+          <h2 id="help-dialog-title">Help</h2>
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <ol>
+          <li>Use Node and click the canvas to place circuit nodes.</li>
+          <li>Use Edge, then click two nodes to connect them.</li>
+          <li>Use Ground, then click a node to add or remove its ground reference.</li>
+          <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
+          <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
+          <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
+          <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
+        </ol>
+      </section>
+    </div>
   );
 }
 

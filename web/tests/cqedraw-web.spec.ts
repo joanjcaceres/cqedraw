@@ -1,5 +1,28 @@
 import { expect, test } from "@playwright/test";
 
+test("guides a first-time web user without blocking drawing", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await expect(page.getByTestId("canvas-hint")).toContainText(
+    "Click the canvas to place nodes.",
+  );
+  await expect(page.getByTestId("canvas-hint")).toContainText(
+    "Generate and Copy create the Python matrix snippet.",
+  );
+
+  await page.getByRole("button", { name: "Help" }).click();
+  const helpDialog = page.getByRole("dialog", { name: "Help" });
+  await expect(helpDialog).toBeVisible();
+  await expect(helpDialog).toContainText("Use Node and click the canvas");
+  await expect(helpDialog).toContainText("Cj, 40e-15, and 1/Lj_inv");
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(helpDialog).toBeHidden();
+
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await expect(page.getByTestId("canvas-hint")).toBeHidden();
+});
+
 test("creates a small circuit and generates matching C and L_inv entries", async ({
   page,
 }) => {

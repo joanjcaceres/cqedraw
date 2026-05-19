@@ -5,10 +5,13 @@ import {
   Download,
   GitBranch,
   Home,
+  Maximize2,
   MousePointer2,
   Play,
   Trash2,
   Upload,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   KeyboardEvent,
@@ -47,6 +50,32 @@ const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 620;
 const NODE_RADIUS = 11;
 const TUTORIAL_STORAGE_KEY = "cqedraw.tutorial.v1";
+const DEFAULT_VIEW_BOX: ViewBox = {
+  x: 0,
+  y: 0,
+  width: CANVAS_WIDTH,
+  height: CANVAS_HEIGHT,
+};
+const GRID_PADDING = 2400;
+const MIN_VIEW_WIDTH = CANVAS_WIDTH / 4;
+const MAX_VIEW_WIDTH = CANVAS_WIDTH * 3;
+const ZOOM_IN_FACTOR = 0.8;
+const ZOOM_OUT_FACTOR = 1 / ZOOM_IN_FACTOR;
+const FIT_VIEW_MARGIN = 96;
+
+interface ViewBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface PanState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startViewBox: ViewBox;
+}
 
 type TutorialStep =
   | "welcome"
@@ -71,6 +100,8 @@ export function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [pendingEdgeNodeId, setPendingEdgeNodeId] = useState<number | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<number | null>(null);
+  const [panState, setPanState] = useState<PanState | null>(null);
+  const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -140,6 +171,7 @@ export function App() {
     setMode(nextMode);
     setPendingEdgeNodeId(null);
     setDraggingNodeId(null);
+    setPanState(null);
   }
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
@@ -154,6 +186,15 @@ export function App() {
       });
       setOutput(null);
       return;
+    }
+    if (mode === "select") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setPanState({
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startViewBox: viewBox,
+      });
     }
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
@@ -207,18 +248,33 @@ export function App() {
     setSelectedNodeId(nodeId);
     setSelectedEdgeId(null);
     setDraggingNodeId(nodeId);
+    setPanState(null);
   }
 
   function handleCanvasPointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (panState && panState.pointerId === event.pointerId && mode === "select") {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const dx = ((event.clientX - panState.startClientX) / rect.width) * panState.startViewBox.width;
+      const dy =
+        ((event.clientY - panState.startClientY) / rect.height) * panState.startViewBox.height;
+      setViewBox({
+        ...panState.startViewBox,
+        x: panState.startViewBox.x - dx,
+        y: panState.startViewBox.y - dy,
+      });
+      return;
+    }
+
     if (draggingNodeId === null || mode === "edge" || mode === "ground") {
       return;
     }
-    const point = svgPoint(event);
+    const point = clampPointToView(svgPoint(event), viewBox);
     setProject((current) => moveNode(current, draggingNodeId, point.x, point.y));
   }
 
   function handleCanvasPointerUp() {
     setDraggingNodeId(null);
+    setPanState(null);
   }
 
   function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
@@ -226,6 +282,7 @@ export function App() {
     setSelectedEdgeId(edgeId);
     setSelectedNodeId(null);
     setPendingEdgeNodeId(null);
+    setPanState(null);
   }
 
   function deleteSelection() {
@@ -290,9 +347,11 @@ export function App() {
     const parsed = JSON.parse(await file.text());
     const next = normalizeProject(parsed);
     setProject(next);
+    setViewBox(fitProjectView(next));
     setSelectedEdgeId(null);
     setSelectedNodeId(null);
     setPendingEdgeNodeId(null);
+    setPanState(null);
     setOutput(null);
   }
 
@@ -308,6 +367,8 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setDraggingNodeId(null);
+    setPanState(null);
+    setViewBox(DEFAULT_VIEW_BOX);
     setOutput(null);
     setEngineStatus("Ready.");
     setTutorialCopied(false);
@@ -347,6 +408,14 @@ export function App() {
     window.requestAnimationFrame(() =>
       document.querySelector<HTMLButtonElement>('[data-testid="tutorial-callout"] button')?.focus(),
     );
+  }
+
+  function zoomCanvas(factor: number) {
+    setViewBox((current) => zoomViewBox(current, factor));
+  }
+
+  function fitCanvasView() {
+    setViewBox(fitProjectView(project));
   }
 
   const selectedEdgeLabel = selectedEdge
@@ -442,18 +511,38 @@ export function App() {
 
       <section className="workspace">
         <div className="canvas-pane">
+          <div className="canvas-controls" aria-label="Canvas view controls">
+            <IconButton
+              icon={<ZoomIn size={17} />}
+              label="Zoom in"
+              onClick={() => zoomCanvas(ZOOM_IN_FACTOR)}
+            />
+            <IconButton
+              icon={<ZoomOut size={17} />}
+              label="Zoom out"
+              onClick={() => zoomCanvas(ZOOM_OUT_FACTOR)}
+            />
+            <IconButton
+              icon={<Maximize2 size={17} />}
+              label="Fit view"
+              onClick={fitCanvasView}
+            />
+          </div>
           <svg
             className={[
               "circuit-canvas",
+              mode === "select" ? "pan-ready" : "",
+              panState ? "panning" : "",
               tutorialStep === "first-node" || tutorialStep === "second-node"
                 ? "tutorial-highlight-surface"
                 : "",
             ].join(" ")}
             data-testid="canvas"
-            viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+            viewBox={viewBoxToString(viewBox)}
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
+            onPointerCancel={handleCanvasPointerUp}
             onPointerLeave={handleCanvasPointerUp}
           >
             <defs>
@@ -461,7 +550,13 @@ export function App() {
                 <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#dce5ee" strokeWidth="1" />
               </pattern>
             </defs>
-            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#grid)" />
+            <rect
+              x={-GRID_PADDING}
+              y={-GRID_PADDING}
+              width={CANVAS_WIDTH + GRID_PADDING * 2}
+              height={CANVAS_HEIGHT + GRID_PADDING * 2}
+              fill="url(#grid)"
+            />
             {project.state.nodes.length === 0 ? <CanvasHint /> : null}
             {project.state.edges.map((edge) => (
               <CircuitEdgeShape
@@ -792,6 +887,7 @@ function HelpDialog({
           <li>Use Ground, then click a node to add or remove its ground reference.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
+          <li>Use the canvas buttons to zoom or fit the view; use Select and drag empty canvas to pan.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -836,6 +932,28 @@ function handleDialogKeyDown(
     event.preventDefault();
     first.focus();
   }
+}
+
+function IconButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="icon-button"
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
 }
 
 function ToolButton({
@@ -974,6 +1092,86 @@ function svgPoint(event: PointerEvent<SVGSVGElement>) {
   point.y = event.clientY;
   const transformed = point.matrixTransform(matrix.inverse());
   return { x: transformed.x, y: transformed.y };
+}
+
+function viewBoxToString(viewBox: ViewBox): string {
+  return `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
+}
+
+function clampPointToView(point: { x: number; y: number }, viewBox: ViewBox) {
+  const inset = NODE_RADIUS + 4;
+  return {
+    x: clamp(point.x, viewBox.x + inset, viewBox.x + viewBox.width - inset),
+    y: clamp(point.y, viewBox.y + inset, viewBox.y + viewBox.height - inset),
+  };
+}
+
+function zoomViewBox(viewBox: ViewBox, factor: number): ViewBox {
+  const nextWidth = clamp(viewBox.width * factor, MIN_VIEW_WIDTH, MAX_VIEW_WIDTH);
+  const nextHeight = nextWidth * (CANVAS_HEIGHT / CANVAS_WIDTH);
+  const centerX = viewBox.x + viewBox.width / 2;
+  const centerY = viewBox.y + viewBox.height / 2;
+  return {
+    x: centerX - nextWidth / 2,
+    y: centerY - nextHeight / 2,
+    width: nextWidth,
+    height: nextHeight,
+  };
+}
+
+function fitProjectView(project: CircuitProject): ViewBox {
+  const points = project.state.nodes.map((node) => ({ x: node.x, y: node.y }));
+  for (const edge of project.state.edges) {
+    if (!edge.is_ground) {
+      continue;
+    }
+    const node = project.state.nodes.find(
+      (candidate) => candidate.identifier === edge.nodes[0],
+    );
+    if (node) {
+      points.push({
+        x: node.x + edge.ground_offset_x,
+        y: node.y + edge.ground_offset_y,
+      });
+    }
+  }
+
+  if (points.length === 0) {
+    return DEFAULT_VIEW_BOX;
+  }
+
+  const minX = Math.min(...points.map((point) => point.x)) - FIT_VIEW_MARGIN;
+  const maxX = Math.max(...points.map((point) => point.x)) + FIT_VIEW_MARGIN;
+  const minY = Math.min(...points.map((point) => point.y)) - FIT_VIEW_MARGIN;
+  const maxY = Math.max(...points.map((point) => point.y)) + FIT_VIEW_MARGIN;
+  const contentWidth = Math.max(maxX - minX, CANVAS_WIDTH);
+  const contentHeight = Math.max(maxY - minY, CANVAS_HEIGHT);
+  const canvasRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
+  const contentRatio = contentWidth / contentHeight;
+  let width = contentWidth;
+  let height = contentHeight;
+
+  if (contentRatio > canvasRatio) {
+    height = width / canvasRatio;
+  } else {
+    width = height * canvasRatio;
+  }
+
+  width = Math.min(width, MAX_VIEW_WIDTH);
+  height = width * (CANVAS_HEIGHT / CANVAS_WIDTH);
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; body: string }> = {

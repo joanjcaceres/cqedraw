@@ -10,7 +10,16 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { PointerEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  KeyboardEvent,
+  PointerEvent,
+  ReactNode,
+  Ref,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   addEdge,
@@ -49,6 +58,7 @@ export function App() {
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
 
   useEffect(() => {
@@ -230,6 +240,11 @@ export function App() {
     setOutput(null);
   }
 
+  function closeHelp() {
+    setHelpOpen(false);
+    window.requestAnimationFrame(() => helpButtonRef.current?.focus());
+  }
+
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
       ? `Ground ${selectedEdge.nodes[0]}`
@@ -287,6 +302,7 @@ export function App() {
             onClick={deleteSelection}
           />
           <ToolButton
+            buttonRef={helpButtonRef}
             icon={<CircleHelp size={17} />}
             label="Help"
             onClick={() => setHelpOpen(true)}
@@ -438,7 +454,7 @@ export function App() {
           </section>
         </aside>
       </section>
-      {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
+      {helpOpen ? <HelpDialog onClose={closeHelp} /> : null}
     </main>
   );
 }
@@ -465,17 +481,60 @@ function CanvasHint() {
 }
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab" || !dialogRef.current) {
+      return;
+    }
+
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !element.hasAttribute("disabled"));
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <div className="dialog-backdrop" role="presentation">
       <section
         aria-labelledby="help-dialog-title"
         aria-modal="true"
         className="help-dialog"
+        onKeyDown={handleKeyDown}
+        ref={dialogRef}
         role="dialog"
       >
         <header>
           <h2 id="help-dialog-title">Help</h2>
-          <button type="button" onClick={onClose}>
+          <button ref={closeButtonRef} type="button" onClick={onClose}>
             Close
           </button>
         </header>
@@ -495,11 +554,13 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
 
 function ToolButton({
   active = false,
+  buttonRef,
   icon,
   label,
   onClick,
 }: {
   active?: boolean;
+  buttonRef?: Ref<HTMLButtonElement>;
   icon?: ReactNode;
   label: string;
   onClick: () => void;
@@ -507,6 +568,7 @@ function ToolButton({
   return (
     <button
       className={active ? "tool-button active" : "tool-button"}
+      ref={buttonRef}
       type="button"
       onClick={onClick}
     >

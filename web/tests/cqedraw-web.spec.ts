@@ -13,10 +13,21 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
 
   await page.getByRole("button", { name: "Help" }).click();
   const helpDialog = page.getByRole("dialog", { name: "Help" });
+  const helpButton = page.getByRole("button", { name: "Help" });
+  const closeButton = page.getByRole("button", { name: "Close" });
   await expect(helpDialog).toBeVisible();
   await expect(helpDialog).toContainText("Use Node and click the canvas");
   await expect(helpDialog).toContainText("Cj, 40e-15, and 1/Lj_inv");
-  await page.getByRole("button", { name: "Close" }).click();
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(helpDialog).toBeHidden();
+  await expect(helpButton).toBeFocused();
+
+  await helpButton.click();
+  await expect(helpDialog).toBeVisible();
+  await closeButton.click();
   await expect(helpDialog).toBeHidden();
 
   await canvas.click({ position: { x: 160, y: 220 } });

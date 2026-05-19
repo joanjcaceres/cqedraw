@@ -4,9 +4,9 @@ import {
   addEdge,
   addNode,
   emptyProject,
+  hasRegularEdge,
   normalizeProject,
   removeNode,
-  sampleProject,
   toggleGround,
   updateEdgeValues,
 } from "../graph";
@@ -54,8 +54,26 @@ describe("graph state", () => {
     });
   });
 
+  it("keeps a single regular edge between two nodes", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addEdge(project, 0, 1);
+    project = addEdge(project, 1, 0);
+
+    expect(project.state.edges).toHaveLength(1);
+    expect(hasRegularEdge(project.state, 1, 0)).toBe(true);
+    expect(project.state.edge_counter).toBe(1);
+  });
+
   it("removes node-connected edges", () => {
-    let project = sampleProject();
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addNode(project, 380, 120);
+    project = addEdge(project, 0, 1);
+    project = addEdge(project, 1, 2);
+    project = toggleGround(project, 2);
     project = removeNode(project, 1);
 
     expect(project.state.nodes.map((node) => node.identifier)).toEqual([0, 2]);

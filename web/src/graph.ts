@@ -98,7 +98,7 @@ export function addEdge(
   firstNode: number,
   secondNode: number,
 ): CircuitProject {
-  if (firstNode === secondNode) {
+  if (firstNode === secondNode || hasRegularEdge(project.state, firstNode, secondNode)) {
     return project;
   }
   const id = project.state.edge_counter;
@@ -113,6 +113,23 @@ export function addEdge(
       ],
     },
   };
+}
+
+export function hasRegularEdge(
+  state: CircuitState,
+  firstNode: number,
+  secondNode: number,
+): boolean {
+  return state.edges.some((edge) => {
+    if (edge.is_ground) {
+      return false;
+    }
+    const [first, second] = edge.nodes;
+    return (
+      (first === firstNode && second === secondNode) ||
+      (first === secondNode && second === firstNode)
+    );
+  });
 }
 
 export function toggleGround(project: CircuitProject, nodeId: number): CircuitProject {
@@ -227,29 +244,6 @@ export function normalizeProject(input: unknown): CircuitProject {
       mode: null,
     },
   };
-}
-
-export function sampleProject(): CircuitProject {
-  let project = emptyProject();
-  project = addNode(project, 150, 220);
-  project = addNode(project, 330, 220);
-  project = addNode(project, 510, 220);
-  project = addEdge(project, 0, 1);
-  project = updateEdgeValues(project, 0, {
-    capacitanceText: "C_alpha",
-    inductanceText: "1/L_alpha_inv",
-  });
-  project = addEdge(project, 1, 0);
-  project = updateEdgeValues(project, 1, {
-    capacitanceText: "C_beta",
-    inductanceText: "1/L_beta_inv",
-  });
-  project = toggleGround(project, 2);
-  project = updateEdgeValues(project, 2, {
-    capacitanceText: "C_ground",
-    inductanceText: "1/L_ground_inv",
-  });
-  return project;
 }
 
 function createEdge(

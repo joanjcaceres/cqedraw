@@ -20,7 +20,6 @@ import {
   removeEdge,
   removeNode,
   renameNode,
-  sampleProject,
   toggleGround,
   updateEdgeValues,
 } from "./graph";
@@ -114,6 +113,7 @@ export function App() {
           } else {
             setSelectedEdgeId(null);
             setSelectedNodeId(nodeId);
+            setEngineStatus("A connection between those nodes already exists.");
           }
           return next;
         });
@@ -228,14 +228,6 @@ export function App() {
     setOutput(null);
   }
 
-  function loadSample() {
-    setProject(sampleProject());
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-    setPendingEdgeNodeId(null);
-    setOutput(null);
-  }
-
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
       ? `Ground ${selectedEdge.nodes[0]}`
@@ -287,7 +279,6 @@ export function App() {
             label="Load"
             onClick={() => fileInputRef.current?.click()}
           />
-          <ToolButton label="Sample" onClick={loadSample} />
           <ToolButton
             icon={<Trash2 size={17} />}
             label="Delete"

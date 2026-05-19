@@ -33,15 +33,27 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("snippet-output")).toContainText("def L_inv_matrix_func");
 });
 
-test("sample project exercises the Pyodide worker bridge", async ({ page }) => {
+test("does not create duplicate edges between the same two nodes", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Sample" }).click();
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C12");
+
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("node-0").click();
+
+  await expect(page.getByTestId("output-status")).toContainText(
+    "A connection between those nodes already exists.",
+  );
   await page.getByRole("button", { name: "Generate" }).click();
 
-  await expect(page.getByTestId("output-status")).toContainText("Generated 3 x 3");
-  await expect(page.getByTestId("c-entries")).toContainText("C_alpha + C_beta");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "L_alpha_inv + L_beta_inv",
-  );
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
+  await expect(page.getByTestId("c-entries")).not.toContainText("2*C12");
 });

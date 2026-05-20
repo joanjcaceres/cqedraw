@@ -24,7 +24,6 @@ import {
   useMemo,
   useRef,
   useState,
-  WheelEvent,
 } from "react";
 
 import {
@@ -166,6 +165,7 @@ export function App() {
   const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
   const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
   const [tutorialCopied, setTutorialCopied] = useState(false);
+  const canvasRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
@@ -218,6 +218,34 @@ export function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const canvasElement = canvasRef.current;
+    if (!canvasElement) {
+      return;
+    }
+
+    const handleNativeCanvasWheel = (event: globalThis.WheelEvent) => {
+      event.preventDefault();
+      const anchor = svgPointFromClient(canvasElement, event.clientX, event.clientY);
+      const normalizedDelta = normalizeWheelDelta(event);
+      const limitedDelta = clamp(
+        normalizedDelta,
+        -WHEEL_DELTA_LIMIT,
+        WHEEL_DELTA_LIMIT,
+      );
+      const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
+      setPanState(null);
+      setMarqueeState(null);
+      setViewBox((current) => zoomViewBox(current, factor, anchor));
+    };
+
+    canvasElement.addEventListener("wheel", handleNativeCanvasWheel, {
+      passive: false,
+    });
+    return () =>
+      canvasElement.removeEventListener("wheel", handleNativeCanvasWheel);
+  }, []);
 
   useEffect(() => {
     if (project.state.nodes.length > 0 && tutorialPromptOpen && tutorialStep === null) {
@@ -519,21 +547,6 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     cancelPastePreview();
-  }
-
-  function handleCanvasWheel(event: WheelEvent<SVGSVGElement>) {
-    event.preventDefault();
-    const anchor = svgPoint(event);
-    const normalizedDelta = normalizeWheelDelta(event);
-    const limitedDelta = clamp(
-      normalizedDelta,
-      -WHEEL_DELTA_LIMIT,
-      WHEEL_DELTA_LIMIT,
-    );
-    const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
-    setPanState(null);
-    setMarqueeState(null);
-    setViewBox((current) => zoomViewBox(current, factor, anchor));
   }
 
   function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
@@ -957,13 +970,13 @@ export function App() {
                 : "",
             ].join(" ")}
             data-testid="canvas"
+            ref={canvasRef}
             viewBox={viewBoxToString(viewBox)}
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
             onPointerCancel={handleCanvasPointerCancel}
             onPointerLeave={handleCanvasPointerCancel}
-            onWheel={handleCanvasWheel}
           >
             <defs>
               <pattern
@@ -1634,7 +1647,7 @@ function edgeLabel(edge: CircuitEdge): string {
   return parts.join(", ") || "edge";
 }
 
-function svgPoint(event: PointerEvent<SVGSVGElement> | WheelEvent<SVGSVGElement>) {
+function svgPoint(event: PointerEvent<SVGSVGElement>) {
   return svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
 }
 
@@ -1875,7 +1888,9 @@ function zoomViewBox(
   };
 }
 
-function normalizeWheelDelta(event: WheelEvent<SVGSVGElement>): number {
+function normalizeWheelDelta(
+  event: Pick<globalThis.WheelEvent, "deltaMode" | "deltaY">,
+): number {
   if (event.deltaMode === WHEEL_DELTA_LINE_MODE) {
     return event.deltaY * 16;
   }

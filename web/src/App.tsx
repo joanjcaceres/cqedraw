@@ -95,6 +95,9 @@ type TutorialPlacement = "canvas" | "tools" | "actions" | "inspector";
 
 export function App() {
   const [project, setProject] = useState<CircuitProject>(() => emptyProject());
+  const [cleanProjectSnapshot, setCleanProjectSnapshot] = useState(() =>
+    serializeProjectForDirtyCheck(emptyProject()),
+  );
   const [mode, setMode] = useState<ToolMode>("node");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
@@ -138,6 +141,26 @@ export function App() {
     () => project.state.edges.find((edge) => edge.identifier === selectedEdgeId) ?? null,
     [project, selectedEdgeId],
   );
+  const currentProjectSnapshot = useMemo(
+    () => serializeProjectForDirtyCheck(project),
+    [project],
+  );
+  const hasUnsavedChanges = currentProjectSnapshot !== cleanProjectSnapshot;
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     if (project.state.nodes.length > 0 && tutorialPromptOpen && tutorialStep === null) {
       dismissTutorial();
@@ -340,6 +363,8 @@ export function App() {
     document.body.append(link);
     link.click();
     link.remove();
+    setCleanProjectSnapshot(currentProjectSnapshot);
+    setEngineStatus("Project saved.");
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
@@ -347,6 +372,7 @@ export function App() {
     const parsed = JSON.parse(await file.text());
     const next = normalizeProject(parsed);
     setProject(next);
+    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setViewBox(fitProjectView(next));
     setSelectedEdgeId(null);
     setSelectedNodeId(null);
@@ -361,7 +387,9 @@ export function App() {
   }
 
   function beginTutorial() {
-    setProject(emptyProject());
+    const next = emptyProject();
+    setProject(next);
+    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setMode("node");
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
@@ -477,6 +505,9 @@ export function App() {
             onClick={copySnippet}
           />
           <ToolButton icon={<Download size={17} />} label="Save" onClick={saveProject} />
+          <span aria-live="polite" data-testid="save-status">
+            {hasUnsavedChanges ? "Unsaved changes" : "Saved"}
+          </span>
           <ToolButton
             icon={<Upload size={17} />}
             label="Load"
@@ -1096,6 +1127,10 @@ function svgPoint(event: PointerEvent<SVGSVGElement>) {
 
 function viewBoxToString(viewBox: ViewBox): string {
   return `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
+}
+
+function serializeProjectForDirtyCheck(project: CircuitProject): string {
+  return JSON.stringify(project);
 }
 
 function clampPointToView(point: { x: number; y: number }, viewBox: ViewBox) {

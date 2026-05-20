@@ -174,6 +174,10 @@ textarea {
   cursor: grabbing;
 }
 
+.circuit-canvas.selecting {
+  cursor: crosshair;
+}
+
 .circuit-canvas.tutorial-highlight-surface {
   border-color: #f6c343;
   box-shadow:
@@ -219,6 +223,14 @@ textarea {
 .edge-line.selected {
   stroke: #0aa6c2;
   stroke-width: 6;
+}
+
+.selection-marquee {
+  fill: rgba(10, 166, 194, 0.13);
+  pointer-events: none;
+  stroke: #0aa6c2;
+  stroke-dasharray: 8 6;
+  stroke-width: 2;
 }
 
 .ground-symbol line {

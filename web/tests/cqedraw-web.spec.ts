@@ -333,6 +333,101 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12");
 });
 
+test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+  await canvas.click({ position: { x: 500, y: 220 } });
+
+  await page.getByRole("button", { name: "Select" }).click();
+  const mergeButton = page.getByRole("button", { name: "Merge" });
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) {
+    throw new Error("Canvas box is unavailable.");
+  }
+
+  await page.keyboard.down("Shift");
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 380, canvasBox.y + 260);
+  await expect(page.getByTestId("selection-marquee")).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+
+  await expect(page.getByTestId("selection-marquee")).toHaveCount(0);
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(page.getByText("Merge will keep node 1")).toBeVisible();
+  await expect(mergeButton).toBeEnabled();
+
+  const node0 = page.getByTestId("node-0");
+  const node1 = page.getByTestId("node-1");
+  const node2 = page.getByTestId("node-2");
+  const node0Start = await parseSvgCircleCenter(node0);
+  const node1Start = await parseSvgCircleCenter(node1);
+  const node2Start = await parseSvgCircleCenter(node2);
+  const node0Box = await node0.boundingBox();
+  if (!node0Box) {
+    throw new Error("Node box is unavailable.");
+  }
+
+  await page.mouse.move(
+    node0Box.x + node0Box.width / 2,
+    node0Box.y + node0Box.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    node0Box.x + node0Box.width / 2 + 80,
+    node0Box.y + node0Box.height / 2 + 45,
+  );
+  await page.mouse.up();
+
+  const node0End = await parseSvgCircleCenter(node0);
+  const node1End = await parseSvgCircleCenter(node1);
+  const node2End = await parseSvgCircleCenter(node2);
+  const node0Delta = {
+    x: node0End.x - node0Start.x,
+    y: node0End.y - node0Start.y,
+  };
+  const node1Delta = {
+    x: node1End.x - node1Start.x,
+    y: node1End.y - node1Start.y,
+  };
+  expect(node0Delta.x).toBeGreaterThan(20);
+  expect(node0Delta.y).toBeGreaterThan(20);
+  expect(Math.abs(node1Delta.x - node0Delta.x)).toBeLessThan(1);
+  expect(Math.abs(node1Delta.y - node0Delta.y)).toBeLessThan(1);
+  expect(Math.abs(node2End.x - node2Start.x)).toBeLessThan(1);
+  expect(Math.abs(node2End.y - node2Start.y)).toBeLessThan(1);
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(mergeButton).toBeEnabled();
+
+  await mergeButton.click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Merged 2 nodes into N2",
+  );
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("node-2")).toBeVisible();
+
+  await page.keyboard.down("Shift");
+  await page.mouse.move(canvasBox.x + 650, canvasBox.y + 360);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 720, canvasBox.y + 420);
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selection cleared.",
+  );
+  await expect(page.getByText("2 nodes")).toBeVisible();
+  await expect(mergeButton).toBeDisabled();
+});
+
 test("creates a small circuit and generates matching C and L_inv entries", async ({
   page,
 }) => {
@@ -441,6 +536,13 @@ async function parseSvgRect(locator: Locator) {
     y: await numberAttribute(locator, "y"),
     width: await numberAttribute(locator, "width"),
     height: await numberAttribute(locator, "height"),
+  };
+}
+
+async function parseSvgCircleCenter(locator: Locator) {
+  return {
+    x: await numberAttribute(locator, "cx"),
+    y: await numberAttribute(locator, "cy"),
   };
 }
 

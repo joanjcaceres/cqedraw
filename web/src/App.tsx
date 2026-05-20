@@ -31,7 +31,6 @@ import {
   addNode,
   emptyProject,
   mergeNodes,
-  moveNode,
   normalizeProject,
   removeEdge,
   removeNode,
@@ -78,11 +77,34 @@ interface ViewBox {
   height: number;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
 interface PanState {
   pointerId: number;
   startClientX: number;
   startClientY: number;
   startViewBox: ViewBox;
+}
+
+interface NodeDragState {
+  pointerId: number;
+  startPoint: Point;
+  nodePositions: NodeDragPosition[];
+}
+
+interface NodeDragPosition {
+  identifier: number;
+  x: number;
+  y: number;
+}
+
+interface MarqueeState {
+  pointerId: number;
+  start: Point;
+  current: Point;
 }
 
 type TutorialStep =
@@ -111,8 +133,9 @@ export function App() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [pendingEdgeNodeId, setPendingEdgeNodeId] = useState<number | null>(null);
-  const [draggingNodeId, setDraggingNodeId] = useState<number | null>(null);
+  const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
   const [panState, setPanState] = useState<PanState | null>(null);
+  const [marqueeState, setMarqueeState] = useState<MarqueeState | null>(null);
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
@@ -196,7 +219,7 @@ export function App() {
     if (nextStep === "generate" && mode !== "select") {
       setMode("select");
       setPendingEdgeNodeId(null);
-      setDraggingNodeId(null);
+      setNodeDragState(null);
     }
     if (nextStep && nextStep !== tutorialStep) {
       setTutorialStep(nextStep);
@@ -206,8 +229,9 @@ export function App() {
   function setModeAndReset(nextMode: ToolMode) {
     setMode(nextMode);
     setPendingEdgeNodeId(null);
-    setDraggingNodeId(null);
+    setNodeDragState(null);
     setPanState(null);
+    setMarqueeState(null);
   }
 
   function selectSingleNode(nodeId: number) {
@@ -252,12 +276,22 @@ export function App() {
     }
     if (mode === "select") {
       event.currentTarget.setPointerCapture(event.pointerId);
-      setPanState({
-        pointerId: event.pointerId,
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        startViewBox: viewBox,
-      });
+      if (event.shiftKey) {
+        setMarqueeState({
+          pointerId: event.pointerId,
+          start: point,
+          current: point,
+        });
+        setPanState(null);
+      } else {
+        setPanState({
+          pointerId: event.pointerId,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startViewBox: viewBox,
+        });
+        setMarqueeState(null);
+      }
     }
     clearNodeSelection();
     setSelectedEdgeId(null);
@@ -270,6 +304,7 @@ export function App() {
   ) {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    setMarqueeState(null);
 
     if (mode === "edge") {
       if (pendingEdgeNodeId === null) {
@@ -315,17 +350,86 @@ export function App() {
 
     if (mode === "select" && event.shiftKey) {
       toggleNodeSelection(nodeId);
-      setDraggingNodeId(null);
+      setNodeDragState(null);
       setPanState(null);
       return;
     }
 
-    selectSingleNode(nodeId);
-    setDraggingNodeId(nodeId);
+    const isDraggingExistingSelection =
+      mode === "select" &&
+      selectedNodeIds.length > 1 &&
+      selectedNodeIds.includes(nodeId);
+    const dragNodeIds = isDraggingExistingSelection ? selectedNodeIds : [nodeId];
+
+    if (!isDraggingExistingSelection) {
+      selectSingleNode(nodeId);
+    }
+    startNodeDrag(event, dragNodeIds);
     setPanState(null);
   }
 
+  function startNodeDrag(
+    event: PointerEvent<SVGCircleElement>,
+    nodeIds: number[],
+  ) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) {
+      setNodeDragState(null);
+      return;
+    }
+
+    const dragNodeIds = new Set(nodeIds);
+    const nodePositions = project.state.nodes
+      .filter((node) => dragNodeIds.has(node.identifier))
+      .map((node) => ({
+        identifier: node.identifier,
+        x: node.x,
+        y: node.y,
+      }));
+    if (nodePositions.length === 0) {
+      setNodeDragState(null);
+      return;
+    }
+
+    setNodeDragState({
+      pointerId: event.pointerId,
+      startPoint: svgPointFromClient(svg, event.clientX, event.clientY),
+      nodePositions,
+    });
+  }
+
   function handleCanvasPointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (
+      marqueeState &&
+      marqueeState.pointerId === event.pointerId &&
+      mode === "select"
+    ) {
+      const current = svgPoint(event);
+      setMarqueeState((state) =>
+        state?.pointerId === event.pointerId ? { ...state, current } : state,
+      );
+      return;
+    }
+
+    if (
+      nodeDragState &&
+      nodeDragState.pointerId === event.pointerId &&
+      mode !== "edge" &&
+      mode !== "ground"
+    ) {
+      const point = svgPoint(event);
+      const delta = clampNodeDragDeltaToView(
+        nodeDragState.nodePositions,
+        point.x - nodeDragState.startPoint.x,
+        point.y - nodeDragState.startPoint.y,
+        viewBox,
+      );
+      setProject((current) =>
+        moveDraggedNodes(current, nodeDragState.nodePositions, delta.x, delta.y),
+      );
+      return;
+    }
+
     if (panState && panState.pointerId === event.pointerId && mode === "select") {
       const rect = event.currentTarget.getBoundingClientRect();
       const dx = ((event.clientX - panState.startClientX) / rect.width) * panState.startViewBox.width;
@@ -339,16 +443,39 @@ export function App() {
       return;
     }
 
-    if (draggingNodeId === null || mode === "edge" || mode === "ground") {
-      return;
-    }
-    const point = clampPointToView(svgPoint(event), viewBox);
-    setProject((current) => moveNode(current, draggingNodeId, point.x, point.y));
   }
 
-  function handleCanvasPointerUp() {
-    setDraggingNodeId(null);
+  function handleCanvasPointerUp(event: PointerEvent<SVGSVGElement>) {
+    if (
+      marqueeState &&
+      marqueeState.pointerId === event.pointerId &&
+      mode === "select"
+    ) {
+      const selectionRect = rectFromPoints(marqueeState.start, svgPoint(event));
+      const selectedIds = nodeIdsInsideRect(project.state.nodes, selectionRect);
+      setSelectedNodeIds(selectedIds);
+      setSelectedNodeId(selectedIds[selectedIds.length - 1] ?? null);
+      setSelectedEdgeId(null);
+      setPendingEdgeNodeId(null);
+      setMarqueeState(null);
+      setPanState(null);
+      setNodeDragState(null);
+      setEngineStatus(
+        selectedIds.length === 0
+          ? "Selection cleared."
+          : `Selected ${selectedIds.length} node${selectedIds.length === 1 ? "" : "s"}.`,
+      );
+      return;
+    }
+
+    setNodeDragState(null);
     setPanState(null);
+  }
+
+  function handleCanvasPointerCancel() {
+    setNodeDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
   }
 
   function handleCanvasWheel(event: WheelEvent<SVGSVGElement>) {
@@ -362,6 +489,7 @@ export function App() {
     );
     const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
     setPanState(null);
+    setMarqueeState(null);
     setViewBox((current) => zoomViewBox(current, factor, anchor));
   }
 
@@ -371,6 +499,7 @@ export function App() {
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
+    setMarqueeState(null);
   }
 
   function deleteSelection() {
@@ -483,6 +612,7 @@ export function App() {
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
+    setMarqueeState(null);
     setOutput(null);
   }
 
@@ -499,8 +629,9 @@ export function App() {
     clearNodeSelection();
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
-    setDraggingNodeId(null);
+    setNodeDragState(null);
     setPanState(null);
+    setMarqueeState(null);
     setViewBox(DEFAULT_VIEW_BOX);
     setOutput(null);
     setEngineStatus("Ready.");
@@ -555,6 +686,9 @@ export function App() {
     ? selectedEdge.is_ground
       ? `Ground ${selectedEdge.nodes[0]}`
       : `${selectedEdge.nodes[0]}-${selectedEdge.nodes[1]}`
+    : null;
+  const marqueeRect = marqueeState
+    ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
 
   return (
@@ -675,6 +809,7 @@ export function App() {
               "circuit-canvas",
               mode === "select" ? "pan-ready" : "",
               panState ? "panning" : "",
+              marqueeState ? "selecting" : "",
               tutorialStep === "first-node" || tutorialStep === "second-node"
                 ? "tutorial-highlight-surface"
                 : "",
@@ -684,8 +819,8 @@ export function App() {
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
-            onPointerCancel={handleCanvasPointerUp}
-            onPointerLeave={handleCanvasPointerUp}
+            onPointerCancel={handleCanvasPointerCancel}
+            onPointerLeave={handleCanvasPointerCancel}
             onWheel={handleCanvasWheel}
           >
             <defs>
@@ -711,6 +846,16 @@ export function App() {
               height={gridRect.height}
               fill="url(#grid)"
             />
+            {marqueeRect ? (
+              <rect
+                className="selection-marquee"
+                data-testid="selection-marquee"
+                x={marqueeRect.x}
+                y={marqueeRect.y}
+                width={marqueeRect.width}
+                height={marqueeRect.height}
+              />
+            ) : null}
             {project.state.nodes.length === 0 ? <CanvasHint /> : null}
             {project.state.edges.map((edge) => (
               <CircuitEdgeShape
@@ -1047,7 +1192,7 @@ function HelpDialog({
           <li>Use Ground, then click a node to add or remove its ground reference.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
-          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan.</li>
+          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or Shift-drag to box-select nodes.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -1241,18 +1386,25 @@ function edgeLabel(edge: CircuitEdge): string {
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement> | WheelEvent<SVGSVGElement>) {
-  const svg = event.currentTarget;
+  return svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
+}
+
+function svgPointFromClient(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+): Point {
   const matrix = svg.getScreenCTM();
   if (!matrix) {
     const rect = svg.getBoundingClientRect();
     return {
-      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+      x: ((clientX - rect.left) / rect.width) * CANVAS_WIDTH,
+      y: ((clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
     };
   }
   const point = svg.createSVGPoint();
-  point.x = event.clientX;
-  point.y = event.clientY;
+  point.x = clientX;
+  point.y = clientY;
   const transformed = point.matrixTransform(matrix.inverse());
   return { x: transformed.x, y: transformed.y };
 }
@@ -1274,12 +1426,78 @@ function serializeProjectForDirtyCheck(project: CircuitProject): string {
   return JSON.stringify(project);
 }
 
-function clampPointToView(point: { x: number; y: number }, viewBox: ViewBox) {
+function clampNodeDragDeltaToView(
+  nodePositions: NodeDragPosition[],
+  deltaX: number,
+  deltaY: number,
+  viewBox: ViewBox,
+): Point {
+  if (nodePositions.length === 0) {
+    return { x: deltaX, y: deltaY };
+  }
+
   const inset = NODE_RADIUS + 4;
+  const minX = Math.min(...nodePositions.map((node) => node.x));
+  const maxX = Math.max(...nodePositions.map((node) => node.x));
+  const minY = Math.min(...nodePositions.map((node) => node.y));
+  const maxY = Math.max(...nodePositions.map((node) => node.y));
   return {
-    x: clamp(point.x, viewBox.x + inset, viewBox.x + viewBox.width - inset),
-    y: clamp(point.y, viewBox.y + inset, viewBox.y + viewBox.height - inset),
+    x: clamp(
+      deltaX,
+      viewBox.x + inset - minX,
+      viewBox.x + viewBox.width - inset - maxX,
+    ),
+    y: clamp(
+      deltaY,
+      viewBox.y + inset - minY,
+      viewBox.y + viewBox.height - inset - maxY,
+    ),
   };
+}
+
+function moveDraggedNodes(
+  project: CircuitProject,
+  nodePositions: NodeDragPosition[],
+  deltaX: number,
+  deltaY: number,
+): CircuitProject {
+  const positionsById = new Map(
+    nodePositions.map((node) => [node.identifier, node]),
+  );
+  return {
+    ...project,
+    state: {
+      ...project.state,
+      nodes: project.state.nodes.map((node) => {
+        const start = positionsById.get(node.identifier);
+        return start
+          ? { ...node, x: start.x + deltaX, y: start.y + deltaY }
+          : node;
+      }),
+    },
+  };
+}
+
+function rectFromPoints(start: Point, end: Point): ViewBox {
+  const x = Math.min(start.x, end.x);
+  const y = Math.min(start.y, end.y);
+  return {
+    x,
+    y,
+    width: Math.max(start.x, end.x) - x,
+    height: Math.max(start.y, end.y) - y,
+  };
+}
+
+function nodeIdsInsideRect(nodes: CircuitNode[], rect: ViewBox): number[] {
+  return nodes
+    .filter((node) =>
+      node.x >= rect.x &&
+      node.x <= rect.x + rect.width &&
+      node.y >= rect.y &&
+      node.y <= rect.y + rect.height,
+    )
+    .map((node) => node.identifier);
 }
 
 function zoomViewBox(

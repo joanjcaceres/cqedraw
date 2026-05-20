@@ -22,6 +22,7 @@ import {
   useMemo,
   useRef,
   useState,
+  WheelEvent,
 } from "react";
 
 import {
@@ -62,6 +63,10 @@ const MAX_VIEW_WIDTH = CANVAS_WIDTH * 3;
 const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1 / ZOOM_IN_FACTOR;
 const FIT_VIEW_MARGIN = 96;
+const WHEEL_ZOOM_SENSITIVITY = 0.001;
+const WHEEL_DELTA_LIMIT = 600;
+const WHEEL_DELTA_LINE_MODE = 1;
+const WHEEL_DELTA_PAGE_MODE = 2;
 
 interface ViewBox {
   x: number;
@@ -298,6 +303,20 @@ export function App() {
   function handleCanvasPointerUp() {
     setDraggingNodeId(null);
     setPanState(null);
+  }
+
+  function handleCanvasWheel(event: WheelEvent<SVGSVGElement>) {
+    event.preventDefault();
+    const anchor = svgPoint(event);
+    const normalizedDelta = normalizeWheelDelta(event);
+    const limitedDelta = clamp(
+      normalizedDelta,
+      -WHEEL_DELTA_LIMIT,
+      WHEEL_DELTA_LIMIT,
+    );
+    const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
+    setPanState(null);
+    setViewBox((current) => zoomViewBox(current, factor, anchor));
   }
 
   function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
@@ -575,6 +594,7 @@ export function App() {
             onPointerUp={handleCanvasPointerUp}
             onPointerCancel={handleCanvasPointerUp}
             onPointerLeave={handleCanvasPointerUp}
+            onWheel={handleCanvasWheel}
           >
             <defs>
               <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -918,7 +938,7 @@ function HelpDialog({
           <li>Use Ground, then click a node to add or remove its ground reference.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
-          <li>Use the canvas buttons to zoom or fit the view; use Select and drag empty canvas to pan.</li>
+          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -1108,7 +1128,7 @@ function edgeLabel(edge: CircuitEdge): string {
   return parts.join(", ") || "edge";
 }
 
-function svgPoint(event: PointerEvent<SVGSVGElement>) {
+function svgPoint(event: PointerEvent<SVGSVGElement> | WheelEvent<SVGSVGElement>) {
   const svg = event.currentTarget;
   const matrix = svg.getScreenCTM();
   if (!matrix) {
@@ -1141,17 +1161,33 @@ function clampPointToView(point: { x: number; y: number }, viewBox: ViewBox) {
   };
 }
 
-function zoomViewBox(viewBox: ViewBox, factor: number): ViewBox {
+function zoomViewBox(
+  viewBox: ViewBox,
+  factor: number,
+  anchor: { x: number; y: number } = {
+    x: viewBox.x + viewBox.width / 2,
+    y: viewBox.y + viewBox.height / 2,
+  },
+): ViewBox {
   const nextWidth = clamp(viewBox.width * factor, MIN_VIEW_WIDTH, MAX_VIEW_WIDTH);
   const nextHeight = nextWidth * (CANVAS_HEIGHT / CANVAS_WIDTH);
-  const centerX = viewBox.x + viewBox.width / 2;
-  const centerY = viewBox.y + viewBox.height / 2;
+  const actualFactor = nextWidth / viewBox.width;
   return {
-    x: centerX - nextWidth / 2,
-    y: centerY - nextHeight / 2,
+    x: anchor.x - (anchor.x - viewBox.x) * actualFactor,
+    y: anchor.y - (anchor.y - viewBox.y) * actualFactor,
     width: nextWidth,
     height: nextHeight,
   };
+}
+
+function normalizeWheelDelta(event: WheelEvent<SVGSVGElement>): number {
+  if (event.deltaMode === WHEEL_DELTA_LINE_MODE) {
+    return event.deltaY * 16;
+  }
+  if (event.deltaMode === WHEEL_DELTA_PAGE_MODE) {
+    return event.deltaY * CANVAS_HEIGHT;
+  }
+  return event.deltaY;
 }
 
 function fitProjectView(project: CircuitProject): ViewBox {

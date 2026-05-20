@@ -1,4 +1,6 @@
 import {
+  ClipboardCopy,
+  ClipboardPaste,
   Circle,
   CircleHelp,
   Copy,
@@ -107,6 +109,24 @@ interface MarqueeState {
   current: Point;
 }
 
+interface ClipboardNode {
+  id: number;
+  name: string;
+  dx: number;
+  dy: number;
+}
+
+type ClipboardEdge = Omit<CircuitEdge, "identifier">;
+
+interface SelectionClipboard {
+  nodes: ClipboardNode[];
+  edges: ClipboardEdge[];
+}
+
+interface PastePreviewState {
+  anchor: Point;
+}
+
 type TutorialStep =
   | "welcome"
   | "first-node"
@@ -136,6 +156,9 @@ export function App() {
   const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
   const [panState, setPanState] = useState<PanState | null>(null);
   const [marqueeState, setMarqueeState] = useState<MarqueeState | null>(null);
+  const [selectionClipboard, setSelectionClipboard] =
+    useState<SelectionClipboard | null>(null);
+  const [pastePreview, setPastePreview] = useState<PastePreviewState | null>(null);
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
@@ -227,6 +250,9 @@ export function App() {
   }, [mode, output, project, selectedEdgeId, tutorialCopied, tutorialStep]);
 
   function setModeAndReset(nextMode: ToolMode) {
+    if (pastePreview) {
+      cancelPastePreview();
+    }
     setMode(nextMode);
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
@@ -262,6 +288,11 @@ export function App() {
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
     const point = svgPoint(event);
+    if (pastePreview) {
+      completePastePreview(point);
+      return;
+    }
+
     if (mode === "node") {
       setProject((current) => {
         const next = addNode(current, point.x, point.y);
@@ -305,6 +336,14 @@ export function App() {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     setMarqueeState(null);
+
+    if (pastePreview) {
+      const svg = event.currentTarget.ownerSVGElement;
+      if (svg) {
+        completePastePreview(svgPointFromClient(svg, event.clientX, event.clientY));
+      }
+      return;
+    }
 
     if (mode === "edge") {
       if (pendingEdgeNodeId === null) {
@@ -399,6 +438,11 @@ export function App() {
   }
 
   function handleCanvasPointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (pastePreview) {
+      setPastePreview({ anchor: svgPoint(event) });
+      return;
+    }
+
     if (
       marqueeState &&
       marqueeState.pointerId === event.pointerId &&
@@ -442,7 +486,6 @@ export function App() {
       });
       return;
     }
-
   }
 
   function handleCanvasPointerUp(event: PointerEvent<SVGSVGElement>) {
@@ -476,6 +519,7 @@ export function App() {
     setNodeDragState(null);
     setPanState(null);
     setMarqueeState(null);
+    cancelPastePreview();
   }
 
   function handleCanvasWheel(event: WheelEvent<SVGSVGElement>) {
@@ -495,11 +539,20 @@ export function App() {
 
   function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
     event.stopPropagation();
+    if (pastePreview) {
+      const svg = event.currentTarget.ownerSVGElement;
+      if (svg) {
+        completePastePreview(svgPointFromClient(svg, event.clientX, event.clientY));
+      }
+      return;
+    }
+
     setSelectedEdgeId(edgeId);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
     setMarqueeState(null);
+    setPastePreview(null);
   }
 
   function deleteSelection() {
@@ -554,6 +607,67 @@ export function App() {
     setEngineStatus(
       `Merged ${selectedNodeIds.length} nodes into ${survivor?.name ?? `Node ${selectedNodeId}`}.${detailText}`,
     );
+  }
+
+  function copySelectedGraphElements() {
+    const clipboard = clipboardFromSelection(project, selectedNodeIds);
+    if (!clipboard) {
+      setEngineStatus("Nothing selected to copy.");
+      return;
+    }
+
+    setSelectionClipboard(clipboard);
+    setPastePreview(null);
+    setEngineStatus(`Copied ${clipboard.nodes.length} node(s) to clipboard.`);
+  }
+
+  function startPastePreview() {
+    if (!selectionClipboard) {
+      setEngineStatus("Clipboard is empty.");
+      return;
+    }
+
+    setMode("select");
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview({
+      anchor: {
+        x: viewBox.x + viewBox.width / 2,
+        y: viewBox.y + viewBox.height / 2,
+      },
+    });
+    setEngineStatus(
+      "Move the pointer to place the copied selection, click to paste or press Esc to cancel.",
+    );
+  }
+
+  function completePastePreview(anchor: Point) {
+    if (!pastePreview || !selectionClipboard) {
+      return;
+    }
+
+    const result = pasteSelectionClipboard(project, selectionClipboard, anchor);
+    setProject(result.project);
+    setSelectedNodeIds(result.nodeIds);
+    setSelectedNodeId(result.nodeIds[result.nodeIds.length - 1] ?? null);
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+    setOutput(null);
+    setEngineStatus(`Pasted ${result.nodeIds.length} node(s).`);
+  }
+
+  function cancelPastePreview(message = "Paste cancelled.") {
+    if (!pastePreview) {
+      return;
+    }
+    setPastePreview(null);
+    setEngineStatus(message);
   }
 
   async function generateOutput() {
@@ -613,6 +727,7 @@ export function App() {
     setPendingEdgeNodeId(null);
     setPanState(null);
     setMarqueeState(null);
+    setPastePreview(null);
     setOutput(null);
   }
 
@@ -632,6 +747,7 @@ export function App() {
     setNodeDragState(null);
     setPanState(null);
     setMarqueeState(null);
+    setPastePreview(null);
     setViewBox(DEFAULT_VIEW_BOX);
     setOutput(null);
     setEngineStatus("Ready.");
@@ -682,6 +798,22 @@ export function App() {
     setViewBox(fitProjectView(project));
   }
 
+  useEffect(() => {
+    if (!pastePreview) {
+      return;
+    }
+
+    function handlePastePreviewKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelPastePreview();
+      }
+    }
+
+    window.addEventListener("keydown", handlePastePreviewKeyDown);
+    return () => window.removeEventListener("keydown", handlePastePreviewKeyDown);
+  }, [pastePreview]);
+
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
       ? `Ground ${selectedEdge.nodes[0]}`
@@ -690,6 +822,7 @@ export function App() {
   const marqueeRect = marqueeState
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
+  const activePasteClipboard = pastePreview ? selectionClipboard : null;
 
   return (
     <main className="app-shell">
@@ -734,6 +867,16 @@ export function App() {
             icon={<Merge size={17} />}
             label="Merge"
             onClick={mergeSelectedNodes}
+          />
+          <ToolButton
+            icon={<ClipboardCopy size={17} />}
+            label="Copy Selection"
+            onClick={copySelectedGraphElements}
+          />
+          <ToolButton
+            icon={<ClipboardPaste size={17} />}
+            label="Paste"
+            onClick={startPastePreview}
           />
           <ToolButton
             icon={<Trash2 size={17} />}
@@ -886,6 +1029,12 @@ export function App() {
                 </text>
               </g>
             ))}
+            {pastePreview && activePasteClipboard ? (
+              <PastePreview
+                anchor={pastePreview.anchor}
+                clipboard={activePasteClipboard}
+              />
+            ) : null}
           </svg>
           <div className="status-line" data-testid="output-status">
             {engineStatus}
@@ -1193,6 +1342,7 @@ function HelpDialog({
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or Shift-drag to box-select nodes.</li>
+          <li>Use Copy Selection and Paste to duplicate selected nodes and their contained connections.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -1351,6 +1501,78 @@ function GroundSymbol({ x, y }: { x: number; y: number }) {
   );
 }
 
+function PastePreview({
+  anchor,
+  clipboard,
+}: {
+  anchor: Point;
+  clipboard: SelectionClipboard;
+}) {
+  const previewNodes = clipboard.nodes.map((node) => ({
+    ...node,
+    x: anchor.x + node.dx,
+    y: anchor.y + node.dy,
+  }));
+  const nodesByOriginalId = new Map(
+    previewNodes.map((node) => [node.id, node]),
+  );
+
+  return (
+    <g className="paste-preview" data-testid="paste-preview">
+      {clipboard.edges.map((edge, index) => {
+        if (edge.is_ground) {
+          const source = nodesByOriginalId.get(edge.nodes[0]);
+          if (!source) {
+            return null;
+          }
+          return (
+            <line
+              key={`ground-${index}`}
+              className="paste-preview-line"
+              data-testid={`paste-preview-edge-${index}`}
+              x1={source.x}
+              y1={source.y}
+              x2={source.x + edge.ground_offset_x}
+              y2={source.y + edge.ground_offset_y}
+            />
+          );
+        }
+
+        const first = nodesByOriginalId.get(edge.nodes[0]);
+        const second = nodesByOriginalId.get(edge.nodes[1]);
+        if (!first || !second) {
+          return null;
+        }
+        return (
+          <line
+            key={`edge-${index}`}
+            className="paste-preview-line"
+            data-testid={`paste-preview-edge-${index}`}
+            x1={first.x}
+            y1={first.y}
+            x2={second.x}
+            y2={second.y}
+          />
+        );
+      })}
+      {previewNodes.map((node) => (
+        <g key={node.id}>
+          <circle
+            className="paste-preview-node"
+            data-testid={`paste-preview-node-${node.id}`}
+            cx={node.x}
+            cy={node.y}
+            r={NODE_RADIUS}
+          />
+          <text className="paste-preview-label" x={node.x + 16} y={node.y + 5}>
+            {node.name}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
 function EntryList({
   title,
   testId,
@@ -1475,6 +1697,113 @@ function moveDraggedNodes(
           : node;
       }),
     },
+  };
+}
+
+function clipboardFromSelection(
+  project: CircuitProject,
+  selectedNodeIds: number[],
+): SelectionClipboard | null {
+  if (selectedNodeIds.length === 0) {
+    return null;
+  }
+
+  const selectedIds = new Set(selectedNodeIds);
+  const selectedNodes = project.state.nodes.filter((node) =>
+    selectedIds.has(node.identifier),
+  );
+  if (selectedNodes.length === 0) {
+    return null;
+  }
+
+  const minX = Math.min(...selectedNodes.map((node) => node.x));
+  const minY = Math.min(...selectedNodes.map((node) => node.y));
+  const nodes = selectedNodes.map((node) => ({
+    id: node.identifier,
+    name: node.name,
+    dx: node.x - minX,
+    dy: node.y - minY,
+  }));
+  const edges = project.state.edges
+    .filter((edge) =>
+      edge.is_ground
+        ? selectedIds.has(edge.nodes[0])
+        : selectedIds.has(edge.nodes[0]) && selectedIds.has(edge.nodes[1]),
+    )
+    .map((edge) => ({
+      nodes: [edge.nodes[0], edge.nodes[1]] as [number, number],
+      capacitance_expr: edge.capacitance_expr,
+      capacitance_text: edge.capacitance_text,
+      inductance_expr: edge.inductance_expr,
+      inductance_text: edge.inductance_text,
+      l_inverse_expr: edge.l_inverse_expr,
+      is_ground: edge.is_ground,
+      ground_offset_x: edge.ground_offset_x,
+      ground_offset_y: edge.ground_offset_y,
+    }));
+
+  return { nodes, edges };
+}
+
+function pasteSelectionClipboard(
+  project: CircuitProject,
+  clipboard: SelectionClipboard,
+  anchor: Point,
+): { project: CircuitProject; nodeIds: number[] } {
+  let nextProject = project;
+  const nodeIdMap = new Map<number, number>();
+  const pastedNodeIds: number[] = [];
+
+  for (const node of clipboard.nodes) {
+    nextProject = addNode(nextProject, anchor.x + node.dx, anchor.y + node.dy);
+    const newId = nextProject.state.node_counter - 1;
+    nodeIdMap.set(node.id, newId);
+    pastedNodeIds.push(newId);
+  }
+
+  let edgeCounter = nextProject.state.edge_counter;
+  const pastedEdges: CircuitEdge[] = [];
+  for (const edge of clipboard.edges) {
+    if (edge.is_ground) {
+      const sourceId = nodeIdMap.get(edge.nodes[0]);
+      if (sourceId === undefined) {
+        continue;
+      }
+      pastedEdges.push({
+        ...edge,
+        identifier: edgeCounter,
+        nodes: [sourceId, GROUND_NODE_ID],
+      });
+      edgeCounter += 1;
+      continue;
+    }
+
+    const firstId = nodeIdMap.get(edge.nodes[0]);
+    const secondId = nodeIdMap.get(edge.nodes[1]);
+    if (firstId === undefined || secondId === undefined) {
+      continue;
+    }
+    pastedEdges.push({
+      ...edge,
+      identifier: edgeCounter,
+      nodes: [firstId, secondId],
+    });
+    edgeCounter += 1;
+  }
+
+  return {
+    project: {
+      ...nextProject,
+      state: {
+        ...nextProject.state,
+        edge_counter: edgeCounter,
+        edges: [...nextProject.state.edges, ...pastedEdges],
+        selected_nodes: pastedNodeIds,
+        focus_node: pastedNodeIds[pastedNodeIds.length - 1] ?? null,
+        selected_node: null,
+      },
+    },
+    nodeIds: pastedNodeIds,
   };
 }
 

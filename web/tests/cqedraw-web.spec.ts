@@ -200,7 +200,7 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = 1/L");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Copy the snippet");
 
-  await page.getByRole("button", { name: "Copy" }).click();
+  await page.getByRole("button", { exact: true, name: "Copy" }).click();
   await expect(page.getByTestId("output-status")).toContainText("Snippet copied.");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Tutorial complete");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Save and Load");
@@ -235,7 +235,7 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   expect(wideView.width).toBeGreaterThan(OLD_MAX_VIEW_WIDTH);
   await expectGridCoversView(grid, wideView);
 
-  await page.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
@@ -305,7 +305,7 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await page.getByTestId("node-2").click();
   await page.getByTestId("cap-input").fill("C12");
 
-  await page.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
   const mergeButton = page.getByRole("button", { name: "Merge" });
   await expect(mergeButton).toBeDisabled();
   await page.getByTestId("node-0").click();
@@ -344,7 +344,7 @@ test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
   await canvas.click({ position: { x: 330, y: 220 } });
   await canvas.click({ position: { x: 500, y: 220 } });
 
-  await page.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
   const mergeButton = page.getByRole("button", { name: "Merge" });
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) {
@@ -428,6 +428,79 @@ test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
   await expect(mergeButton).toBeDisabled();
 });
 
+test("copies selected graph elements and pastes them from a preview", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C12");
+  await page.getByTestId("ind-input").fill("1/L12_inv");
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("Cg");
+  await page.getByTestId("ind-input").fill("1/Lg_inv");
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { exact: true, name: "Copy Selection" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Copied 2 node(s) to clipboard.",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await expect(page.getByTestId("paste-preview")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("paste-preview")).toHaveCount(0);
+  await expect(page.getByTestId("node-2")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Paste cancelled.");
+
+  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await expect(page.getByTestId("paste-preview")).toBeVisible();
+  await page.getByRole("button", { name: "Node" }).click();
+  await expect(page.getByTestId("paste-preview")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Paste cancelled.");
+  await expect(page.getByTestId("node-2")).toHaveCount(0);
+
+  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await expect(page.getByTestId("paste-preview")).toBeVisible();
+  await page.getByTestId("edge-0").click({ force: true });
+
+  await expect(page.getByTestId("paste-preview")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Pasted 2 node(s).");
+  await expect(page.getByTestId("node-2")).toBeVisible();
+  await expect(page.getByTestId("node-3")).toBeVisible();
+  await expect(page.getByText("N3")).toBeVisible();
+  await expect(page.getByText("N4")).toBeVisible();
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(page.getByText("Merge will keep node 3")).toBeVisible();
+
+  const node3Center = await parseSvgCircleCenter(page.getByTestId("node-3"));
+  const pastedGround = await parseSvgLine(page.getByTestId("edge-3"));
+  expect(Math.abs(pastedGround.x1 - node3Center.x)).toBeLessThan(1);
+  expect(Math.abs(pastedGround.y1 - node3Center.y)).toBeLessThan(1);
+  expect(Math.abs(pastedGround.x2 - node3Center.x)).toBeLessThan(1);
+  expect(Math.abs(pastedGround.y2 - node3Center.y - 104)).toBeLessThan(1);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");
+  await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = C12 + Cg");
+  await expect(page.getByTestId("l-entries")).toContainText("(2, 2) = L12_inv");
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(3, 3) = L12_inv + Lg_inv",
+  );
+});
+
 test("creates a small circuit and generates matching C and L_inv entries", async ({
   page,
 }) => {
@@ -454,7 +527,7 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   for (let step = 0; step < 7; step += 1) {
     await page.getByRole("button", { name: "Zoom out" }).click();
   }
-  await page.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
@@ -543,6 +616,15 @@ async function parseSvgCircleCenter(locator: Locator) {
   return {
     x: await numberAttribute(locator, "cx"),
     y: await numberAttribute(locator, "cy"),
+  };
+}
+
+async function parseSvgLine(locator: Locator) {
+  return {
+    x1: await numberAttribute(locator, "x1"),
+    y1: await numberAttribute(locator, "y1"),
+    x2: await numberAttribute(locator, "x2"),
+    y2: await numberAttribute(locator, "y2"),
   };
 }
 

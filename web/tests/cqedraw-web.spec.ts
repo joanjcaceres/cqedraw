@@ -2,6 +2,9 @@ import { Buffer } from "node:buffer";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+const CANVAS_WIDTH = 900;
+const OLD_MAX_VIEW_WIDTH = CANVAS_WIDTH * 3;
+
 test("shows and persists the optional tutorial prompt", async ({ page }) => {
   await page.goto("/");
 
@@ -218,10 +221,19 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   await page.getByRole("button", { name: "Node" }).click();
   await canvas.click({ position: { x: 160, y: 220 } });
 
+  const grid = page.getByTestId("grid-surface");
   const initialView = parseViewBox(await canvas.getAttribute("viewBox"));
+  await expectGridCoversView(grid, initialView);
   await page.getByRole("button", { name: "Zoom in" }).click();
   const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(zoomedView.width).toBeLessThan(initialView.width);
+
+  for (let step = 0; step < 7; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+  const wideView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(wideView.width).toBeGreaterThan(OLD_MAX_VIEW_WIDTH);
+  await expectGridCoversView(grid, wideView);
 
   await page.getByRole("button", { name: "Select" }).click();
   const canvasBox = await canvas.boundingBox();
@@ -235,11 +247,14 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   await page.mouse.up();
 
   const pannedView = parseViewBox(await canvas.getAttribute("viewBox"));
-  expect(pannedView.x).toBeLessThan(zoomedView.x);
+  expect(pannedView.x).toBeLessThan(wideView.x);
+  await expectGridCoversView(grid, pannedView);
 
   await page.getByRole("button", { name: "Fit view" }).click();
   const fittedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(fittedView.width).toBeGreaterThanOrEqual(899);
+  expect(fittedView.width).toBeLessThan(wideView.width);
+  await expectGridCoversView(grid, fittedView);
 
   await canvas.hover({ position: { x: 80, y: 80 } });
   await page.mouse.wheel(0, -320);
@@ -294,12 +309,18 @@ test("creates a small circuit and generates matching C and L_inv entries", async
 
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Fit view" }).click();
+  for (let step = 0; step < 7; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+  await page.getByRole("button", { name: "Select" }).click();
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
   }
   await page.mouse.move(canvasBox.x + 300, canvasBox.y + 240);
-  await page.mouse.wheel(0, -240);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 420, canvasBox.y + 300);
+  await page.mouse.up();
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
@@ -354,6 +375,38 @@ async function waitForViewBox(
     return predicate(viewBox);
   }).toBe(true);
   return parseViewBox(await canvas.getAttribute("viewBox"));
+}
+
+async function expectGridCoversView(
+  grid: Locator,
+  viewBox: ReturnType<typeof parseViewBox>,
+) {
+  const rect = await parseSvgRect(grid);
+  expect(rect.x).toBeLessThanOrEqual(viewBox.x);
+  expect(rect.y).toBeLessThanOrEqual(viewBox.y);
+  expect(rect.x + rect.width).toBeGreaterThanOrEqual(viewBox.x + viewBox.width);
+  expect(rect.y + rect.height).toBeGreaterThanOrEqual(viewBox.y + viewBox.height);
+}
+
+async function parseSvgRect(locator: Locator) {
+  return {
+    x: await numberAttribute(locator, "x"),
+    y: await numberAttribute(locator, "y"),
+    width: await numberAttribute(locator, "width"),
+    height: await numberAttribute(locator, "height"),
+  };
+}
+
+async function numberAttribute(locator: Locator, name: string) {
+  const value = await locator.getAttribute(name);
+  if (value === null) {
+    throw new Error(`Missing ${name} attribute.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid ${name} attribute: ${value}`);
+  }
+  return parsed;
 }
 
 function viewCenterX(viewBox: { x: number; width: number }) {

@@ -57,9 +57,10 @@ const DEFAULT_VIEW_BOX: ViewBox = {
   width: CANVAS_WIDTH,
   height: CANVAS_HEIGHT,
 };
-const GRID_PADDING = 2400;
+const GRID_TILE_SIZE = 24;
+const GRID_VIEW_MARGIN = GRID_TILE_SIZE * 2;
 const MIN_VIEW_WIDTH = CANVAS_WIDTH / 4;
-const MAX_VIEW_WIDTH = CANVAS_WIDTH * 3;
+const MAX_VIEW_WIDTH = CANVAS_WIDTH * 20;
 const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1 / ZOOM_IN_FACTOR;
 const FIT_VIEW_MARGIN = 96;
@@ -120,6 +121,7 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
+  const gridRect = gridRectForView(viewBox);
 
   useEffect(() => {
     clientRef.current = new PyodideBridgeClient();
@@ -597,15 +599,26 @@ export function App() {
             onWheel={handleCanvasWheel}
           >
             <defs>
-              <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#dce5ee" strokeWidth="1" />
+              <pattern
+                id="grid"
+                width={GRID_TILE_SIZE}
+                height={GRID_TILE_SIZE}
+                patternUnits="userSpaceOnUse"
+              >
+                <path
+                  d={`M ${GRID_TILE_SIZE} 0 L 0 0 0 ${GRID_TILE_SIZE}`}
+                  fill="none"
+                  stroke="#dce5ee"
+                  strokeWidth="1"
+                />
               </pattern>
             </defs>
             <rect
-              x={-GRID_PADDING}
-              y={-GRID_PADDING}
-              width={CANVAS_WIDTH + GRID_PADDING * 2}
-              height={CANVAS_HEIGHT + GRID_PADDING * 2}
+              data-testid="grid-surface"
+              x={gridRect.x}
+              y={gridRect.y}
+              width={gridRect.width}
+              height={gridRect.height}
               fill="url(#grid)"
             />
             {project.state.nodes.length === 0 ? <CanvasHint /> : null}
@@ -1147,6 +1160,15 @@ function svgPoint(event: PointerEvent<SVGSVGElement> | WheelEvent<SVGSVGElement>
 
 function viewBoxToString(viewBox: ViewBox): string {
   return `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
+}
+
+function gridRectForView(viewBox: ViewBox): ViewBox {
+  return {
+    x: viewBox.x - GRID_VIEW_MARGIN,
+    y: viewBox.y - GRID_VIEW_MARGIN,
+    width: viewBox.width + GRID_VIEW_MARGIN * 2,
+    height: viewBox.height + GRID_VIEW_MARGIN * 2,
+  };
 }
 
 function serializeProjectForDirtyCheck(project: CircuitProject): string {

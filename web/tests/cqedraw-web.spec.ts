@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test("shows and persists the optional tutorial prompt", async ({ page }) => {
   await page.goto("/");
@@ -241,6 +241,18 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   const fittedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(fittedView.width).toBeGreaterThanOrEqual(899);
 
+  await canvas.hover({ position: { x: 80, y: 80 } });
+  await page.mouse.wheel(0, -320);
+  const wheelZoomedView = await waitForViewBox(
+    canvas,
+    (viewBox) => viewBox.width < fittedView.width,
+  );
+  expect(wheelZoomedView.width).toBeLessThan(fittedView.width);
+  expect(viewCenterX(wheelZoomedView)).toBeLessThan(viewCenterX(fittedView));
+  expect(viewCenterY(wheelZoomedView)).toBeLessThan(viewCenterY(fittedView));
+
+  await page.getByRole("button", { name: "Fit view" }).click();
+
   const node = page.getByTestId("node-0");
   const nodeBox = await node.boundingBox();
   if (!nodeBox) {
@@ -282,6 +294,12 @@ test("creates a small circuit and generates matching C and L_inv entries", async
 
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Fit view" }).click();
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) {
+    throw new Error("Canvas box is unavailable.");
+  }
+  await page.mouse.move(canvasBox.x + 300, canvasBox.y + 240);
+  await page.mouse.wheel(0, -240);
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
@@ -325,6 +343,25 @@ function parseViewBox(value: string | null) {
   }
   const [x, y, width, height] = value.split(" ").map(Number);
   return { x, y, width, height };
+}
+
+async function waitForViewBox(
+  canvas: Locator,
+  predicate: (viewBox: ReturnType<typeof parseViewBox>) => boolean,
+) {
+  await expect.poll(async () => {
+    const viewBox = parseViewBox(await canvas.getAttribute("viewBox"));
+    return predicate(viewBox);
+  }).toBe(true);
+  return parseViewBox(await canvas.getAttribute("viewBox"));
+}
+
+function viewCenterX(viewBox: { x: number; width: number }) {
+  return viewBox.x + viewBox.width / 2;
+}
+
+function viewCenterY(viewBox: { y: number; height: number }) {
+  return viewBox.y + viewBox.height / 2;
 }
 
 async function expectBeforeUnloadProtection(page: Page, expected: boolean) {

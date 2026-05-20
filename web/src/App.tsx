@@ -6,7 +6,6 @@ import {
   Copy,
   Download,
   GitBranch,
-  Home,
   Maximize2,
   Merge,
   MousePointer2,
@@ -858,7 +857,7 @@ export function App() {
           <ToolButton
             active={mode === "ground"}
             highlight={tutorialStep === "ground-mode"}
-            icon={<Home size={17} />}
+            icon={<GroundIcon size={17} />}
             label="Ground"
             onClick={() => setModeAndReset("ground")}
           />
@@ -1341,6 +1340,7 @@ function HelpDialog({
           <li>Use Ground, then click a node to add or remove its ground reference.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
+          <li>Hover over toolbar icons or tab to them to see their labels.</li>
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or Shift-drag to box-select nodes.</li>
           <li>Use Copy Selection and Paste to duplicate selected nodes and their contained connections.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
@@ -1389,6 +1389,27 @@ function handleDialogKeyDown(
   }
 }
 
+function GroundIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height={size}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width={size}
+    >
+      <path d="M12 4v7" />
+      <path d="M6 11h12" />
+      <path d="M8 15h8" />
+      <path d="M10 19h4" />
+    </svg>
+  );
+}
+
 function IconButton({
   icon,
   label,
@@ -1430,18 +1451,24 @@ function ToolButton({
 }) {
   return (
     <button
+      aria-label={label}
       className={[
         "tool-button",
+        "tool-button-icon-only",
         active ? "active" : "",
         highlight ? "tutorial-highlight" : "",
       ].join(" ")}
       disabled={disabled}
       ref={buttonRef}
+      title={label}
       type="button"
       onClick={onClick}
     >
       {icon}
-      <span>{label}</span>
+      <span className="sr-only">{label}</span>
+      <span aria-hidden="true" className="tool-button-tooltip">
+        {label}
+      </span>
     </button>
   );
 }

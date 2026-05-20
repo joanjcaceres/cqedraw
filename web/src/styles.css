@@ -86,6 +86,7 @@ textarea {
   gap: 7px;
   min-height: 38px;
   padding: 0 11px;
+  position: relative;
 }
 
 .tool-button:hover {
@@ -112,6 +113,75 @@ textarea {
   box-shadow:
     0 0 0 2px #ffffff,
     0 0 0 5px #f6c343;
+}
+
+.tool-button-icon-only {
+  gap: 0;
+  height: 38px;
+  justify-content: center;
+  min-width: 38px;
+  padding: 0;
+  width: 38px;
+}
+
+.tool-button svg {
+  flex: 0 0 auto;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.tool-button-tooltip {
+  background: #f8fafc;
+  border: 1px solid #bdcbd8;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(7, 19, 39, 0.24);
+  color: #172033;
+  font-size: 12px;
+  font-weight: 600;
+  left: 50%;
+  line-height: 1;
+  opacity: 0;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  transform: translate(-50%, -2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+  visibility: hidden;
+  white-space: nowrap;
+  z-index: 12;
+}
+
+.tool-button:hover .tool-button-tooltip,
+.tool-button:focus-visible .tool-button-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.toolbar.actions .tool-button-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.toolbar.actions .tool-button:hover .tool-button-tooltip,
+.toolbar.actions .tool-button:focus-visible .tool-button-tooltip {
+  transform: translateY(0);
 }
 
 .workspace {

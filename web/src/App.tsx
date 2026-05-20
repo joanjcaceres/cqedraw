@@ -6,6 +6,7 @@ import {
   GitBranch,
   Home,
   Maximize2,
+  Merge,
   MousePointer2,
   Play,
   Trash2,
@@ -29,6 +30,7 @@ import {
   addEdge,
   addNode,
   emptyProject,
+  mergeNodes,
   moveNode,
   normalizeProject,
   removeEdge,
@@ -106,6 +108,7 @@ export function App() {
   );
   const [mode, setMode] = useState<ToolMode>("node");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [pendingEdgeNodeId, setPendingEdgeNodeId] = useState<number | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<number | null>(null);
@@ -141,8 +144,11 @@ export function App() {
   }, []);
 
   const selectedNode = useMemo(
-    () => project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null,
-    [project, selectedNodeId],
+    () =>
+      selectedNodeIds.length === 1
+        ? project.state.nodes.find((node) => node.identifier === selectedNodeIds[0]) ?? null
+        : null,
+    [project, selectedNodeIds],
   );
   const selectedEdge = useMemo(
     () => project.state.edges.find((edge) => edge.identifier === selectedEdgeId) ?? null,
@@ -204,12 +210,39 @@ export function App() {
     setPanState(null);
   }
 
+  function selectSingleNode(nodeId: number) {
+    setSelectedNodeIds([nodeId]);
+    setSelectedNodeId(nodeId);
+    setSelectedEdgeId(null);
+  }
+
+  function clearNodeSelection() {
+    setSelectedNodeIds([]);
+    setSelectedNodeId(null);
+  }
+
+  function toggleNodeSelection(nodeId: number) {
+    setSelectedEdgeId(null);
+    setSelectedNodeIds((current) => {
+      if (current.includes(nodeId)) {
+        const next = current.filter((id) => id !== nodeId);
+        setSelectedNodeId((focused) =>
+          focused === nodeId ? next[next.length - 1] ?? null : focused,
+        );
+        return next;
+      }
+      setSelectedNodeId(nodeId);
+      return [...current, nodeId];
+    });
+  }
+
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
     const point = svgPoint(event);
     if (mode === "node") {
       setProject((current) => {
         const next = addNode(current, point.x, point.y);
         const id = next.state.node_counter - 1;
+        setSelectedNodeIds([id]);
         setSelectedNodeId(id);
         setSelectedEdgeId(null);
         return next;
@@ -226,7 +259,7 @@ export function App() {
         startViewBox: viewBox,
       });
     }
-    setSelectedNodeId(null);
+    clearNodeSelection();
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
   }
@@ -247,10 +280,10 @@ export function App() {
           const next = addEdge(current, pendingEdgeNodeId, nodeId);
           if (next.state.edge_counter > before) {
             setSelectedEdgeId(before);
-            setSelectedNodeId(null);
+            clearNodeSelection();
           } else {
             setSelectedEdgeId(null);
-            setSelectedNodeId(nodeId);
+            selectSingleNode(nodeId);
             setEngineStatus("A connection between those nodes already exists.");
           }
           return next;
@@ -267,7 +300,12 @@ export function App() {
           (edge) => edge.is_ground && edge.nodes[0] === nodeId,
         );
         const next = toggleGround(current, nodeId);
-        setSelectedNodeId(existing ? nodeId : null);
+        if (existing) {
+          setSelectedNodeIds([nodeId]);
+          setSelectedNodeId(nodeId);
+        } else {
+          clearNodeSelection();
+        }
         setSelectedEdgeId(existing ? null : current.state.edge_counter);
         return next;
       });
@@ -275,8 +313,14 @@ export function App() {
       return;
     }
 
-    setSelectedNodeId(nodeId);
-    setSelectedEdgeId(null);
+    if (mode === "select" && event.shiftKey) {
+      toggleNodeSelection(nodeId);
+      setDraggingNodeId(null);
+      setPanState(null);
+      return;
+    }
+
+    selectSingleNode(nodeId);
     setDraggingNodeId(nodeId);
     setPanState(null);
   }
@@ -324,7 +368,7 @@ export function App() {
   function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
     event.stopPropagation();
     setSelectedEdgeId(edgeId);
-    setSelectedNodeId(null);
+    clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
   }
@@ -338,9 +382,49 @@ export function App() {
     }
     if (selectedNodeId !== null) {
       setProject((current) => removeNode(current, selectedNodeId));
+      setSelectedNodeIds([]);
       setSelectedNodeId(null);
       setOutput(null);
     }
+  }
+
+  function mergeSelectedNodes() {
+    if (selectedNodeId === null || selectedNodeIds.length < 2) {
+      setEngineStatus("Select at least two nodes to merge.");
+      return;
+    }
+
+    const result = mergeNodes(project, selectedNodeId, selectedNodeIds);
+    if (result.summary.mergedNodes === 0) {
+      setEngineStatus("No nodes were merged.");
+      return;
+    }
+
+    const survivor =
+      result.project.state.nodes.find((node) => node.identifier === selectedNodeId) ??
+      null;
+    const details: string[] = [];
+    if (result.summary.removedSelfLoops > 0) {
+      details.push(
+        `removed ${result.summary.removedSelfLoops} internal connection(s)`,
+      );
+    }
+    if (result.summary.combinedGroundEdges > 0) {
+      details.push(
+        `combined ${result.summary.combinedGroundEdges + 1} ground connection(s)`,
+      );
+    }
+    const detailText = details.length > 0 ? ` (${details.join("; ")})` : "";
+
+    setProject(result.project);
+    setSelectedNodeIds([selectedNodeId]);
+    setSelectedNodeId(selectedNodeId);
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setOutput(null);
+    setEngineStatus(
+      `Merged ${selectedNodeIds.length} nodes into ${survivor?.name ?? `Node ${selectedNodeId}`}.${detailText}`,
+    );
   }
 
   async function generateOutput() {
@@ -396,7 +480,7 @@ export function App() {
     setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setViewBox(fitProjectView(next));
     setSelectedEdgeId(null);
-    setSelectedNodeId(null);
+    clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
     setOutput(null);
@@ -412,7 +496,7 @@ export function App() {
     setProject(next);
     setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setMode("node");
-    setSelectedNodeId(null);
+    clearNodeSelection();
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setDraggingNodeId(null);
@@ -511,6 +595,17 @@ export function App() {
             label="Ground"
             onClick={() => setModeAndReset("ground")}
           />
+          <ToolButton
+            disabled={selectedNodeIds.length < 2}
+            icon={<Merge size={17} />}
+            label="Merge"
+            onClick={mergeSelectedNodes}
+          />
+          <ToolButton
+            icon={<Trash2 size={17} />}
+            label="Delete"
+            onClick={deleteSelection}
+          />
         </div>
         <div className="toolbar actions" aria-label="Project actions">
           <ToolButton
@@ -533,11 +628,6 @@ export function App() {
             icon={<Upload size={17} />}
             label="Load"
             onClick={() => fileInputRef.current?.click()}
-          />
-          <ToolButton
-            icon={<Trash2 size={17} />}
-            label="Delete"
-            onClick={deleteSelection}
           />
           <ToolButton
             buttonRef={helpButtonRef}
@@ -637,7 +727,8 @@ export function App() {
                   data-testid={`node-${node.identifier}`}
                   className={[
                     "node-circle",
-                    selectedNodeId === node.identifier ? "selected" : "",
+                    selectedNodeIds.includes(node.identifier) ? "selected" : "",
+                    selectedNodeId === node.identifier ? "focused" : "",
                     pendingEdgeNodeId === node.identifier ? "pending" : "",
                   ].join(" ")}
                   cx={node.x}
@@ -719,6 +810,11 @@ export function App() {
                     }
                   />
                 </label>
+              </div>
+            ) : selectedNodeIds.length > 1 ? (
+              <div className="metrics">
+                <span>{selectedNodeIds.length} nodes selected</span>
+                <span>Merge will keep node {selectedNodeId}</span>
               </div>
             ) : (
               <div className="metrics">
@@ -1023,6 +1119,7 @@ function IconButton({
 function ToolButton({
   active = false,
   buttonRef,
+  disabled = false,
   highlight = false,
   icon,
   label,
@@ -1030,6 +1127,7 @@ function ToolButton({
 }: {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
+  disabled?: boolean;
   highlight?: boolean;
   icon?: ReactNode;
   label: string;
@@ -1042,6 +1140,7 @@ function ToolButton({
         active ? "active" : "",
         highlight ? "tutorial-highlight" : "",
       ].join(" ")}
+      disabled={disabled}
       ref={buttonRef}
       type="button"
       onClick={onClick}

@@ -286,6 +286,53 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   expect(cy).toBeGreaterThanOrEqual(draggedView.y + 14);
 });
 
+test("selects multiple nodes and merges them into the focused node", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+  await canvas.click({ position: { x: 500, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C01");
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("node-2").click();
+  await page.getByTestId("cap-input").fill("C12");
+
+  await page.getByRole("button", { name: "Select" }).click();
+  const mergeButton = page.getByRole("button", { name: "Merge" });
+  await expect(mergeButton).toBeDisabled();
+  await page.getByTestId("node-0").click();
+  await expect(mergeButton).toBeDisabled();
+  await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
+  await expect(mergeButton).toBeEnabled();
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+
+  await mergeButton.click();
+
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Merged 2 nodes into N2",
+  );
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("edge-1")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).not.toContainText("C01");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12");
+});
+
 test("creates a small circuit and generates matching C and L_inv entries", async ({
   page,
 }) => {

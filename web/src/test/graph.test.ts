@@ -5,6 +5,7 @@ import {
   addNode,
   emptyProject,
   hasRegularEdge,
+  mergeNodes,
   normalizeProject,
   removeNode,
   toggleGround,
@@ -79,6 +80,90 @@ describe("graph state", () => {
     expect(project.state.nodes.map((node) => node.identifier)).toEqual([0, 2]);
     expect(project.state.edges).toHaveLength(1);
     expect(project.state.edges[0].nodes).toEqual([2, GROUND_NODE_ID]);
+  });
+
+  it("merges selected nodes into a survivor and removes internal edges", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addNode(project, 380, 120);
+    project = addEdge(project, 0, 1);
+    project = addEdge(project, 1, 2);
+
+    const result = mergeNodes(project, 0, [0, 1]);
+
+    expect(result.summary).toMatchObject({
+      mergedNodes: 1,
+      rewiredEdges: 2,
+      removedSelfLoops: 1,
+    });
+    expect(result.project.state.nodes.map((node) => node.identifier)).toEqual([0, 2]);
+    expect(result.project.state.edges).toHaveLength(1);
+    expect(result.project.state.edges[0]).toMatchObject({
+      identifier: 1,
+      nodes: [0, 2],
+    });
+    expect(result.project.state.selected_nodes).toEqual([0]);
+    expect(result.project.state.focus_node).toBe(0);
+  });
+
+  it("combines ground edges when merged nodes both have ground connections", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = toggleGround(project, 0);
+    project = updateEdgeValues(project, 0, {
+      capacitanceText: "Cg1",
+      inductanceText: "Lg1",
+    });
+    project = toggleGround(project, 1);
+    project = updateEdgeValues(project, 1, {
+      capacitanceText: "Cg2",
+      inductanceText: "Lg2",
+    });
+
+    const result = mergeNodes(project, 0, [0, 1]);
+
+    expect(result.summary.combinedGroundEdges).toBe(1);
+    expect(result.project.state.nodes.map((node) => node.identifier)).toEqual([0]);
+    expect(result.project.state.edges).toHaveLength(1);
+    expect(result.project.state.edges[0]).toMatchObject({
+      identifier: 0,
+      nodes: [0, GROUND_NODE_ID],
+      capacitance_text: "(Cg1) + (Cg2)",
+      inductance_text: "1 / (1 / (Lg1) + 1 / (Lg2))",
+      is_ground: true,
+    });
+  });
+
+  it("combines regular edges that collapse onto the same pair after merge", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addNode(project, 380, 120);
+    project = addEdge(project, 0, 2);
+    project = updateEdgeValues(project, 0, {
+      capacitanceText: "C02",
+      inductanceText: "L02",
+    });
+    project = addEdge(project, 1, 2);
+    project = updateEdgeValues(project, 1, {
+      capacitanceText: "C12",
+      inductanceText: "L12",
+    });
+
+    const result = mergeNodes(project, 0, [0, 1]);
+
+    expect(result.project.state.nodes.map((node) => node.identifier)).toEqual([0, 2]);
+    expect(result.project.state.edges).toHaveLength(1);
+    expect(result.project.state.edges[0]).toMatchObject({
+      identifier: 0,
+      nodes: [0, 2],
+      capacitance_text: "(C02) + (C12)",
+      inductance_text: "1 / (1 / (L02) + 1 / (L12))",
+      is_ground: false,
+    });
+    expect(hasRegularEdge(result.project.state, 2, 0)).toBe(true);
   });
 
   it("normalizes desktop-shaped project JSON", () => {

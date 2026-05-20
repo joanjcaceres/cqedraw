@@ -2,6 +2,18 @@ import { CircuitEdge, CircuitProject, CircuitState, GROUND_NODE_ID } from "./typ
 
 const GROUND_LINE_LENGTH = 104;
 
+export interface MergeNodesSummary {
+  mergedNodes: number;
+  rewiredEdges: number;
+  removedSelfLoops: number;
+  combinedGroundEdges: number;
+}
+
+export interface MergeNodesResult {
+  project: CircuitProject;
+  summary: MergeNodesSummary;
+}
+
 export function emptyProject(): CircuitProject {
   return {
     version: 1,
@@ -207,6 +219,112 @@ export function removeEdge(project: CircuitProject, edgeId: number): CircuitProj
   };
 }
 
+export function mergeNodes(
+  project: CircuitProject,
+  survivorId: number,
+  selectedNodeIds: Iterable<number>,
+): MergeNodesResult {
+  const selectedIds = new Set(selectedNodeIds);
+  const existingNodeIds = new Set(
+    project.state.nodes.map((node) => node.identifier),
+  );
+  const mergedNodeIds = new Set(
+    [...selectedIds].filter(
+      (nodeId) => nodeId !== survivorId && existingNodeIds.has(nodeId),
+    ),
+  );
+  const emptySummary: MergeNodesSummary = {
+    mergedNodes: 0,
+    rewiredEdges: 0,
+    removedSelfLoops: 0,
+    combinedGroundEdges: 0,
+  };
+
+  if (!existingNodeIds.has(survivorId) || mergedNodeIds.size === 0) {
+    return { project, summary: emptySummary };
+  }
+
+  let rewiredEdges = 0;
+  let removedSelfLoops = 0;
+  let edgesOut: CircuitEdge[] = [];
+  const survivorGroundEdges: CircuitEdge[] = [];
+
+  for (const edge of project.state.edges) {
+    if (edge.is_ground) {
+      const sourceId = edge.nodes[0];
+      const nextSourceId = mergedNodeIds.has(sourceId) ? survivorId : sourceId;
+      const nextEdge =
+        nextSourceId === sourceId
+          ? edge
+          : {
+              ...edge,
+              nodes: [survivorId, GROUND_NODE_ID] as [number, number],
+            };
+
+      if (nextSourceId !== sourceId) {
+        rewiredEdges += 1;
+      }
+      if (nextEdge.nodes[0] === survivorId) {
+        if (sourceId === survivorId) {
+          survivorGroundEdges.unshift(nextEdge);
+        } else {
+          survivorGroundEdges.push(nextEdge);
+        }
+      } else {
+        edgesOut.push(nextEdge);
+      }
+      continue;
+    }
+
+    const first = mergedNodeIds.has(edge.nodes[0]) ? survivorId : edge.nodes[0];
+    const second = mergedNodeIds.has(edge.nodes[1]) ? survivorId : edge.nodes[1];
+    if (first !== edge.nodes[0] || second !== edge.nodes[1]) {
+      rewiredEdges += 1;
+    }
+    if (first === second) {
+      removedSelfLoops += 1;
+      continue;
+    }
+    edgesOut.push(
+      first === edge.nodes[0] && second === edge.nodes[1]
+        ? edge
+        : { ...edge, nodes: [first, second] },
+    );
+  }
+
+  edgesOut = combineRegularEdgesByPair(edgesOut);
+
+  let combinedGroundEdges = 0;
+  if (survivorGroundEdges.length === 1) {
+    edgesOut.push(survivorGroundEdges[0]);
+  } else if (survivorGroundEdges.length > 1) {
+    combinedGroundEdges = survivorGroundEdges.length - 1;
+    edgesOut.push(combineGroundEdges(survivorGroundEdges));
+  }
+
+  return {
+    project: {
+      ...project,
+      state: {
+        ...project.state,
+        nodes: project.state.nodes.filter(
+          (node) => !mergedNodeIds.has(node.identifier),
+        ),
+        edges: edgesOut.sort((first, second) => first.identifier - second.identifier),
+        selected_nodes: [survivorId],
+        focus_node: survivorId,
+        selected_node: null,
+      },
+    },
+    summary: {
+      mergedNodes: mergedNodeIds.size,
+      rewiredEdges,
+      removedSelfLoops,
+      combinedGroundEdges,
+    },
+  };
+}
+
 export function normalizeProject(input: unknown): CircuitProject {
   const project = asRecord(input);
   const state = asRecord(project.state ?? project);
@@ -274,6 +392,90 @@ function normalizeText(
   }
   const trimmed = incoming?.trim() ?? "";
   return trimmed ? trimmed : null;
+}
+
+function combineGroundEdges(edges: CircuitEdge[]): CircuitEdge {
+  const [base] = edges;
+  const capacitanceText = sumTexts(
+    edges.map((edge) => edge.capacitance_text ?? edge.capacitance_expr),
+  );
+  const inductanceText = parallelInductanceText(
+    edges.map((edge) => edge.inductance_text ?? edge.inductance_expr),
+  );
+
+  return {
+    ...base,
+    nodes: [base.nodes[0], GROUND_NODE_ID],
+    capacitance_expr: capacitanceText,
+    capacitance_text: capacitanceText,
+    inductance_expr: inductanceText,
+    inductance_text: inductanceText,
+    l_inverse_expr: null,
+  };
+}
+
+function combineRegularEdgesByPair(edges: CircuitEdge[]): CircuitEdge[] {
+  const regularEdgeGroups = new Map<string, CircuitEdge[]>();
+  const passthroughEdges: CircuitEdge[] = [];
+
+  for (const edge of edges) {
+    if (edge.is_ground) {
+      passthroughEdges.push(edge);
+      continue;
+    }
+    const [first, second] = edge.nodes;
+    const key = first < second ? `${first}:${second}` : `${second}:${first}`;
+    const group = regularEdgeGroups.get(key);
+    if (group) {
+      group.push(edge);
+    } else {
+      regularEdgeGroups.set(key, [edge]);
+    }
+  }
+
+  for (const group of regularEdgeGroups.values()) {
+    passthroughEdges.push(
+      group.length === 1 ? group[0] : combineRegularEdges(group),
+    );
+  }
+
+  return passthroughEdges;
+}
+
+function combineRegularEdges(edges: CircuitEdge[]): CircuitEdge {
+  const [base] = edges;
+  const capacitanceText = sumTexts(
+    edges.map((edge) => edge.capacitance_text ?? edge.capacitance_expr),
+  );
+  const inductanceText = parallelInductanceText(
+    edges.map((edge) => edge.inductance_text ?? edge.inductance_expr),
+  );
+
+  return {
+    ...base,
+    capacitance_expr: capacitanceText,
+    capacitance_text: capacitanceText,
+    inductance_expr: inductanceText,
+    inductance_text: inductanceText,
+    l_inverse_expr: null,
+  };
+}
+
+function sumTexts(values: Array<string | null>): string | null {
+  const terms = values.filter((value): value is string => Boolean(value?.trim()));
+  return terms.length > 0 ? terms.map(parenthesize).join(" + ") : null;
+}
+
+function parallelInductanceText(values: Array<string | null>): string | null {
+  const terms = values.filter((value): value is string => Boolean(value?.trim()));
+  if (terms.length === 0) {
+    return null;
+  }
+  return `1 / (${terms.map((term) => `1 / ${parenthesize(term)}`).join(" + ")})`;
+}
+
+function parenthesize(value: string): string {
+  return `(${value.trim()})`;
 }
 
 function normalizeEdge(record: Record<string, unknown>, index: number): CircuitEdge | null {

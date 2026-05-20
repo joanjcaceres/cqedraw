@@ -12,9 +12,14 @@
   box-sizing: border-box;
 }
 
+html {
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  overscroll-behavior: none;
 }
 
 button,
@@ -232,6 +237,7 @@ textarea {
   height: 100%;
   max-height: calc(100vh - 112px);
   min-height: 520px;
+  overscroll-behavior: contain;
   touch-action: none;
   width: 100%;
 }

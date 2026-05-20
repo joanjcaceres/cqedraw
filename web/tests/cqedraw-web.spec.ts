@@ -300,15 +300,38 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   expect(fittedView.width).toBeLessThan(wideView.width);
   await expectGridCoversView(grid, fittedView);
 
-  await canvas.hover({ position: { x: 80, y: 80 } });
-  await page.mouse.wheel(0, -320);
-  const wheelZoomedView = await waitForViewBox(
-    canvas,
-    (viewBox) => viewBox.width < fittedView.width,
-  );
-  expect(wheelZoomedView.width).toBeLessThan(fittedView.width);
-  expect(viewCenterX(wheelZoomedView)).toBeLessThan(viewCenterX(fittedView));
-  expect(viewCenterY(wheelZoomedView)).toBeLessThan(viewCenterY(fittedView));
+  await page.evaluate(() => {
+    document.documentElement.style.minHeight = "200vh";
+    document.body.style.minHeight = "200vh";
+    window.scrollTo(0, 40);
+  });
+  try {
+    const pageScrollBeforeWheel = await page.evaluate(() => window.scrollY);
+    await canvas.hover({ position: { x: 80, y: 80 } });
+    await page.mouse.wheel(0, -320);
+    const wheelZoomedView = await waitForViewBox(
+      canvas,
+      (viewBox) => viewBox.width < fittedView.width,
+    );
+    expect(wheelZoomedView.width).toBeLessThan(fittedView.width);
+    expect(viewCenterX(wheelZoomedView)).toBeLessThan(viewCenterX(fittedView));
+    expect(viewCenterY(wheelZoomedView)).toBeLessThan(viewCenterY(fittedView));
+    expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollBeforeWheel);
+
+    await page.mouse.wheel(0, 320);
+    const wheelZoomedOutView = await waitForViewBox(
+      canvas,
+      (viewBox) => viewBox.width > wheelZoomedView.width,
+    );
+    expect(wheelZoomedOutView.width).toBeGreaterThan(wheelZoomedView.width);
+    expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollBeforeWheel);
+  } finally {
+    await page.evaluate(() => {
+      document.documentElement.style.minHeight = "";
+      document.body.style.minHeight = "";
+      window.scrollTo(0, 0);
+    });
+  }
 
   await page.getByRole("button", { name: "Fit view" }).click();
 

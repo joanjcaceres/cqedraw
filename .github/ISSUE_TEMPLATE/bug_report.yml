@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible problem in cQEDraw.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for someone else to reproduce it.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Where did you see the problem?
+      options:
+        - Web app
+        - Python desktop app
+        - Generated matrices or snippets
+        - Packaging or install
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a small circuit, saved project JSON, or snippet when that helps.
+      placeholder: |
+        1. Open ...
+        2. Draw ...
+        3. Click ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: generated-output
+    attributes:
+      label: Generated output details
+      description: If this affects matrices or copied snippets, describe the expected and actual generated C and L_inv behavior.
+      placeholder: Paste a minimal generated snippet or describe the matrix entries that changed.
+  - type: input
+    id: version
+    attributes:
+      label: cQEDraw version or commit
+      description: Use `cqedraw --version`, a release name, or the commit SHA if you know it.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, browser, Python version, Node.js version, or install method when relevant.
+      placeholder: |
+        OS:
+        Browser:
+        Python:
+        Node.js:
+        Install method:
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Add screenshots, logs, tracebacks, or links that may help.

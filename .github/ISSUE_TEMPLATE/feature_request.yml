@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest an improvement or new capability for cQEDraw.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. For larger design changes, please describe the workflow and compatibility impact before implementation starts.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of cQEDraw would this affect?
+      options:
+        - Web app
+        - Python desktop app
+        - Generated matrices or snippets
+        - Packaging or install
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What user problem or workflow would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note any expected impact on generated C and L_inv output, saved projects, copied snippets, install paths, or browser and desktop behavior.
+      placeholder: Describe expected compatibility impact, or write "No compatibility impact expected."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternate designs have you considered?
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Add sketches, examples, links, or related issues.

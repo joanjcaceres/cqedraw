@@ -233,6 +233,32 @@ textarea {
   stroke-width: 2;
 }
 
+.paste-preview {
+  pointer-events: none;
+}
+
+.paste-preview-line {
+  stroke: #d97706;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
+.paste-preview-node {
+  fill: rgba(245, 158, 11, 0.14);
+  stroke: #d97706;
+  stroke-dasharray: 5 4;
+  stroke-width: 3;
+}
+
+.paste-preview-label {
+  fill: #92400e;
+  font-size: 14px;
+  paint-order: stroke;
+  stroke: #fff7ed;
+  stroke-width: 4px;
+}
+
 .ground-symbol line {
   stroke: #233b55;
   stroke-linecap: round;

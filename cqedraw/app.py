@@ -229,6 +229,8 @@ class CircuitGraphApp:
         self.view_scale: float = 1.0
         self.history: list[dict] = []
         self._history_suspended = False
+        self._clean_project_snapshot: Optional[dict] = None
+        self._project_dirty = False
         self._node_drag_moved = False
         self._ground_drag_moved = False
         self.clipboard_data: Optional[dict] = None
@@ -242,7 +244,9 @@ class CircuitGraphApp:
 
         self._build_ui()
         self._bind_shortcuts()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close_requested)
         self._push_history()
+        self._mark_project_clean()
 
     def _build_ui(self) -> None:
         self.root.columnconfigure(0, weight=1)
@@ -1482,6 +1486,30 @@ class CircuitGraphApp:
             "mode": self.mode,
         }
 
+    def _project_content_snapshot(self, snapshot: Optional[dict] = None) -> dict:
+        if snapshot is None:
+            snapshot = self._snapshot_state()
+        return {
+            "nodes": copy.deepcopy(snapshot.get("nodes", [])),
+            "edges": copy.deepcopy(snapshot.get("edges", [])),
+        }
+
+    def _mark_project_clean(self) -> None:
+        self._clean_project_snapshot = self._project_content_snapshot()
+        self._project_dirty = False
+
+    def _update_dirty_state(self, snapshot: Optional[dict] = None) -> None:
+        current = self._project_content_snapshot(snapshot)
+        clean = getattr(self, "_clean_project_snapshot", None)
+        if clean is None:
+            self._project_dirty = bool(current["nodes"] or current["edges"])
+            return
+        self._project_dirty = current != clean
+
+    def _has_unsaved_changes(self) -> bool:
+        self._update_dirty_state()
+        return self._project_dirty
+
     def _restore_state(self, snapshot: dict) -> None:
         self._history_suspended = True
         try:
@@ -1541,6 +1569,7 @@ class CircuitGraphApp:
             self._update_scrollregion()
         finally:
             self._history_suspended = False
+        self._update_dirty_state()
 
     def _expr_to_string(self, expr: Optional[sp.Expr]) -> Optional[str]:
         if expr is None:
@@ -1565,10 +1594,12 @@ class CircuitGraphApp:
             return
         snapshot = self._snapshot_state()
         if self.history and snapshot == self.history[-1]:
+            self._update_dirty_state(snapshot)
             return
         self.history.append(copy.deepcopy(snapshot))
         if len(self.history) > 100:
             self.history = self.history[-100:]
+        self._update_dirty_state(snapshot)
 
     def _undo(self) -> None:
         if len(self.history) <= 1:
@@ -1578,9 +1609,10 @@ class CircuitGraphApp:
         snapshot = copy.deepcopy(self.history[-1])
         self._restore_state(snapshot)
         self._refresh_all_node_appearances()
+        self._update_dirty_state(snapshot)
         self._update_status("Action undone.")
 
-    def _save_project(self) -> None:
+    def _save_project(self) -> bool:
         filename = filedialog.asksaveasfilename(
             title="Save project",
             defaultextension=".json",
@@ -1588,7 +1620,7 @@ class CircuitGraphApp:
             parent=self.root,
         )
         if not filename:
-            return
+            return False
 
         snapshot = copy.deepcopy(self._snapshot_state())
         for edge in snapshot.get("edges", []):
@@ -1605,9 +1637,11 @@ class CircuitGraphApp:
             messagebox.showerror(
                 "Save project", f"Could not save file:\n{exc}", parent=self.root
             )
-            return
+            return False
 
+        self._mark_project_clean()
         self._update_status(f"Project saved to {Path(filename).name}.")
+        return True
 
     def _load_project(self) -> None:
         filename = filedialog.askopenfilename(
@@ -1642,6 +1676,7 @@ class CircuitGraphApp:
         self._restore_state(state)
         new_snapshot = copy.deepcopy(self._snapshot_state())
         self.history = [current_snapshot, new_snapshot]
+        self._mark_project_clean()
         self._update_status(f"Project loaded from {Path(filename).name}.")
 
     def _edge_label(
@@ -2152,6 +2187,7 @@ class CircuitGraphApp:
         self._set_mode(None)
         self._update_status("Workspace cleared. Press 'n' to create nodes.")
         self._push_history()
+        self._mark_project_clean()
 
     @staticmethod
     def _accumulate_matrix_entry(
@@ -2217,6 +2253,64 @@ class CircuitGraphApp:
         self.root.clipboard_clear()
         self.root.clipboard_append(snippet)
         self._update_status("Snippet copied to clipboard.")
+
+    def _on_close_requested(self) -> None:
+        if not self._has_unsaved_changes():
+            self.root.destroy()
+            return
+
+        action = self._ask_save_before_close()
+        if action == "cancel":
+            return
+        if action == "save" and not self._save_project():
+            return
+        if action not in {"save", "discard"}:
+            return
+        self.root.destroy()
+
+    def _ask_save_before_close(self) -> str:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Unsaved changes")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+
+        result = {"action": "cancel"}
+
+        def choose(action: str) -> None:
+            result["action"] = action
+            dialog.destroy()
+
+        frame = ttk.Frame(dialog, padding=16)
+        frame.grid(row=0, column=0, sticky="nsew")
+        ttk.Label(
+            frame,
+            text="Save changes before closing?",
+            font=("", 12, "bold"),
+        ).grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            frame,
+            text="Your current drawing has unsaved changes.",
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 12))
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=2, column=0, sticky=tk.E)
+        ttk.Button(
+            buttons, text="Save", command=lambda: choose("save")
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            buttons, text="Don't Save", command=lambda: choose("discard")
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        cancel_button = ttk.Button(
+            buttons, text="Cancel", command=lambda: choose("cancel")
+        )
+        cancel_button.pack(side=tk.LEFT)
+
+        dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
+        dialog.bind("<Escape>", lambda _event: choose("cancel"))
+        dialog.grab_set()
+        cancel_button.focus_set()
+        dialog.wait_window()
+        return result["action"]
 
     def _update_status(self, message: str) -> None:
         self.status_var.set(message)

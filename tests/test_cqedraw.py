@@ -1,7 +1,10 @@
+import json
+
 import numpy as np
 import sympy as sp
 from scipy import sparse
 
+import cqedraw.app as app_module
 from cqedraw.app import CircuitGraphApp, Edge, GROUND_NODE_ID, Node
 from cqedraw.core import (
     CircuitEdgeData,
@@ -65,6 +68,220 @@ def _make_app() -> CircuitGraphApp:
         ),
     }
     return app
+
+
+class _DummyRoot:
+    def __init__(self) -> None:
+        self.destroyed = False
+
+    def destroy(self) -> None:
+        self.destroyed = True
+
+
+class _DummyStatusVar:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
+def _make_empty_project_app() -> CircuitGraphApp:
+    app = CircuitGraphApp.__new__(CircuitGraphApp)
+    app.nodes = {}
+    app.edges = {}
+    app.node_counter = 0
+    app.edge_counter = 0
+    app.view_scale = 1.0
+    app.selected_nodes = set()
+    app.focus_node = None
+    app.selected_node = None
+    app.mode = None
+    app.history = []
+    app._history_suspended = False
+    app._clean_project_snapshot = None
+    app._project_dirty = False
+    app.root = _DummyRoot()
+    app.status_var = _DummyStatusVar()
+    return app
+
+
+def _add_project_node(app: CircuitGraphApp) -> None:
+    app.nodes[1] = Node(1, "N1", 10.0, 20.0, 0, 0)
+    app.node_counter = 2
+
+
+def test_dirty_state_tracks_project_content_not_empty_ui_state():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+
+    app.view_scale = 2.0
+    app.node_counter = 5
+    app.edge_counter = 3
+    assert not app._has_unsaved_changes()
+
+    _add_project_node(app)
+    assert app._has_unsaved_changes()
+
+    app._mark_project_clean()
+    assert not app._has_unsaved_changes()
+
+    app.nodes[1].x = 24.0
+    assert app._has_unsaved_changes()
+
+
+def test_save_project_marks_current_content_clean(tmp_path, monkeypatch):
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    save_path = tmp_path / "project.json"
+    monkeypatch.setattr(
+        app_module.filedialog,
+        "asksaveasfilename",
+        lambda **_kwargs: str(save_path),
+    )
+
+    assert app._save_project() is True
+    assert not app._has_unsaved_changes()
+    assert json.loads(save_path.read_text())["state"]["nodes"][0]["name"] == "N1"
+
+    app.nodes[1].y = 32.0
+    assert app._has_unsaved_changes()
+
+
+def test_cancelled_save_keeps_project_dirty(monkeypatch):
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    monkeypatch.setattr(
+        app_module.filedialog,
+        "asksaveasfilename",
+        lambda **_kwargs: "",
+    )
+
+    assert app._save_project() is False
+    assert app._has_unsaved_changes()
+
+
+def test_load_project_marks_loaded_content_clean(tmp_path, monkeypatch):
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    load_path = tmp_path / "loaded.json"
+    loaded_state = {
+        "node_counter": 8,
+        "edge_counter": 0,
+        "view_scale": 1.0,
+        "nodes": [{"identifier": 7, "name": "Loaded", "x": 1.0, "y": 2.0}],
+        "edges": [],
+        "selected_nodes": [],
+        "focus_node": None,
+        "selected_node": None,
+        "mode": None,
+    }
+    load_path.write_text(json.dumps({"version": 1, "state": loaded_state}))
+    monkeypatch.setattr(
+        app_module.filedialog,
+        "askopenfilename",
+        lambda **_kwargs: str(load_path),
+    )
+
+    def restore_state(state: dict) -> None:
+        app.nodes = {
+            node["identifier"]: Node(
+                node["identifier"],
+                node["name"],
+                node["x"],
+                node["y"],
+                0,
+                0,
+            )
+            for node in state["nodes"]
+        }
+        app.edges = {}
+        app.node_counter = state["node_counter"]
+        app.edge_counter = state["edge_counter"]
+        app.view_scale = state["view_scale"]
+        app.selected_nodes = set(state["selected_nodes"])
+        app.focus_node = state["focus_node"]
+        app.selected_node = state["selected_node"]
+        app.mode = state["mode"]
+
+    app._restore_state = restore_state
+
+    app._load_project()
+
+    assert not app._has_unsaved_changes()
+    app.nodes[7].name = "Changed"
+    assert app._has_unsaved_changes()
+
+
+def test_close_handler_destroys_clean_window_without_prompt():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+
+    def fail_prompt() -> str:
+        raise AssertionError("clean projects should not prompt on close")
+
+    app._ask_save_before_close = fail_prompt
+
+    app._on_close_requested()
+
+    assert app.root.destroyed
+
+
+def test_close_handler_cancel_keeps_dirty_window_open():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    app._ask_save_before_close = lambda: "cancel"
+    app._save_project = lambda: True
+
+    app._on_close_requested()
+
+    assert not app.root.destroyed
+
+
+def test_close_handler_discard_destroys_dirty_window_without_save():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    saves = []
+    app._ask_save_before_close = lambda: "discard"
+    app._save_project = lambda: saves.append(True) or True
+
+    app._on_close_requested()
+
+    assert app.root.destroyed
+    assert saves == []
+
+
+def test_close_handler_save_success_destroys_dirty_window():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    saves = []
+    app._ask_save_before_close = lambda: "save"
+    app._save_project = lambda: saves.append(True) or True
+
+    app._on_close_requested()
+
+    assert app.root.destroyed
+    assert saves == [True]
+
+
+def test_close_handler_cancelled_save_keeps_dirty_window_open():
+    app = _make_empty_project_app()
+    app._mark_project_clean()
+    _add_project_node(app)
+    saves = []
+    app._ask_save_before_close = lambda: "save"
+    app._save_project = lambda: saves.append(True) or False
+
+    app._on_close_requested()
+
+    assert not app.root.destroyed
+    assert saves == [True]
 
 
 def test_compute_matrix_entries_accumulates_sparse_contributions():

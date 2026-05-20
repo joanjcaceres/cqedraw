@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { Buffer } from "node:buffer";
+
+import { expect, test, type Page } from "@playwright/test";
 
 test("shows and persists the optional tutorial prompt", async ({ page }) => {
   await page.goto("/");
@@ -12,6 +14,47 @@ test("shows and persists the optional tutorial prompt", async ({ page }) => {
 
   await page.reload();
   await expect(page.getByTestId("tutorial-prompt")).toBeHidden();
+});
+
+test("prompts before closing only while the project has unsaved changes", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expectBeforeUnloadProtection(page, false);
+
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+  await expectBeforeUnloadProtection(page, true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  await downloadPromise;
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expect(page.getByTestId("output-status")).toContainText("Project saved.");
+  await expectBeforeUnloadProtection(page, false);
+
+  await canvas.click({ position: { x: 330, y: 220 } });
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+  await expectBeforeUnloadProtection(page, true);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "loaded-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 1,
+        state: {
+          nodes: [{ identifier: 0, name: "Loaded", x: 250, y: 240 }],
+          edges: [],
+        },
+      }),
+    ),
+  });
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expectBeforeUnloadProtection(page, false);
 });
 
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
@@ -81,6 +124,8 @@ test("restarts the tutorial from Help and confirms before clearing a project", a
   await expect(page.getByTestId("tutorial-callout")).toContainText(
     "Build a small circuit",
   );
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expectBeforeUnloadProtection(page, false);
   await expect(
     page.getByTestId("tutorial-callout").getByRole("button", { name: "Start" }),
   ).toBeFocused();
@@ -280,4 +325,16 @@ function parseViewBox(value: string | null) {
   }
   const [x, y, width, height] = value.split(" ").map(Number);
   return { x, y, width, height };
+}
+
+async function expectBeforeUnloadProtection(page: Page, expected: boolean) {
+  await expect.poll(() => hasBeforeUnloadProtection(page)).toBe(expected);
+}
+
+async function hasBeforeUnloadProtection(page: Page) {
+  return page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    const wasAllowed = window.dispatchEvent(event);
+    return !wasAllowed || event.defaultPrevented;
+  });
 }

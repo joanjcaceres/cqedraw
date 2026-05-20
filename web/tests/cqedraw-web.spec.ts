@@ -94,6 +94,50 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   await expect(page.getByTestId("canvas-hint")).toBeHidden();
 });
 
+test("keeps compact toolbar buttons accessible with hover and keyboard-focus tooltips", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("cqedraw.tutorial.v1", "dismissed");
+  });
+  await page.goto("/");
+
+  const selectButton = page.getByRole("button", {
+    exact: true,
+    name: "Select",
+  });
+  await expect(selectButton).toHaveAttribute("aria-label", "Select");
+  await expect(selectButton).toHaveAttribute("title", "Select");
+  await expect(selectButton.locator(".tool-button-tooltip")).toBeHidden();
+  await expect(selectButton.locator(".tool-button-tooltip")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+
+  await selectButton.hover();
+  await expect(selectButton.locator(".tool-button-tooltip")).toBeVisible();
+  await expect(selectButton.locator(".tool-button-tooltip")).toContainText("Select");
+  await page.mouse.move(0, 0);
+  await expect(selectButton.locator(".tool-button-tooltip")).toBeHidden();
+
+  const pasteButton = page.getByRole("button", {
+    exact: true,
+    name: "Paste",
+  });
+  await expect(pasteButton).toHaveAttribute("aria-label", "Paste");
+  await expect(pasteButton).toHaveAttribute("title", "Paste");
+  await page.keyboard.press("Tab");
+  await expect(selectButton).toBeFocused();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(pasteButton).toBeFocused();
+  await expect(pasteButton.locator(".tool-button-tooltip")).toBeVisible();
+  await expect(pasteButton.locator(".tool-button-tooltip")).toContainText("Paste");
+});
+
 test("restarts the tutorial from Help and confirms before clearing a project", async ({
   page,
 }) => {

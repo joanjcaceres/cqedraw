@@ -432,6 +432,7 @@ export function App() {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeId(nodeId);
     setSelectedEdgeId(null);
+    setEngineStatus(selectionStatusMessage(1));
   }
 
   function clearNodeSelection() {
@@ -441,21 +442,28 @@ export function App() {
 
   function toggleNodeSelection(nodeId: number) {
     setSelectedEdgeId(null);
-    setSelectedNodeIds((current) => {
-      if (current.includes(nodeId)) {
-        const next = current.filter((id) => id !== nodeId);
-        setSelectedNodeId((focused) =>
-          focused === nodeId ? next[next.length - 1] ?? null : focused,
-        );
-        return next;
-      }
+    const isSelected = selectedNodeIds.includes(nodeId);
+    const next = isSelected
+      ? selectedNodeIds.filter((id) => id !== nodeId)
+      : [...selectedNodeIds, nodeId];
+
+    setSelectedNodeIds(next);
+    if (isSelected) {
+      setSelectedNodeId((focused) =>
+        focused === nodeId ? next[next.length - 1] ?? null : focused,
+      );
+    } else {
       setSelectedNodeId(nodeId);
-      return [...current, nodeId];
-    });
+    }
+    setEngineStatus(selectionStatusMessage(next.length));
   }
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
     const point = svgPoint(event);
+    const hadSelection =
+      selectedNodeIds.length > 0 ||
+      selectedNodeId !== null ||
+      selectedEdgeId !== null;
     if (pastePreview) {
       completePastePreview(point);
       return;
@@ -496,6 +504,9 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
+    if (hadSelection) {
+      setEngineStatus(selectionStatusMessage(0));
+    }
   }
 
   function handleNodePointerDown(
@@ -730,9 +741,7 @@ export function App() {
       setNodeDragState(null);
       setGroundDragState(null);
       setEngineStatus(
-        selectedIds.length === 0
-          ? "Selection cleared."
-          : `Selected ${selectedIds.length} node${selectedIds.length === 1 ? "" : "s"}.`,
+        selectionStatusMessage(selectedIds.length),
       );
       return;
     }
@@ -768,6 +777,9 @@ export function App() {
       return;
     }
 
+    const edge = project.state.edges.find(
+      (candidate) => candidate.identifier === edgeId,
+    );
     setSelectedEdgeId(edgeId);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
@@ -775,6 +787,9 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setEngineStatus(
+      edge?.is_ground ? "Selected ground connection." : "Selected connection.",
+    );
   }
 
   function handleGroundPointerDown(
@@ -803,6 +818,7 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setEngineStatus("Selected ground connection.");
     if (mode === "select" || mode === "box-select") {
       event.currentTarget.setPointerCapture(event.pointerId);
       startGroundDrag(event, edge);
@@ -813,10 +829,15 @@ export function App() {
 
   function deleteSelection() {
     if (selectedEdgeId !== null) {
+      const edge = project.state.edges.find(
+        (candidate) => candidate.identifier === selectedEdgeId,
+      );
       commitProjectChange((current) => removeEdge(current, selectedEdgeId));
-      setSelectedEdgeId(null);
-      setGroundDragState(null);
+      resetProjectInteractionState();
       setOutput(null);
+      setEngineStatus(
+        edge?.is_ground ? "Deleted ground connection." : "Deleted connection.",
+      );
       return;
     }
     const nodeIdsToDelete =
@@ -826,16 +847,24 @@ export function App() {
           ? [selectedNodeId]
           : [];
     if (nodeIdsToDelete.length > 0) {
+      const selectedIds = new Set(nodeIdsToDelete);
+      const deletedNodeCount = project.state.nodes.filter((node) =>
+        selectedIds.has(node.identifier),
+      ).length;
+      const deletedConnectionCount = project.state.edges.filter((edge) =>
+        edge.nodes.some((nodeId) => selectedIds.has(nodeId)),
+      ).length;
       commitProjectChange((current) =>
         nodeIdsToDelete.reduce(
           (nextProject, nodeId) => removeNode(nextProject, nodeId),
           current,
         ),
       );
-      setSelectedNodeIds([]);
-      setSelectedNodeId(null);
-      setGroundDragState(null);
+      resetProjectInteractionState();
       setOutput(null);
+      setEngineStatus(
+        deletionStatusMessage(deletedNodeCount, deletedConnectionCount),
+      );
     }
   }
 
@@ -1253,6 +1282,11 @@ export function App() {
       ? `Ground ${selectedEdge.nodes[0]}`
       : `${selectedEdge.nodes[0]}-${selectedEdge.nodes[1]}`
     : null;
+  const mergeTargetNode =
+    selectedNodeIds.length > 1 && selectedNodeId !== null
+      ? project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null
+      : null;
+  const mergeTargetLabel = mergeTargetNode?.name ?? "selected node";
   const marqueeRect = marqueeState
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
@@ -1589,8 +1623,9 @@ export function App() {
               </div>
             ) : selectedNodeIds.length > 1 ? (
               <div className="metrics">
-                <span>{selectedNodeIds.length} nodes selected</span>
-                <span>Merge will keep node {selectedNodeId}</span>
+                <span data-testid="merge-target-summary">
+                  Merge keeps {mergeTargetLabel}
+                </span>
               </div>
             ) : (
               <div className="metrics">
@@ -2660,6 +2695,30 @@ function projectsMatch(first: CircuitProject, second: CircuitProject): boolean {
   return (
     serializeProjectForDirtyCheck(first) === serializeProjectForDirtyCheck(second)
   );
+}
+
+function selectionStatusMessage(nodeCount: number): string {
+  return nodeCount === 0
+    ? "Selection cleared."
+    : `Selected ${nodeCount} node${nodeCount === 1 ? "" : "s"}.`;
+}
+
+function deletionStatusMessage(nodeCount: number, connectionCount: number): string {
+  if (nodeCount === 0) {
+    return connectionCount === 1
+      ? "Deleted 1 connection."
+      : `Deleted ${connectionCount} connections.`;
+  }
+
+  const nodeText = `${nodeCount} node${nodeCount === 1 ? "" : "s"}`;
+  if (connectionCount === 0) {
+    return `Deleted ${nodeText}.`;
+  }
+
+  const connectionText = `${connectionCount} connection${
+    connectionCount === 1 ? "" : "s"
+  }`;
+  return `Deleted ${nodeText} and ${connectionText}.`;
 }
 
 function appendProjectHistoryEntry(

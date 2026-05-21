@@ -227,6 +227,7 @@ test("deletes selections without stealing inspector text entry", async ({
   await nodeNameInput.evaluate((element: HTMLInputElement) => element.blur());
   await page.keyboard.press("Backspace");
   await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Deleted 1 node.");
 
   await page.keyboard.press("n");
   await canvas.click({ position: { x: 160, y: 220 } });
@@ -235,14 +236,44 @@ test("deletes selections without stealing inspector text entry", async ({
   await page.getByTestId("node-1").click();
   await page.getByTestId("node-2").click();
 
-  await page.keyboard.press("v");
-  await page.getByTestId("node-1").click();
-  await page.getByTestId("node-2").click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { exact: true, name: "Box Select" }).click();
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) {
+    throw new Error("Canvas box is unavailable.");
+  }
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 360, canvasBox.y + 260);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
   await page.getByRole("button", { name: "Delete" }).click();
 
   await expect(page.getByTestId("node-1")).toHaveCount(0);
   await expect(page.getByTestId("node-2")).toHaveCount(0);
   await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Deleted 2 nodes and 1 connection.",
+  );
+  await expect(page.getByTestId("output-status")).not.toContainText(
+    "Selected 2 nodes.",
+  );
+
+  await page.keyboard.press("Control+Z");
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("node-2")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Undid last change.",
+  );
+
+  await page.keyboard.press("Control+Y");
+  await expect(page.getByTestId("node-1")).toHaveCount(0);
+  await expect(page.getByTestId("node-2")).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Redid last change.",
+  );
 });
 
 test("renders component symbols for regular and ground edge values", async ({
@@ -870,7 +901,10 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(mergeButton).toBeDisabled();
   await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
   await expect(mergeButton).toBeEnabled();
-  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N2",
+  );
 
   await page.keyboard.press("m");
 
@@ -925,6 +959,9 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
   }
+  const node0 = page.getByTestId("node-0");
+  const node1 = page.getByTestId("node-1");
+  const node2 = page.getByTestId("node-2");
 
   await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
   await page.mouse.down();
@@ -933,13 +970,49 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   await page.mouse.up();
 
   await expect(page.getByTestId("selection-marquee")).toHaveCount(0);
-  await expect(page.getByText("2 nodes selected")).toBeVisible();
-  await expect(page.getByText("Merge will keep node 1")).toBeVisible();
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N2",
+  );
+  await expect(mergeButton).toBeEnabled();
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
+
+  await canvas.click({ position: { x: 760, y: 440 } });
+  await expect(page.getByTestId("merge-target-summary")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selection cleared.",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await node0.click();
+  await expect(node0).toHaveClass(/selected/);
+  await expect(page.getByTestId("output-status")).toContainText("Selected 1 node.");
+
+  await node1.click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N2",
+  );
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
+
+  await node0.click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("merge-target-summary")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Selected 1 node.");
+
+  await canvas.click({ position: { x: 760, y: 440 } });
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selection cleared.",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Box Select" }).click();
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 380, canvasBox.y + 260);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N2",
+  );
   await expect(mergeButton).toBeEnabled();
 
-  const node0 = page.getByTestId("node-0");
-  const node1 = page.getByTestId("node-1");
-  const node2 = page.getByTestId("node-2");
   const node0Start = await parseSvgCircleCenter(node0);
   const node1Start = await parseSvgCircleCenter(node1);
   const node2Start = await parseSvgCircleCenter(node2);
@@ -976,7 +1049,9 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   expect(Math.abs(node1Delta.y - node0Delta.y)).toBeLessThan(1);
   expect(Math.abs(node2End.x - node2Start.x)).toBeLessThan(1);
   expect(Math.abs(node2End.y - node2Start.y)).toBeLessThan(1);
-  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N2",
+  );
   await expect(mergeButton).toBeEnabled();
 
   await mergeButton.click();
@@ -1053,10 +1128,11 @@ test("copies selected graph elements and pastes them from a preview", async ({
   await expect(page.getByTestId("output-status")).toContainText("Pasted 2 node(s).");
   await expect(page.getByTestId("node-2")).toBeVisible();
   await expect(page.getByTestId("node-3")).toBeVisible();
-  await expect(page.getByText("N3")).toBeVisible();
-  await expect(page.getByText("N4")).toBeVisible();
-  await expect(page.getByText("2 nodes selected")).toBeVisible();
-  await expect(page.getByText("Merge will keep node 3")).toBeVisible();
+  await expect(canvas.getByText("N3")).toBeVisible();
+  await expect(canvas.getByText("N4")).toBeVisible();
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N4",
+  );
 
   const node3Center = await parseSvgCircleCenter(page.getByTestId("node-3"));
   const pastedGround = await parseSvgLine(page.getByTestId("edge-3"));
@@ -1128,10 +1204,11 @@ test("concatenates selected graph blocks", async ({ page }) => {
   await expect(page.getByTestId("node-2")).toBeVisible();
   await expect(page.getByTestId("node-3")).toBeVisible();
   await expect(page.getByTestId("edge-4")).toHaveCount(1);
-  await expect(page.getByText("N3")).toBeVisible();
-  await expect(page.getByText("N4")).toBeVisible();
-  await expect(page.getByText("2 nodes selected")).toBeVisible();
-  await expect(page.getByText("Merge will keep node 3")).toBeVisible();
+  await expect(canvas.getByText("N3")).toBeVisible();
+  await expect(canvas.getByText("N4")).toBeVisible();
+  await expect(page.getByTestId("merge-target-summary")).toContainText(
+    "Merge keeps N4",
+  );
 
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");

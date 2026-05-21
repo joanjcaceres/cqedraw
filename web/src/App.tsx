@@ -82,6 +82,8 @@ const PROJECT_HISTORY_LIMIT = 100;
 const CAPACITOR_SYMBOL_HALF_LENGTH = 22;
 const INDUCTOR_SYMBOL_HALF_LENGTH = 42;
 const PARALLEL_LC_SYMBOL_HALF_LENGTH = 44;
+const INLINE_EDGE_EDITOR_OFFSET = 62;
+const INLINE_GROUND_EDITOR_OFFSET = 126;
 
 interface ViewBox {
   x: number;
@@ -153,6 +155,13 @@ interface ProjectHistory {
 }
 
 type EdgeComponentKind = "none" | "capacitor" | "inductor" | "parallel-lc";
+type InlineEdgeEditorPlacement = "above" | "below";
+
+interface InlineEdgeEditorPosition {
+  leftPercent: number;
+  placement: InlineEdgeEditorPlacement;
+  topPercent: number;
+}
 
 type TutorialStep =
   | "welcome"
@@ -196,6 +205,8 @@ export function App() {
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
+  const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
+    useState<number | null>(null);
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -205,6 +216,8 @@ export function App() {
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineValueEditorRef = useRef<HTMLDivElement | null>(null);
+  const inlineCapInputRef = useRef<HTMLInputElement | null>(null);
   const newProjectButtonRef = useRef<HTMLButtonElement | null>(null);
   const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -242,6 +255,11 @@ export function App() {
     () => project.state.edges.find((edge) => edge.identifier === selectedEdgeId) ?? null,
     [project, selectedEdgeId],
   );
+  const inlineValueEditorEdge =
+    selectedEdge?.identifier === inlineValueEditorEdgeId ? selectedEdge : null;
+  const inlineValueEditorPosition = inlineValueEditorEdge
+    ? inlineEdgeEditorPosition(inlineValueEditorEdge, project.state.nodes, viewBox)
+    : null;
   const currentProjectSnapshot = useMemo(
     () => serializeProjectForDirtyCheck(project),
     [project],
@@ -304,6 +322,49 @@ export function App() {
   }, [project.state.nodes.length, tutorialPromptOpen, tutorialStep]);
 
   useEffect(() => {
+    if (inlineValueEditorEdgeId === null) {
+      return;
+    }
+    if (
+      selectedEdgeId !== inlineValueEditorEdgeId ||
+      !project.state.edges.some((edge) => edge.identifier === inlineValueEditorEdgeId)
+    ) {
+      setInlineValueEditorEdgeId(null);
+    }
+  }, [inlineValueEditorEdgeId, project.state.edges, selectedEdgeId]);
+
+  useEffect(() => {
+    if (inlineValueEditorEdgeId === null) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      inlineCapInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [inlineValueEditorEdgeId]);
+
+  useEffect(() => {
+    if (inlineValueEditorEdgeId === null) {
+      return;
+    }
+
+    function handleDocumentPointerDown(event: globalThis.PointerEvent) {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        inlineValueEditorRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setInlineValueEditorEdgeId(null);
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }, [inlineValueEditorEdgeId]);
+
+  useEffect(() => {
     if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {
       return;
     }
@@ -337,6 +398,7 @@ export function App() {
     setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
+    setInlineValueEditorEdgeId(null);
   }
 
   function setProjectState(nextProject: CircuitProject) {
@@ -369,6 +431,14 @@ export function App() {
     setProjectState(next);
   }
 
+  function updateEdgeValueText(
+    edgeId: number,
+    values: { capacitanceText?: string | null; inductanceText?: string | null },
+  ) {
+    commitProjectChange((current) => updateEdgeValues(current, edgeId, values));
+    setOutput(null);
+  }
+
   function resetProjectInteractionState() {
     setSelectedNodeIds([]);
     setSelectedNodeId(null);
@@ -379,6 +449,7 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setInlineValueEditorEdgeId(null);
   }
 
   function restoreProjectFromHistory(nextProject: CircuitProject, message: string) {
@@ -440,6 +511,7 @@ export function App() {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeId(nodeId);
     setSelectedEdgeId(null);
+    setInlineValueEditorEdgeId(null);
     setEngineStatus(selectionStatusMessage(1));
   }
 
@@ -450,6 +522,7 @@ export function App() {
 
   function toggleNodeSelection(nodeId: number) {
     setSelectedEdgeId(null);
+    setInlineValueEditorEdgeId(null);
     const isSelected = selectedNodeIds.includes(nodeId);
     const next = isSelected
       ? selectedNodeIds.filter((id) => id !== nodeId)
@@ -484,6 +557,7 @@ export function App() {
         setSelectedNodeIds([id]);
         setSelectedNodeId(id);
         setSelectedEdgeId(null);
+        setInlineValueEditorEdgeId(null);
         return next;
       });
       setOutput(null);
@@ -510,6 +584,7 @@ export function App() {
     }
     clearNodeSelection();
     setSelectedEdgeId(null);
+    setInlineValueEditorEdgeId(null);
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
     if (hadSelection) {
@@ -543,9 +618,12 @@ export function App() {
           const next = addEdge(current, pendingEdgeNodeId, nodeId);
           if (next.state.edge_counter > before) {
             setSelectedEdgeId(before);
+            setInlineValueEditorEdgeId(before);
             clearNodeSelection();
+            setEngineStatus("Added connection. Enter C/L values.");
           } else {
             setSelectedEdgeId(null);
+            setInlineValueEditorEdgeId(null);
             selectSingleNode(nodeId);
             setEngineStatus("A connection between those nodes already exists.");
           }
@@ -564,6 +642,7 @@ export function App() {
       if (existing) {
         clearNodeSelection();
         setSelectedEdgeId(existing.identifier);
+        setInlineValueEditorEdgeId(null);
         setPendingEdgeNodeId(null);
         setPanState(null);
         setMarqueeState(null);
@@ -576,6 +655,7 @@ export function App() {
         const next = toggleGround(current, nodeId);
         clearNodeSelection();
         setSelectedEdgeId(current.state.edge_counter);
+        setInlineValueEditorEdgeId(current.state.edge_counter);
         return next;
       });
       setOutput(null);
@@ -750,6 +830,7 @@ export function App() {
       setSelectedNodeIds(selectedIds);
       setSelectedNodeId(selectedIds[selectedIds.length - 1] ?? null);
       setSelectedEdgeId(null);
+      setInlineValueEditorEdgeId(null);
       setPendingEdgeNodeId(null);
       setMarqueeState(null);
       setPanState(null);
@@ -796,6 +877,7 @@ export function App() {
       (candidate) => candidate.identifier === edgeId,
     );
     setSelectedEdgeId(edgeId);
+    setInlineValueEditorEdgeId(null);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
@@ -828,6 +910,7 @@ export function App() {
     }
 
     setSelectedEdgeId(edgeId);
+    setInlineValueEditorEdgeId(null);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setPanState(null);
@@ -1524,117 +1607,129 @@ export function App() {
 
       <section className="workspace">
         <div className="canvas-pane">
-          <div className="canvas-controls" aria-label="Canvas view controls">
-            <IconButton
-              icon={<ZoomIn size={17} />}
-              label="Zoom in"
-              onClick={() => zoomCanvas(ZOOM_IN_FACTOR)}
-              shortcut="+/="
-            />
-            <IconButton
-              icon={<ZoomOut size={17} />}
-              label="Zoom out"
-              onClick={() => zoomCanvas(ZOOM_OUT_FACTOR)}
-              shortcut="-"
-            />
-            <IconButton
-              icon={<Maximize2 size={17} />}
-              label="Fit view"
-              onClick={fitCanvasView}
-              shortcut="0"
-            />
-          </div>
-          <svg
-            className={[
-              "circuit-canvas",
-              mode === "select" ? "pan-ready" : "",
-              mode === "box-select" ? "box-select-ready" : "",
-              panState ? "panning" : "",
-              marqueeState ? "selecting" : "",
-              tutorialStep === "first-node" || tutorialStep === "second-node"
-                ? "tutorial-highlight-surface"
-                : "",
-            ].join(" ")}
-            data-testid="canvas"
-            ref={canvasRef}
-            viewBox={viewBoxToString(viewBox)}
-            onPointerDown={handleCanvasPointerDown}
-            onPointerMove={handleCanvasPointerMove}
-            onPointerUp={handleCanvasPointerUp}
-            onPointerCancel={handleCanvasPointerCancel}
-            onPointerLeave={handleCanvasPointerCancel}
-          >
-            <defs>
-              <pattern
-                id="grid"
-                width={GRID_TILE_SIZE}
-                height={GRID_TILE_SIZE}
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d={`M ${GRID_TILE_SIZE} 0 L 0 0 0 ${GRID_TILE_SIZE}`}
-                  fill="none"
-                  stroke="#dce5ee"
-                  strokeWidth="1"
-                />
-              </pattern>
-            </defs>
-            <rect
-              data-testid="grid-surface"
-              x={gridRect.x}
-              y={gridRect.y}
-              width={gridRect.width}
-              height={gridRect.height}
-              fill="url(#grid)"
-            />
-            {marqueeRect ? (
+          <div className="canvas-stage">
+            <div className="canvas-controls" aria-label="Canvas view controls">
+              <IconButton
+                icon={<ZoomIn size={17} />}
+                label="Zoom in"
+                onClick={() => zoomCanvas(ZOOM_IN_FACTOR)}
+                shortcut="+/="
+              />
+              <IconButton
+                icon={<ZoomOut size={17} />}
+                label="Zoom out"
+                onClick={() => zoomCanvas(ZOOM_OUT_FACTOR)}
+                shortcut="-"
+              />
+              <IconButton
+                icon={<Maximize2 size={17} />}
+                label="Fit view"
+                onClick={fitCanvasView}
+                shortcut="0"
+              />
+            </div>
+            <svg
+              className={[
+                "circuit-canvas",
+                mode === "select" ? "pan-ready" : "",
+                mode === "box-select" ? "box-select-ready" : "",
+                panState ? "panning" : "",
+                marqueeState ? "selecting" : "",
+                tutorialStep === "first-node" || tutorialStep === "second-node"
+                  ? "tutorial-highlight-surface"
+                  : "",
+              ].join(" ")}
+              data-testid="canvas"
+              ref={canvasRef}
+              viewBox={viewBoxToString(viewBox)}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerCancel}
+              onPointerLeave={handleCanvasPointerCancel}
+            >
+              <defs>
+                <pattern
+                  id="grid"
+                  width={GRID_TILE_SIZE}
+                  height={GRID_TILE_SIZE}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d={`M ${GRID_TILE_SIZE} 0 L 0 0 0 ${GRID_TILE_SIZE}`}
+                    fill="none"
+                    stroke="#dce5ee"
+                    strokeWidth="1"
+                  />
+                </pattern>
+              </defs>
               <rect
-                className="selection-marquee"
-                data-testid="selection-marquee"
-                x={marqueeRect.x}
-                y={marqueeRect.y}
-                width={marqueeRect.width}
-                height={marqueeRect.height}
+                data-testid="grid-surface"
+                x={gridRect.x}
+                y={gridRect.y}
+                width={gridRect.width}
+                height={gridRect.height}
+                fill="url(#grid)"
               />
-            ) : null}
-            {project.state.nodes.length === 0 ? <CanvasHint /> : null}
-            {project.state.edges.map((edge) => (
-              <CircuitEdgeShape
-                key={edge.identifier}
-                edge={edge}
-                nodes={project.state.nodes}
-                selected={selectedEdgeId === edge.identifier}
-                onPointerDown={handleEdgePointerDown}
-                onGroundPointerDown={handleGroundPointerDown}
-              />
-            ))}
-            {project.state.nodes.map((node) => (
-              <g key={node.identifier}>
-                <circle
-                  data-testid={`node-${node.identifier}`}
-                  className={[
-                    "node-circle",
-                    selectedNodeIds.includes(node.identifier) ? "selected" : "",
-                    selectedNodeId === node.identifier ? "focused" : "",
-                    pendingEdgeNodeId === node.identifier ? "pending" : "",
-                  ].join(" ")}
-                  cx={node.x}
-                  cy={node.y}
-                  r={NODE_RADIUS}
-                  onPointerDown={(event) => handleNodePointerDown(event, node.identifier)}
+              {marqueeRect ? (
+                <rect
+                  className="selection-marquee"
+                  data-testid="selection-marquee"
+                  x={marqueeRect.x}
+                  y={marqueeRect.y}
+                  width={marqueeRect.width}
+                  height={marqueeRect.height}
                 />
-                <text className="node-label" x={node.x + 16} y={node.y + 5}>
-                  {node.name}
-                </text>
-              </g>
-            ))}
-            {pastePreview && activePasteClipboard ? (
-              <PastePreview
-                anchor={pastePreview.anchor}
-                clipboard={activePasteClipboard}
+              ) : null}
+              {project.state.nodes.length === 0 ? <CanvasHint /> : null}
+              {project.state.edges.map((edge) => (
+                <CircuitEdgeShape
+                  key={edge.identifier}
+                  edge={edge}
+                  nodes={project.state.nodes}
+                  selected={selectedEdgeId === edge.identifier}
+                  onPointerDown={handleEdgePointerDown}
+                  onGroundPointerDown={handleGroundPointerDown}
+                />
+              ))}
+              {project.state.nodes.map((node) => (
+                <g key={node.identifier}>
+                  <circle
+                    data-testid={`node-${node.identifier}`}
+                    className={[
+                      "node-circle",
+                      selectedNodeIds.includes(node.identifier) ? "selected" : "",
+                      selectedNodeId === node.identifier ? "focused" : "",
+                      pendingEdgeNodeId === node.identifier ? "pending" : "",
+                    ].join(" ")}
+                    cx={node.x}
+                    cy={node.y}
+                    r={NODE_RADIUS}
+                    onPointerDown={(event) => handleNodePointerDown(event, node.identifier)}
+                  />
+                  <text className="node-label" x={node.x + 16} y={node.y + 5}>
+                    {node.name}
+                  </text>
+                </g>
+              ))}
+              {pastePreview && activePasteClipboard ? (
+                <PastePreview
+                  anchor={pastePreview.anchor}
+                  clipboard={activePasteClipboard}
+                />
+              ) : null}
+            </svg>
+            {inlineValueEditorEdge && inlineValueEditorPosition ? (
+              <InlineEdgeValueEditor
+                capInputRef={inlineCapInputRef}
+                edge={inlineValueEditorEdge}
+                editorRef={inlineValueEditorRef}
+                position={inlineValueEditorPosition}
+                onClose={() => setInlineValueEditorEdgeId(null)}
+                onValueChange={updateEdgeValueText}
               />
             ) : null}
-          </svg>
+          </div>
           <div className="status-line" data-testid="output-status">
             {engineStatus}
           </div>
@@ -1647,7 +1742,11 @@ export function App() {
               <div className="form-grid">
                 <label>
                   <span>Edge</span>
-                  <input value={selectedEdgeLabel ?? ""} readOnly />
+                  <input
+                    value={selectedEdgeLabel ?? ""}
+                    readOnly
+                    onFocus={() => setInlineValueEditorEdgeId(null)}
+                  />
                 </label>
                 <label>
                   <span>Capacitance</span>
@@ -1659,13 +1758,11 @@ export function App() {
                     }
                     data-testid="cap-input"
                     value={selectedEdge.capacitance_text ?? ""}
+                    onFocus={() => setInlineValueEditorEdgeId(null)}
                     onChange={(event) => {
-                      commitProjectChange((current) =>
-                        updateEdgeValues(current, selectedEdge.identifier, {
-                          capacitanceText: event.target.value,
-                        }),
-                      );
-                      setOutput(null);
+                      updateEdgeValueText(selectedEdge.identifier, {
+                        capacitanceText: event.target.value,
+                      });
                     }}
                   />
                 </label>
@@ -1679,13 +1776,11 @@ export function App() {
                     }
                     data-testid="ind-input"
                     value={selectedEdge.inductance_text ?? ""}
+                    onFocus={() => setInlineValueEditorEdgeId(null)}
                     onChange={(event) => {
-                      commitProjectChange((current) =>
-                        updateEdgeValues(current, selectedEdge.identifier, {
-                          inductanceText: event.target.value,
-                        }),
-                      );
-                      setOutput(null);
+                      updateEdgeValueText(selectedEdge.identifier, {
+                        inductanceText: event.target.value,
+                      });
                     }}
                   />
                 </label>
@@ -2214,6 +2309,81 @@ function IconButton({
   );
 }
 
+function InlineEdgeValueEditor({
+  capInputRef,
+  edge,
+  editorRef,
+  position,
+  onClose,
+  onValueChange,
+}: {
+  capInputRef: Ref<HTMLInputElement>;
+  edge: CircuitEdge;
+  editorRef: Ref<HTMLDivElement>;
+  position: InlineEdgeEditorPosition;
+  onClose: () => void;
+  onValueChange: (
+    edgeId: number,
+    values: { capacitanceText?: string | null; inductanceText?: string | null },
+  ) => void;
+}) {
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  }
+
+  return (
+    <div
+      aria-label="Edge values"
+      className={[
+        "inline-edge-editor",
+        `inline-edge-editor-${position.placement}`,
+      ].join(" ")}
+      data-testid="inline-edge-value-editor"
+      ref={editorRef}
+      role="group"
+      style={{
+        left: `${position.leftPercent}%`,
+        top: `${position.topPercent}%`,
+      }}
+      onKeyDown={handleKeyDown}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <label>
+        <span>C</span>
+        <input
+          aria-label="Inline capacitance"
+          data-testid="inline-cap-input"
+          ref={capInputRef}
+          value={edge.capacitance_text ?? ""}
+          onChange={(event) =>
+            onValueChange(edge.identifier, {
+              capacitanceText: event.target.value,
+            })
+          }
+        />
+      </label>
+      <label>
+        <span>L</span>
+        <input
+          aria-label="Inline inductance"
+          data-testid="inline-ind-input"
+          value={edge.inductance_text ?? ""}
+          onChange={(event) =>
+            onValueChange(edge.identifier, {
+              inductanceText: event.target.value,
+            })
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
 function ToolButton({
   active = false,
   buttonRef,
@@ -2275,19 +2445,12 @@ function CircuitEdgeShape({
   ) => void;
   onPointerDown: (event: PointerEvent<SVGLineElement>, edgeId: number) => void;
 }) {
-  const first = nodes.find((node) => node.identifier === edge.nodes[0]);
-  const second =
-    edge.nodes[1] === GROUND_NODE_ID
-      ? null
-      : nodes.find((node) => node.identifier === edge.nodes[1]);
-  if (!first || (!second && !edge.is_ground)) {
+  const endpoints = edgeEndpoints(edge, nodes);
+  if (!endpoints) {
     return null;
   }
 
-  const endX = edge.is_ground ? first.x + edge.ground_offset_x : second!.x;
-  const endY = edge.is_ground ? first.y + edge.ground_offset_y : second!.y;
-  const start = { x: first.x, y: first.y };
-  const end = { x: endX, y: endY };
+  const { end, start } = endpoints;
   const componentKind = edgeComponentKind(edge);
   const valueLabels = edgeValueLabels(edge, start, end, componentKind);
 
@@ -2298,8 +2461,8 @@ function CircuitEdgeShape({
         className="edge-hit-target"
         x1={start.x}
         y1={start.y}
-        x2={endX}
-        y2={endY}
+        x2={end.x}
+        y2={end.y}
         onPointerDown={(event) => onPointerDown(event, edge.identifier)}
       />
       {componentKind === "none" ? (
@@ -2325,8 +2488,8 @@ function CircuitEdgeShape({
           onPointerDown={onGroundPointerDown}
           rotation={groundSymbolRotation(start, end)}
           selected={selected}
-          x={endX}
-          y={endY}
+          x={end.x}
+          y={end.y}
         />
       ) : null}
       {valueLabels.map((valueLabel) => (
@@ -2706,6 +2869,58 @@ function svgPointFromClient(
   point.y = clientY;
   const transformed = point.matrixTransform(matrix.inverse());
   return { x: transformed.x, y: transformed.y };
+}
+
+function edgeEndpoints(edge: CircuitEdge, nodes: CircuitNode[]) {
+  const first = nodes.find((node) => node.identifier === edge.nodes[0]);
+  const second =
+    edge.nodes[1] === GROUND_NODE_ID
+      ? null
+      : nodes.find((node) => node.identifier === edge.nodes[1]);
+  if (!first || (!second && !edge.is_ground)) {
+    return null;
+  }
+
+  return {
+    end: {
+      x: edge.is_ground ? first.x + edge.ground_offset_x : second!.x,
+      y: edge.is_ground ? first.y + edge.ground_offset_y : second!.y,
+    },
+    start: { x: first.x, y: first.y },
+  };
+}
+
+function inlineEdgeEditorPosition(
+  edge: CircuitEdge,
+  nodes: CircuitNode[],
+  viewBox: ViewBox,
+): InlineEdgeEditorPosition | null {
+  const endpoints = edgeEndpoints(edge, nodes);
+  if (!endpoints) {
+    return null;
+  }
+  const geometry = edgeGeometry(endpoints.start, endpoints.end);
+  if (geometry.length === 0) {
+    return null;
+  }
+
+  const anchor = localEdgePoint(geometry, {
+    x: 0,
+    y: edge.is_ground
+      ? INLINE_GROUND_EDITOR_OFFSET
+      : -INLINE_EDGE_EDITOR_OFFSET,
+  });
+  const rawTopPercent = ((anchor.y - viewBox.y) / viewBox.height) * 100;
+
+  return {
+    leftPercent: clamp(
+      ((anchor.x - viewBox.x) / viewBox.width) * 100,
+      12,
+      88,
+    ),
+    placement: rawTopPercent < 24 ? "below" : "above",
+    topPercent: clamp(rawTopPercent, 12, 88),
+  };
 }
 
 function edgeComponentKind(edge: CircuitEdge): EdgeComponentKind {

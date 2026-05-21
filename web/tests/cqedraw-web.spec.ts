@@ -341,6 +341,82 @@ test("deletes selections without stealing inspector text entry", async ({
   );
 });
 
+test("edits newly created edge and ground values inline", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+
+  const inlineEditor = page.getByTestId("inline-edge-value-editor");
+  const inlineCapInput = page.getByTestId("inline-cap-input");
+  const inlineIndInput = page.getByTestId("inline-ind-input");
+  await expect(inlineEditor).toBeVisible();
+  await expect(inlineCapInput).toBeFocused();
+
+  await inlineCapInput.fill("Cinline");
+  await inlineIndInput.fill("1/Linline_inv");
+  await expect(page.getByTestId("cap-input")).toHaveValue("Cinline");
+  await expect(page.getByTestId("ind-input")).toHaveValue("1/Linline_inv");
+
+  await page.keyboard.press("Enter");
+  await expect(inlineEditor).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-1").click();
+  await expect(inlineEditor).toBeVisible();
+  await expect(inlineCapInput).toBeFocused();
+
+  await inlineCapInput.fill("Cg");
+  await inlineIndInput.fill("1/Lg_inv");
+  await expect(page.getByTestId("cap-input")).toHaveValue("Cg");
+  await expect(page.getByTestId("ind-input")).toHaveValue("1/Lg_inv");
+
+  await page.keyboard.press("Escape");
+  await expect(inlineEditor).toHaveCount(0);
+  await expect(page.getByTestId("edge-1")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cinline");
+  await expect(page.getByTestId("c-entries")).toContainText(
+    "(1, 1) = Cg + Cinline",
+  );
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(0, 0) = Linline_inv",
+  );
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(1, 1) = Lg_inv + Linline_inv",
+  );
+});
+
+test("dismisses inline edge values by clicking away without deleting the edge", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await expect(page.getByTestId("inline-edge-value-editor")).toBeVisible();
+
+  await canvas.click({ position: { x: 720, y: 460 } });
+  await expect(page.getByTestId("inline-edge-value-editor")).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("cap-input")).toHaveCount(0);
+});
+
 test("renders component symbols for regular and ground edge values", async ({
   page,
 }) => {

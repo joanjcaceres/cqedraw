@@ -266,6 +266,7 @@ test("renders component symbols for regular and ground edge values", async ({
     "data-component-kind",
     "capacitor",
   );
+  const standaloneCapacitorPlateHeight = await capacitorPlateHeight(regularSymbol);
   await expect(page.getByTestId("edge-value-cap-0")).toContainText("C=C12");
   await expect(page.getByTestId("edge-value-ind-0")).toHaveCount(0);
   await page.getByTestId("edge-0").click({ force: true });
@@ -286,6 +287,10 @@ test("renders component symbols for regular and ground edge values", async ({
   await expect(regularSymbol).toHaveAttribute(
     "data-component-kind",
     "parallel-lc",
+  );
+  expect(await capacitorPlateHeight(regularSymbol)).toBeCloseTo(
+    standaloneCapacitorPlateHeight,
+    1,
   );
   await expect(page.getByTestId("edge-value-cap-0")).toContainText("C=C12");
   await expect(page.getByTestId("edge-value-ind-0")).toContainText(
@@ -1159,6 +1164,39 @@ async function symbolCoordinatesStayWithinHalfLength(
       (coordinate) => Math.abs(coordinate) <= maxAbsCoordinate + 0.1,
     );
   }, halfLength);
+}
+
+async function capacitorPlateHeight(symbol: Locator) {
+  return symbol.evaluate((element) => {
+    const plates = Array.from(
+      element.querySelectorAll('[data-component-part="capacitor-plate"]'),
+    );
+    if (plates.length !== 2) {
+      throw new Error(`Expected 2 capacitor plates, found ${plates.length}.`);
+    }
+    const finiteAttribute = (plate: Element, name: string) => {
+      const value = plate.getAttribute(name);
+      if (value === null) {
+        throw new Error(`Missing capacitor plate ${name} attribute.`);
+      }
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue)) {
+        throw new Error(`Invalid capacitor plate ${name} attribute: ${value}.`);
+      }
+      return numberValue;
+    };
+    const heights = plates.map((plate) => {
+      const y1 = finiteAttribute(plate, "y1");
+      const y2 = finiteAttribute(plate, "y2");
+      return Math.abs(y2 - y1);
+    });
+    if (Math.abs(heights[0] - heights[1]) > 0.1) {
+      throw new Error(
+        `Expected matching capacitor plate heights, found ${heights[0]} and ${heights[1]}.`,
+      );
+    }
+    return heights[0];
+  });
 }
 
 function parseViewBox(value: string | null) {

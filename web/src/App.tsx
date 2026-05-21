@@ -74,6 +74,9 @@ const WHEEL_DELTA_LIMIT = 600;
 const WHEEL_DELTA_LINE_MODE = 1;
 const WHEEL_DELTA_PAGE_MODE = 2;
 const PROJECT_HISTORY_LIMIT = 100;
+const CAPACITOR_SYMBOL_HALF_LENGTH = 22;
+const INDUCTOR_SYMBOL_HALF_LENGTH = 42;
+const PARALLEL_LC_SYMBOL_HALF_LENGTH = 44;
 
 interface ViewBox {
   x: number;
@@ -2015,56 +2018,49 @@ function EdgeComponentSymbol({
 }
 
 function CapacitorSymbol({ halfLength }: { halfLength: number }) {
-  const symbolHalf = compactSymbolHalfLength(halfLength, 22);
-  const plateX = clampedSymbolInset(symbolHalf * 0.36, symbolHalf, 3);
-  const plateHeight = clamp(symbolHalf * 1.35, Math.min(10, symbolHalf), 34);
+  const symbolHalf = compactSymbolHalfLength(
+    halfLength,
+    CAPACITOR_SYMBOL_HALF_LENGTH,
+  );
+  const capacitor = capacitorGeometry(symbolHalf);
 
   return (
     <>
-      <line x1={-halfLength} y1={0} x2={-plateX} y2={0} />
-      <line x1={plateX} y1={0} x2={halfLength} y2={0} />
-      <line
-        className="component-plate"
-        x1={-plateX}
-        y1={-plateHeight / 2}
-        x2={-plateX}
-        y2={plateHeight / 2}
-      />
-      <line
-        className="component-plate"
-        x1={plateX}
-        y1={-plateHeight / 2}
-        x2={plateX}
-        y2={plateHeight / 2}
-      />
+      <line x1={-halfLength} y1={0} x2={-capacitor.plateX} y2={0} />
+      <line x1={capacitor.plateX} y1={0} x2={halfLength} y2={0} />
+      <CapacitorPlates centerY={0} geometry={capacitor} />
     </>
   );
 }
 
 function InductorSymbol({ halfLength }: { halfLength: number }) {
-  const coilHalf = compactSymbolHalfLength(halfLength, 42);
-  const coilRadius = clamp(coilHalf * 0.34, Math.min(4, coilHalf * 0.5), 14);
+  const coil = inductorGeometry(halfLength, INDUCTOR_SYMBOL_HALF_LENGTH);
 
   return (
     <>
-      <line x1={-halfLength} y1={0} x2={-coilHalf} y2={0} />
-      <path d={inductorPath(-coilHalf, coilHalf, 0, coilRadius)} />
-      <line x1={coilHalf} y1={0} x2={halfLength} y2={0} />
+      <line x1={-halfLength} y1={0} x2={-coil.half} y2={0} />
+      <path
+        data-component-part="inductor-coil"
+        d={inductorPath(-coil.half, coil.half, 0, coil.radius)}
+      />
+      <line x1={coil.half} y1={0} x2={halfLength} y2={0} />
     </>
   );
 }
 
 function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
-  const junctionX = compactSymbolHalfLength(halfLength, 44);
-  const branchY = clamp(
-    junctionX * 0.38,
-    Math.min(5, junctionX * 0.5),
-    Math.min(18, halfLength),
+  const junctionX = compactSymbolHalfLength(
+    halfLength,
+    PARALLEL_LC_SYMBOL_HALF_LENGTH,
   );
-  const plateX = clampedSymbolInset(junctionX * 0.18, junctionX, 3);
-  const plateHeight = clamp(branchY * 0.8, Math.min(6, branchY), branchY);
-  const coilHalf = junctionX * 0.68;
-  const coilRadius = clamp(branchY * 0.55, Math.min(3, branchY * 0.5), branchY);
+  const capacitor = capacitorGeometry(
+    Math.min(
+      junctionX,
+      compactSymbolHalfLength(halfLength, CAPACITOR_SYMBOL_HALF_LENGTH),
+    ),
+  );
+  const coil = inductorGeometry(junctionX, junctionX * 0.72, 10);
+  const branchY = parallelBranchOffset(halfLength, capacitor, coil.radius);
 
   return (
     <>
@@ -2073,27 +2069,92 @@ function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
       <line x1={-junctionX} y1={-branchY} x2={-junctionX} y2={branchY} />
       <line x1={junctionX} y1={-branchY} x2={junctionX} y2={branchY} />
 
-      <line x1={-junctionX} y1={-branchY} x2={-plateX} y2={-branchY} />
-      <line x1={plateX} y1={-branchY} x2={junctionX} y2={-branchY} />
-      <line
-        className="component-plate"
-        x1={-plateX}
-        y1={-branchY - plateHeight / 2}
-        x2={-plateX}
-        y2={-branchY + plateHeight / 2}
-      />
-      <line
-        className="component-plate"
-        x1={plateX}
-        y1={-branchY - plateHeight / 2}
-        x2={plateX}
-        y2={-branchY + plateHeight / 2}
-      />
+      <line x1={-junctionX} y1={-branchY} x2={-capacitor.plateX} y2={-branchY} />
+      <line x1={capacitor.plateX} y1={-branchY} x2={junctionX} y2={-branchY} />
+      <CapacitorPlates centerY={-branchY} geometry={capacitor} />
 
-      <line x1={-junctionX} y1={branchY} x2={-coilHalf} y2={branchY} />
-      <path d={inductorPath(-coilHalf, coilHalf, branchY, coilRadius)} />
-      <line x1={coilHalf} y1={branchY} x2={junctionX} y2={branchY} />
+      <line x1={-junctionX} y1={branchY} x2={-coil.half} y2={branchY} />
+      <path
+        data-component-part="inductor-coil"
+        d={inductorPath(-coil.half, coil.half, branchY, coil.radius)}
+      />
+      <line x1={coil.half} y1={branchY} x2={junctionX} y2={branchY} />
     </>
+  );
+}
+
+function CapacitorPlates({
+  centerY,
+  geometry,
+}: {
+  centerY: number;
+  geometry: CapacitorGeometry;
+}) {
+  const y1 = centerY - geometry.plateHeight / 2;
+  const y2 = centerY + geometry.plateHeight / 2;
+  return (
+    <>
+      <line
+        className="component-plate"
+        data-component-part="capacitor-plate"
+        x1={-geometry.plateX}
+        y1={y1}
+        x2={-geometry.plateX}
+        y2={y2}
+      />
+      <line
+        className="component-plate"
+        data-component-part="capacitor-plate"
+        x1={geometry.plateX}
+        y1={y1}
+        x2={geometry.plateX}
+        y2={y2}
+      />
+    </>
+  );
+}
+
+interface CapacitorGeometry {
+  plateX: number;
+  plateHeight: number;
+}
+
+function capacitorGeometry(symbolHalf: number): CapacitorGeometry {
+  return {
+    plateX: clampedSymbolInset(symbolHalf * 0.36, symbolHalf, 3),
+    plateHeight: clamp(symbolHalf * 1.35, Math.min(10, symbolHalf), 34),
+  };
+}
+
+function inductorGeometry(
+  halfLength: number,
+  preferredHalf: number,
+  maxRadius = 14,
+) {
+  const coilHalf = compactSymbolHalfLength(halfLength, preferredHalf);
+  return {
+    half: coilHalf,
+    radius: clamp(coilHalf * 0.34, Math.min(4, coilHalf * 0.5), maxRadius),
+  };
+}
+
+function parallelBranchOffset(
+  halfLength: number,
+  capacitor: CapacitorGeometry,
+  coilRadius: number,
+): number {
+  const maxBranchY = Math.max(
+    1,
+    halfLength - Math.max(capacitor.plateHeight / 2, coilRadius),
+  );
+  const preferredBranchY = Math.min(
+    18,
+    Math.max(capacitor.plateHeight / 2 + 8, coilRadius + 8),
+  );
+  return clamp(
+    preferredBranchY,
+    Math.min(4, maxBranchY),
+    maxBranchY,
   );
 }
 
@@ -2117,10 +2178,11 @@ function inductorPath(
   centerY: number,
   radius: number,
 ): string {
-  const loopWidth = (endX - startX) / 4;
+  const loopCount = 4;
+  const loopWidth = (endX - startX) / loopCount;
   const radiusX = loopWidth / 2;
   const segments = [`M ${startX} ${centerY}`];
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < loopCount; index += 1) {
     const x1 = startX + loopWidth * (index + 1);
     segments.push(`A ${radiusX} ${radius} 0 0 1 ${x1} ${centerY}`);
   }

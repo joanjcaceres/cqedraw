@@ -813,10 +813,15 @@ export function App() {
 
   function deleteSelection() {
     if (selectedEdgeId !== null) {
+      const edge = project.state.edges.find(
+        (candidate) => candidate.identifier === selectedEdgeId,
+      );
       commitProjectChange((current) => removeEdge(current, selectedEdgeId));
-      setSelectedEdgeId(null);
-      setGroundDragState(null);
+      resetProjectInteractionState();
       setOutput(null);
+      setEngineStatus(
+        edge?.is_ground ? "Deleted ground connection." : "Deleted connection.",
+      );
       return;
     }
     const nodeIdsToDelete =
@@ -826,16 +831,24 @@ export function App() {
           ? [selectedNodeId]
           : [];
     if (nodeIdsToDelete.length > 0) {
+      const selectedIds = new Set(nodeIdsToDelete);
+      const deletedNodeCount = project.state.nodes.filter((node) =>
+        selectedIds.has(node.identifier),
+      ).length;
+      const deletedConnectionCount = project.state.edges.filter((edge) =>
+        edge.nodes.some((nodeId) => selectedIds.has(nodeId)),
+      ).length;
       commitProjectChange((current) =>
         nodeIdsToDelete.reduce(
           (nextProject, nodeId) => removeNode(nextProject, nodeId),
           current,
         ),
       );
-      setSelectedNodeIds([]);
-      setSelectedNodeId(null);
-      setGroundDragState(null);
+      resetProjectInteractionState();
       setOutput(null);
+      setEngineStatus(
+        deletionStatusMessage(deletedNodeCount, deletedConnectionCount),
+      );
     }
   }
 
@@ -2660,6 +2673,24 @@ function projectsMatch(first: CircuitProject, second: CircuitProject): boolean {
   return (
     serializeProjectForDirtyCheck(first) === serializeProjectForDirtyCheck(second)
   );
+}
+
+function deletionStatusMessage(nodeCount: number, connectionCount: number): string {
+  if (nodeCount === 0) {
+    return connectionCount === 1
+      ? "Deleted 1 connection."
+      : `Deleted ${connectionCount} connections.`;
+  }
+
+  const nodeText = `${nodeCount} node${nodeCount === 1 ? "" : "s"}`;
+  if (connectionCount === 0) {
+    return `Deleted ${nodeText}.`;
+  }
+
+  const connectionText = `${connectionCount} connection${
+    connectionCount === 1 ? "" : "s"
+  }`;
+  return `Deleted ${nodeText} and ${connectionText}.`;
 }
 
 function appendProjectHistoryEntry(

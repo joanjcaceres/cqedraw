@@ -227,6 +227,7 @@ test("deletes selections without stealing inspector text entry", async ({
   await nodeNameInput.evaluate((element: HTMLInputElement) => element.blur());
   await page.keyboard.press("Backspace");
   await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Deleted 1 node.");
 
   await page.keyboard.press("n");
   await canvas.click({ position: { x: 160, y: 220 } });
@@ -235,14 +236,44 @@ test("deletes selections without stealing inspector text entry", async ({
   await page.getByTestId("node-1").click();
   await page.getByTestId("node-2").click();
 
-  await page.keyboard.press("v");
-  await page.getByTestId("node-1").click();
-  await page.getByTestId("node-2").click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { exact: true, name: "Box Select" }).click();
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) {
+    throw new Error("Canvas box is unavailable.");
+  }
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 360, canvasBox.y + 260);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
   await page.getByRole("button", { name: "Delete" }).click();
 
   await expect(page.getByTestId("node-1")).toHaveCount(0);
   await expect(page.getByTestId("node-2")).toHaveCount(0);
   await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Deleted 2 nodes and 1 connection.",
+  );
+  await expect(page.getByTestId("output-status")).not.toContainText(
+    "Selected 2 nodes.",
+  );
+
+  await page.keyboard.press("Control+Z");
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("node-2")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Undid last change.",
+  );
+
+  await page.keyboard.press("Control+Y");
+  await expect(page.getByTestId("node-1")).toHaveCount(0);
+  await expect(page.getByTestId("node-2")).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Redid last change.",
+  );
 });
 
 test("renders component symbols for regular and ground edge values", async ({

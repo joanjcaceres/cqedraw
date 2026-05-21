@@ -1282,6 +1282,11 @@ export function App() {
       ? `Ground ${selectedEdge.nodes[0]}`
       : `${selectedEdge.nodes[0]}-${selectedEdge.nodes[1]}`
     : null;
+  const mergeTargetNode =
+    selectedNodeIds.length > 1 && selectedNodeId !== null
+      ? project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null
+      : null;
+  const mergeTargetLabel = mergeTargetNode?.name ?? "selected node";
   const marqueeRect = marqueeState
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
@@ -1618,8 +1623,9 @@ export function App() {
               </div>
             ) : selectedNodeIds.length > 1 ? (
               <div className="metrics">
-                <span>{selectedNodeIds.length} nodes selected</span>
-                <span>Merge will keep node {selectedNodeId}</span>
+                <span data-testid="merge-target-summary">
+                  Merge keeps {mergeTargetLabel}
+                </span>
               </div>
             ) : (
               <div className="metrics">

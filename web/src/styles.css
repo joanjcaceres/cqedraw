@@ -641,6 +641,42 @@ textarea {
   margin: 0;
 }
 
+.help-dialog form {
+  margin: 0;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+}
+
+.dialog-field span {
+  color: #40536b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dialog-field input {
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  font: inherit;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.dialog-field input:focus {
+  border-color: #1fbad6;
+  box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
+  outline: none;
+}
+
+.dialog-error {
+  color: #b42318;
+  font-size: 13px;
+}
+
 .help-dialog button {
   background: #132640;
   border: 1px solid #254567;

@@ -61,6 +61,71 @@ test("prompts before closing only while the project has unsaved changes", async 
   await expectBeforeUnloadProtection(page, false);
 });
 
+test("starts a new project after confirmation", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  const newProjectButton = page.getByRole("button", { name: "New project" });
+  const nodeButton = page.getByRole("button", { exact: true, name: "Node" });
+  const undoButton = page.getByRole("button", { name: "Undo" });
+  const redoButton = page.getByRole("button", { name: "Redo" });
+  await expect(newProjectButton).toBeDisabled();
+
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(newProjectButton).toBeEnabled();
+  await expect(undoButton).toBeEnabled();
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+  await expectBeforeUnloadProtection(page, true);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
+  await expect(page.getByTestId("snippet-output")).not.toHaveValue("");
+  await page.getByRole("button", { name: "Zoom out" }).click();
+  const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(zoomedView.width).toBeGreaterThan(CANVAS_WIDTH);
+
+  await newProjectButton.click();
+  const dialog = page.getByRole("dialog", { name: "Start new project?" });
+  const cancelButton = dialog.getByRole("button", { name: "Cancel" });
+  await expect(dialog).toBeVisible();
+  await expect(cancelButton).toBeFocused();
+
+  await cancelButton.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(newProjectButton).toBeFocused();
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(page.getByTestId("snippet-output")).not.toHaveValue("");
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+
+  await newProjectButton.click();
+  await dialog.getByRole("button", { name: "Start new project" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-hint")).toBeVisible();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Started new project.",
+  );
+  await expect(page.getByTestId("snippet-output")).toHaveValue("");
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expectBeforeUnloadProtection(page, false);
+  await expect(newProjectButton).toBeDisabled();
+  await expect(nodeButton).toBeFocused();
+  await expect(undoButton).toBeDisabled();
+  await expect(redoButton).toBeDisabled();
+  expect(parseViewBox(await canvas.getAttribute("viewBox"))).toEqual({
+    x: 0,
+    y: 0,
+    width: 900,
+    height: 620,
+  });
+
+  await page.keyboard.press("Control+Z");
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Nothing to undo.");
+});
+
 test("undoes and redoes node creation and deletion", async ({ page }) => {
   await page.goto("/");
 
@@ -615,6 +680,7 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   const closeButton = page.getByRole("button", { name: "Close" });
   await expect(helpDialog).toBeVisible();
   await expect(helpDialog).toContainText("Use Node and click the canvas");
+  await expect(helpDialog).toContainText("Use New project to clear the drawing");
   await expect(helpDialog).toContainText("Cj, 40e-15, and 1/Lj_inv");
   await expect(closeButton).toBeFocused();
   await page.keyboard.press("Tab");

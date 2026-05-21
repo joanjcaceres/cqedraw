@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Copy,
   Download,
+  SquarePlus,
   GitBranch,
   Maximize2,
   Merge,
@@ -196,6 +197,7 @@ export function App() {
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
+  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [tutorialPromptOpen, setTutorialPromptOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
@@ -203,6 +205,8 @@ export function App() {
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const newProjectButtonRef = useRef<HTMLButtonElement | null>(null);
+  const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
@@ -245,6 +249,10 @@ export function App() {
   const hasUnsavedChanges = currentProjectSnapshot !== cleanProjectSnapshot;
   const canUndo = projectHistory.past.length > 0;
   const canRedo = projectHistory.future.length > 0;
+  const hasProjectContent =
+    project.state.nodes.length > 0 || project.state.edges.length > 0;
+  const canStartNewProject =
+    hasProjectContent || hasUnsavedChanges || output !== null || canUndo || canRedo;
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -1090,6 +1098,45 @@ export function App() {
     setOutput(null);
   }
 
+  function resetToNewProject() {
+    const next = emptyProject();
+    setProjectState(next);
+    setProjectHistoryState({ past: [], future: [] });
+    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
+    setMode("node");
+    resetProjectInteractionState();
+    setSelectionClipboard(null);
+    setViewBox(DEFAULT_VIEW_BOX);
+    setOutput(null);
+    setNewProjectDialogOpen(false);
+    setTutorialResetOpen(false);
+    setTutorialStep(null);
+    setTutorialCopied(false);
+    setEngineStatus("Started new project.");
+  }
+
+  function requestNewProject() {
+    if (!canStartNewProject) {
+      setEngineStatus("Project is already empty.");
+      return;
+    }
+    if (hasProjectContent || hasUnsavedChanges) {
+      setNewProjectDialogOpen(true);
+      return;
+    }
+    resetToNewProject();
+  }
+
+  function closeNewProjectDialog() {
+    setNewProjectDialogOpen(false);
+    window.requestAnimationFrame(() => newProjectButtonRef.current?.focus());
+  }
+
+  function confirmNewProject() {
+    resetToNewProject();
+    window.requestAnimationFrame(() => nodeButtonRef.current?.focus());
+  }
+
   function closeHelp() {
     setHelpOpen(false);
     window.requestAnimationFrame(() => helpButtonRef.current?.focus());
@@ -1165,7 +1212,10 @@ export function App() {
         event.defaultPrevented ||
         shouldIgnoreAppShortcut(
           event.target,
-          helpOpen || tutorialResetOpen || concatenateDialogOpen,
+          helpOpen ||
+            tutorialResetOpen ||
+            concatenateDialogOpen ||
+            newProjectDialogOpen,
         )
       ) {
         return;
@@ -1327,6 +1377,7 @@ export function App() {
           />
           <ToolButton
             active={mode === "node"}
+            buttonRef={nodeButtonRef}
             highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
             icon={<Circle size={17} />}
             label="Node"
@@ -1398,6 +1449,13 @@ export function App() {
           />
         </div>
         <div className="toolbar actions" aria-label="Project actions">
+          <ToolButton
+            buttonRef={newProjectButtonRef}
+            disabled={!canStartNewProject}
+            icon={<SquarePlus size={17} />}
+            label="New project"
+            onClick={requestNewProject}
+          />
           <ToolButton
             highlight={tutorialStep === "generate"}
             icon={<Play size={17} />}
@@ -1677,6 +1735,12 @@ export function App() {
           onConfirm={confirmTutorialReset}
         />
       ) : null}
+      {newProjectDialogOpen ? (
+        <NewProjectDialog
+          onCancel={closeNewProjectDialog}
+          onConfirm={confirmNewProject}
+        />
+      ) : null}
       {concatenateDialogOpen ? (
         <ConcatenateDialog
           defaultPortCount={concatenateAnalysis.autoPortCount}
@@ -1897,6 +1961,50 @@ function ConcatenateDialog({
   );
 }
 
+function NewProjectDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="new-project-title"
+        aria-modal="true"
+        className="help-dialog"
+        onKeyDown={(event) => handleDialogKeyDown(event, dialogRef.current, onCancel)}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <header>
+          <h2 id="new-project-title">Start new project?</h2>
+        </header>
+        <p>
+          This clears the current drawing, output, selection, and undo history. Save the
+          project first if you want to keep it.
+        </p>
+        <div className="dialog-actions">
+          <button ref={cancelRef} type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}>
+            Start new project
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TutorialResetDialog({
   onCancel,
   onConfirm,
@@ -1990,6 +2098,7 @@ function HelpDialog({
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
           <li>Use Concatenate to repeat the selected block to the right.</li>
+          <li>Use New project to clear the drawing and start from a default canvas.</li>
           <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
           <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
           <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to generate.</li>

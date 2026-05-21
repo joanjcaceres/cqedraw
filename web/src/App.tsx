@@ -550,7 +550,7 @@ export function App() {
     }
 
     if (mode === "ground") {
-      const existing = project.state.edges.find(
+      const existing = projectRef.current.state.edges.find(
         (edge) => edge.is_ground && edge.nodes[0] === nodeId,
       );
       if (existing) {

@@ -543,10 +543,10 @@ test("keeps existing ground when Ground mode clicks a grounded node", async ({
   await canvas.click({ position: { x: 220, y: 220 } });
 
   await page.getByRole("button", { name: "Ground" }).click();
-  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-0").dblclick();
   await expect(page.getByTestId("edge-0")).toHaveCount(1);
   await expect(page.getByTestId("output-status")).toContainText(
-    "Added ground connection.",
+    "Selected existing ground connection.",
   );
   await page.getByTestId("cap-input").fill("Cg");
   await page.getByTestId("ind-input").fill("1/Lg_inv");

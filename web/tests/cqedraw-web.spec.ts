@@ -244,6 +244,157 @@ test("deletes selections without stealing inspector text entry", async ({
   await expect(page.getByTestId("edge-0")).toHaveCount(0);
 });
 
+test("renders component symbols for regular and ground edge values", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  const regularSymbol = page.getByTestId("edge-symbol-0");
+  await expect(regularSymbol).toHaveCount(0);
+
+  await page.getByTestId("cap-input").fill("C12");
+  await expect(regularSymbol).toHaveAttribute(
+    "data-component-kind",
+    "capacitor",
+  );
+  await expect(page.getByTestId("edge-value-cap-0")).toContainText("C=C12");
+  await expect(page.getByTestId("edge-value-ind-0")).toHaveCount(0);
+  await page.getByTestId("edge-0").click({ force: true });
+  await expect(page.getByTestId("cap-input")).toHaveValue("C12");
+
+  await page.getByTestId("cap-input").fill("");
+  await page.getByTestId("ind-input").fill("1/L12_inv");
+  await expect(regularSymbol).toHaveAttribute(
+    "data-component-kind",
+    "inductor",
+  );
+  await expect(page.getByTestId("edge-value-cap-0")).toHaveCount(0);
+  await expect(page.getByTestId("edge-value-ind-0")).toContainText(
+    "L=1/L12_inv",
+  );
+
+  await page.getByTestId("cap-input").fill("C12");
+  await expect(regularSymbol).toHaveAttribute(
+    "data-component-kind",
+    "parallel-lc",
+  );
+  await expect(page.getByTestId("edge-value-cap-0")).toContainText("C=C12");
+  await expect(page.getByTestId("edge-value-ind-0")).toContainText(
+    "L=1/L12_inv",
+  );
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-1").click();
+  const groundSymbol = page.getByTestId("edge-symbol-1");
+  await expect(groundSymbol).toHaveCount(0);
+
+  await page.getByTestId("cap-input").fill("Cg");
+  await expect(groundSymbol).toHaveAttribute(
+    "data-component-kind",
+    "capacitor",
+  );
+  await expect(page.getByTestId("edge-value-cap-1")).toContainText("C=Cg");
+  await expect(page.getByTestId("edge-value-ind-1")).toHaveCount(0);
+
+  await page.getByTestId("cap-input").fill("");
+  await page.getByTestId("ind-input").fill("1/Lg_inv");
+  await expect(groundSymbol).toHaveAttribute(
+    "data-component-kind",
+    "inductor",
+  );
+  await expect(page.getByTestId("edge-value-cap-1")).toHaveCount(0);
+  await expect(page.getByTestId("edge-value-ind-1")).toContainText(
+    "L=1/Lg_inv",
+  );
+
+  await page.getByTestId("cap-input").fill("Cg");
+  await expect(groundSymbol).toHaveAttribute(
+    "data-component-kind",
+    "parallel-lc",
+  );
+  await expect(page.getByTestId("edge-value-cap-1")).toContainText("C=Cg");
+  await expect(page.getByTestId("edge-value-ind-1")).toContainText(
+    "L=1/Lg_inv",
+  );
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
+  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(1, 1) = L12_inv + Lg_inv",
+  );
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "reversed-and-short-symbols.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 1,
+        state: {
+          nodes: [
+            { identifier: 0, name: "A", x: 180, y: 220 },
+            { identifier: 1, name: "B", x: 340, y: 220 },
+            { identifier: 2, name: "C", x: 440, y: 220 },
+            { identifier: 3, name: "D", x: 460, y: 220 },
+          ],
+          edges: [
+            {
+              identifier: 0,
+              nodes: [1, 0],
+              capacitance_text: "Crev",
+              inductance_text: "Lrev",
+              is_ground: false,
+            },
+            {
+              identifier: 1,
+              nodes: [2, 3],
+              capacitance_text: "Cs",
+              inductance_text: "Ls",
+              is_ground: false,
+            },
+            {
+              identifier: 2,
+              nodes: [0, 1],
+              capacitance_text: "   ",
+              inductance_text: "\t",
+              is_ground: false,
+            },
+          ],
+        },
+      }),
+    ),
+  });
+  await expect(page.getByTestId("edge-symbol-0")).toHaveAttribute(
+    "data-component-kind",
+    "parallel-lc",
+  );
+  await expect(page.getByTestId("edge-value-cap-0")).toContainText("C=Crev");
+  await expect(page.getByTestId("edge-value-ind-0")).toContainText("L=Lrev");
+  expect(Number(await page.getByTestId("edge-value-cap-0").getAttribute("y"))).toBeLessThan(
+    220,
+  );
+  expect(Number(await page.getByTestId("edge-value-ind-0").getAttribute("y"))).toBeGreaterThan(
+    220,
+  );
+  await expect(page.getByTestId("edge-symbol-2")).toHaveCount(0);
+  await expect(page.getByTestId("edge-value-cap-2")).toHaveCount(0);
+  await expect(page.getByTestId("edge-value-ind-2")).toHaveCount(0);
+  expect(await symbolCoordinatesStayWithinHalfLength(page, "edge-symbol-1", 10)).toBe(
+    true,
+  );
+});
+
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
   await page.goto("/");
 
@@ -888,6 +1039,25 @@ test("does not create duplicate edges between the same two nodes", async ({ page
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).not.toContainText("2*C12");
 });
+
+async function symbolCoordinatesStayWithinHalfLength(
+  page: Page,
+  testId: string,
+  halfLength: number,
+) {
+  return page.getByTestId(testId).evaluate((symbol, maxAbsCoordinate) => {
+    const numericAttributes = Array.from(symbol.querySelectorAll("line"))
+      .flatMap((line) => ["x1", "x2", "y1", "y2"].map((name) => line.getAttribute(name)))
+      .filter((value): value is string => value !== null)
+      .map(Number);
+    const pathCoordinates = Array.from(symbol.querySelectorAll("path"))
+      .flatMap((path) => path.getAttribute("d")?.match(/-?\d+(?:\.\d+)?/g) ?? [])
+      .map(Number);
+    return [...numericAttributes, ...pathCoordinates].every(
+      (coordinate) => Math.abs(coordinate) <= maxAbsCoordinate + 0.1,
+    );
+  }, halfLength);
+}
 
 function parseViewBox(value: string | null) {
   if (!value) {

@@ -294,7 +294,7 @@ textarea {
 }
 
 .edge-line {
-  cursor: pointer;
+  pointer-events: none;
   stroke: #233b55;
   stroke-linecap: round;
   stroke-width: 4;
@@ -303,6 +303,32 @@ textarea {
 .edge-line.selected {
   stroke: #0aa6c2;
   stroke-width: 6;
+}
+
+.edge-hit-target {
+  cursor: pointer;
+  pointer-events: stroke;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-width: 18;
+}
+
+.edge-component-symbol {
+  fill: none;
+  pointer-events: none;
+  stroke: #233b55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.edge-component-symbol.selected {
+  stroke: #0aa6c2;
+  stroke-width: 4;
+}
+
+.edge-component-symbol .component-plate {
+  stroke-linecap: butt;
 }
 
 .selection-marquee {

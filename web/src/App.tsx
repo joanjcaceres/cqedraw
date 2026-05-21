@@ -135,6 +135,8 @@ interface ProjectHistory {
   future: CircuitProject[];
 }
 
+type EdgeComponentKind = "none" | "capacitor" | "inductor" | "parallel-lc";
+
 type TutorialStep =
   | "welcome"
   | "first-node"
@@ -1789,27 +1791,205 @@ function CircuitEdgeShape({
 
   const endX = edge.is_ground ? first.x + edge.ground_offset_x : second!.x;
   const endY = edge.is_ground ? first.y + edge.ground_offset_y : second!.y;
-  const labelX = (first.x + endX) / 2;
-  const labelY = (first.y + endY) / 2 - 8;
-  const label = edgeLabel(edge);
+  const start = { x: first.x, y: first.y };
+  const end = { x: endX, y: endY };
+  const componentKind = edgeComponentKind(edge);
+  const valueLabels = edgeValueLabels(edge, start, end, componentKind);
 
   return (
     <g>
       <line
         data-testid={`edge-${edge.identifier}`}
-        className={selected ? "edge-line selected" : "edge-line"}
-        x1={first.x}
-        y1={first.y}
+        className="edge-hit-target"
+        x1={start.x}
+        y1={start.y}
         x2={endX}
         y2={endY}
         onPointerDown={(event) => onPointerDown(event, edge.identifier)}
       />
+      {componentKind === "none" ? (
+        <line
+          className={selected ? "edge-line selected" : "edge-line"}
+          x1={start.x}
+          y1={start.y}
+          x2={end.x}
+          y2={end.y}
+        />
+      ) : (
+        <EdgeComponentSymbol
+          edgeId={edge.identifier}
+          kind={componentKind}
+          selected={selected}
+          start={start}
+          end={end}
+        />
+      )}
       {edge.is_ground ? <GroundSymbol x={endX} y={endY} /> : null}
-      <text className="edge-label" x={labelX} y={labelY}>
-        {label}
-      </text>
+      {valueLabels.map((valueLabel) => (
+        <text
+          key={valueLabel.testId}
+          className="edge-label"
+          data-testid={valueLabel.testId}
+          textAnchor="middle"
+          x={valueLabel.point.x}
+          y={valueLabel.point.y}
+        >
+          {valueLabel.text}
+        </text>
+      ))}
     </g>
   );
+}
+
+function EdgeComponentSymbol({
+  edgeId,
+  end,
+  kind,
+  selected,
+  start,
+}: {
+  edgeId: number;
+  end: Point;
+  kind: Exclude<EdgeComponentKind, "none">;
+  selected: boolean;
+  start: Point;
+}) {
+  const geometry = edgeGeometry(start, end);
+  if (geometry.length === 0) {
+    return null;
+  }
+
+  return (
+    <g
+      className={selected ? "edge-component-symbol selected" : "edge-component-symbol"}
+      data-component-kind={kind}
+      data-testid={`edge-symbol-${edgeId}`}
+      transform={`translate(${geometry.center.x} ${geometry.center.y}) rotate(${geometry.angle})`}
+    >
+      {kind === "capacitor" ? (
+        <CapacitorSymbol halfLength={geometry.length / 2} />
+      ) : null}
+      {kind === "inductor" ? (
+        <InductorSymbol halfLength={geometry.length / 2} />
+      ) : null}
+      {kind === "parallel-lc" ? (
+        <ParallelLcSymbol halfLength={geometry.length / 2} />
+      ) : null}
+    </g>
+  );
+}
+
+function CapacitorSymbol({ halfLength }: { halfLength: number }) {
+  const symbolHalf = compactSymbolHalfLength(halfLength, 22);
+  const plateX = clampedSymbolInset(symbolHalf * 0.36, symbolHalf, 3);
+  const plateHeight = clamp(symbolHalf * 1.35, Math.min(10, symbolHalf), 34);
+
+  return (
+    <>
+      <line x1={-halfLength} y1={0} x2={-plateX} y2={0} />
+      <line x1={plateX} y1={0} x2={halfLength} y2={0} />
+      <line
+        className="component-plate"
+        x1={-plateX}
+        y1={-plateHeight / 2}
+        x2={-plateX}
+        y2={plateHeight / 2}
+      />
+      <line
+        className="component-plate"
+        x1={plateX}
+        y1={-plateHeight / 2}
+        x2={plateX}
+        y2={plateHeight / 2}
+      />
+    </>
+  );
+}
+
+function InductorSymbol({ halfLength }: { halfLength: number }) {
+  const coilHalf = compactSymbolHalfLength(halfLength, 42);
+  const coilRadius = clamp(coilHalf * 0.34, Math.min(4, coilHalf * 0.5), 14);
+
+  return (
+    <>
+      <line x1={-halfLength} y1={0} x2={-coilHalf} y2={0} />
+      <path d={inductorPath(-coilHalf, coilHalf, 0, coilRadius)} />
+      <line x1={coilHalf} y1={0} x2={halfLength} y2={0} />
+    </>
+  );
+}
+
+function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
+  const junctionX = compactSymbolHalfLength(halfLength, 44);
+  const branchY = clamp(
+    junctionX * 0.38,
+    Math.min(5, junctionX * 0.5),
+    Math.min(18, halfLength),
+  );
+  const plateX = clampedSymbolInset(junctionX * 0.18, junctionX, 3);
+  const plateHeight = clamp(branchY * 0.8, Math.min(6, branchY), branchY);
+  const coilHalf = junctionX * 0.68;
+  const coilRadius = clamp(branchY * 0.55, Math.min(3, branchY * 0.5), branchY);
+
+  return (
+    <>
+      <line x1={-halfLength} y1={0} x2={-junctionX} y2={0} />
+      <line x1={junctionX} y1={0} x2={halfLength} y2={0} />
+      <line x1={-junctionX} y1={-branchY} x2={-junctionX} y2={branchY} />
+      <line x1={junctionX} y1={-branchY} x2={junctionX} y2={branchY} />
+
+      <line x1={-junctionX} y1={-branchY} x2={-plateX} y2={-branchY} />
+      <line x1={plateX} y1={-branchY} x2={junctionX} y2={-branchY} />
+      <line
+        className="component-plate"
+        x1={-plateX}
+        y1={-branchY - plateHeight / 2}
+        x2={-plateX}
+        y2={-branchY + plateHeight / 2}
+      />
+      <line
+        className="component-plate"
+        x1={plateX}
+        y1={-branchY - plateHeight / 2}
+        x2={plateX}
+        y2={-branchY + plateHeight / 2}
+      />
+
+      <line x1={-junctionX} y1={branchY} x2={-coilHalf} y2={branchY} />
+      <path d={inductorPath(-coilHalf, coilHalf, branchY, coilRadius)} />
+      <line x1={coilHalf} y1={branchY} x2={junctionX} y2={branchY} />
+    </>
+  );
+}
+
+function compactSymbolHalfLength(halfLength: number, preferred: number): number {
+  const wireGap = Math.min(10, halfLength * 0.25);
+  return Math.min(preferred, Math.max(1, halfLength - wireGap));
+}
+
+function clampedSymbolInset(
+  preferred: number,
+  halfLength: number,
+  minimum: number,
+): number {
+  const maxInset = Math.max(halfLength - 2, halfLength * 0.5);
+  return clamp(preferred, Math.min(minimum, maxInset), maxInset);
+}
+
+function inductorPath(
+  startX: number,
+  endX: number,
+  centerY: number,
+  radius: number,
+): string {
+  const loopWidth = (endX - startX) / 4;
+  const radiusX = loopWidth / 2;
+  const segments = [`M ${startX} ${centerY}`];
+  for (let index = 0; index < 4; index += 1) {
+    const x1 = startX + loopWidth * (index + 1);
+    segments.push(`A ${radiusX} ${radius} 0 0 1 ${x1} ${centerY}`);
+  }
+  return segments.join(" ");
 }
 
 function GroundSymbol({ x, y }: { x: number; y: number }) {
@@ -1917,17 +2097,6 @@ function EntryList({
   );
 }
 
-function edgeLabel(edge: CircuitEdge): string {
-  const parts = [];
-  if (edge.capacitance_text) {
-    parts.push(`C=${edge.capacitance_text}`);
-  }
-  if (edge.inductance_text) {
-    parts.push(`L=${edge.inductance_text}`);
-  }
-  return parts.join(", ") || "edge";
-}
-
 function svgPoint(event: PointerEvent<SVGSVGElement>) {
   return svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
 }
@@ -1950,6 +2119,111 @@ function svgPointFromClient(
   point.y = clientY;
   const transformed = point.matrixTransform(matrix.inverse());
   return { x: transformed.x, y: transformed.y };
+}
+
+function edgeComponentKind(edge: CircuitEdge): EdgeComponentKind {
+  const hasCapacitance = Boolean(edge.capacitance_text?.trim());
+  const hasInductance = Boolean(edge.inductance_text?.trim());
+  if (hasCapacitance && hasInductance) {
+    return "parallel-lc";
+  }
+  if (hasCapacitance) {
+    return "capacitor";
+  }
+  if (hasInductance) {
+    return "inductor";
+  }
+  return "none";
+}
+
+function edgeGeometry(start: Point, end: Point) {
+  const rawDx = end.x - start.x;
+  const rawDy = end.y - start.y;
+  const shouldFlipDirection = rawDx < 0 || (Math.abs(rawDx) < 0.001 && rawDy > 0);
+  const dx = shouldFlipDirection ? -rawDx : rawDx;
+  const dy = shouldFlipDirection ? -rawDy : rawDy;
+  const length = Math.hypot(dx, dy);
+  return {
+    angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+    center: {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    },
+    dx,
+    dy,
+    length,
+  };
+}
+
+function edgeValueLabels(
+  edge: CircuitEdge,
+  start: Point,
+  end: Point,
+  componentKind: EdgeComponentKind,
+) {
+  const capacitanceText = edge.capacitance_text?.trim();
+  const inductanceText = edge.inductance_text?.trim();
+  if (componentKind === "none") {
+    return [];
+  }
+
+  const geometry = edgeGeometry(start, end);
+  if (geometry.length === 0) {
+    return [];
+  }
+
+  if (componentKind === "parallel-lc") {
+    return [
+      ...(capacitanceText
+        ? [
+            {
+              point: localEdgePoint(geometry, { x: 0, y: -54 }),
+              testId: `edge-value-cap-${edge.identifier}`,
+              text: `C=${capacitanceText}`,
+            },
+          ]
+        : []),
+      ...(inductanceText
+        ? [
+            {
+              point: localEdgePoint(geometry, { x: 0, y: 62 }),
+              testId: `edge-value-ind-${edge.identifier}`,
+              text: `L=${inductanceText}`,
+            },
+          ]
+        : []),
+    ];
+  }
+
+  const valueText =
+    componentKind === "capacitor" ? capacitanceText : inductanceText;
+  if (!valueText) {
+    return [];
+  }
+
+  return [
+    {
+      point: localEdgePoint(geometry, { x: 0, y: -44 }),
+      testId:
+        componentKind === "capacitor"
+          ? `edge-value-cap-${edge.identifier}`
+          : `edge-value-ind-${edge.identifier}`,
+      text: `${componentKind === "capacitor" ? "C" : "L"}=${valueText}`,
+    },
+  ];
+}
+
+function localEdgePoint(
+  geometry: ReturnType<typeof edgeGeometry>,
+  localPoint: Point,
+): Point {
+  const angle = (geometry.angle * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: geometry.center.x + localPoint.x * cos - localPoint.y * sin,
+    y: geometry.center.y + localPoint.x * sin + localPoint.y * cos,
+  };
 }
 
 function viewBoxToString(viewBox: ViewBox): string {

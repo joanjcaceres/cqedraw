@@ -206,6 +206,7 @@ export function App() {
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const newProjectButtonRef = useRef<HTMLButtonElement | null>(null);
+  const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
@@ -1133,7 +1134,7 @@ export function App() {
 
   function confirmNewProject() {
     resetToNewProject();
-    window.requestAnimationFrame(() => newProjectButtonRef.current?.focus());
+    window.requestAnimationFrame(() => nodeButtonRef.current?.focus());
   }
 
   function closeHelp() {
@@ -1376,6 +1377,7 @@ export function App() {
           />
           <ToolButton
             active={mode === "node"}
+            buttonRef={nodeButtonRef}
             highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
             icon={<Circle size={17} />}
             label="Node"

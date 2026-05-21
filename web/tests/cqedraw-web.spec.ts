@@ -66,6 +66,7 @@ test("starts a new project after confirmation", async ({ page }) => {
 
   const canvas = page.getByTestId("canvas");
   const newProjectButton = page.getByRole("button", { name: "New project" });
+  const nodeButton = page.getByRole("button", { exact: true, name: "Node" });
   const undoButton = page.getByRole("button", { name: "Undo" });
   const redoButton = page.getByRole("button", { name: "Redo" });
   await expect(newProjectButton).toBeDisabled();
@@ -110,6 +111,7 @@ test("starts a new project after confirmation", async ({ page }) => {
   await expect(page.getByTestId("save-status")).toContainText("Saved");
   await expectBeforeUnloadProtection(page, false);
   await expect(newProjectButton).toBeDisabled();
+  await expect(nodeButton).toBeFocused();
   await expect(undoButton).toBeDisabled();
   await expect(redoButton).toBeDisabled();
   expect(parseViewBox(await canvas.getAttribute("viewBox"))).toEqual({

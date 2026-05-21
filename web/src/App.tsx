@@ -1285,6 +1285,22 @@ export function App() {
         return;
       }
 
+      if (key === "+" || key === "=") {
+        event.preventDefault();
+        zoomCanvas(ZOOM_IN_FACTOR);
+        return;
+      }
+      if (key === "-") {
+        event.preventDefault();
+        zoomCanvas(ZOOM_OUT_FACTOR);
+        return;
+      }
+      if (key === "0") {
+        event.preventDefault();
+        fitCanvasView();
+        return;
+      }
+
       if (
         (event.key === "Delete" || event.key === "Backspace") &&
         (selectedEdgeId !== null ||
@@ -1513,16 +1529,19 @@ export function App() {
               icon={<ZoomIn size={17} />}
               label="Zoom in"
               onClick={() => zoomCanvas(ZOOM_IN_FACTOR)}
+              shortcut="+/="
             />
             <IconButton
               icon={<ZoomOut size={17} />}
               label="Zoom out"
               onClick={() => zoomCanvas(ZOOM_OUT_FACTOR)}
+              shortcut="-"
             />
             <IconButton
               icon={<Maximize2 size={17} />}
               label="Fit view"
               onClick={fitCanvasView}
+              shortcut="0"
             />
           </div>
           <svg
@@ -2095,7 +2114,7 @@ function HelpDialog({
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
           <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
-          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
+          <li>Use the canvas buttons, +/=, -, 0, wheel, or trackpad to adjust the view; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
           <li>Use Concatenate to repeat the selected block to the right.</li>
           <li>Use New project to clear the drawing and start from a default canvas.</li>
@@ -2173,16 +2192,20 @@ function IconButton({
   icon,
   label,
   onClick,
+  shortcut,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  shortcut?: string;
 }) {
+  const tooltipLabel = shortcut ? `${label} (${shortcut})` : label;
+
   return (
     <button
       aria-label={label}
       className="icon-button"
-      title={label}
+      title={tooltipLabel}
       type="button"
       onClick={onClick}
     >

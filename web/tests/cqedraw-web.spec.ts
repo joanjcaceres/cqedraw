@@ -919,14 +919,43 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   await canvas.click({ position: { x: 160, y: 220 } });
 
   const grid = page.getByTestId("grid-surface");
+  const zoomInButton = page.getByRole("button", { name: "Zoom in" });
+  const zoomOutButton = page.getByRole("button", { name: "Zoom out" });
+  const fitViewButton = page.getByRole("button", { name: "Fit view" });
+  await expect(zoomInButton).toHaveAttribute("title", "Zoom in (+/=)");
+  await expect(zoomOutButton).toHaveAttribute("title", "Zoom out (-)");
+  await expect(fitViewButton).toHaveAttribute("title", "Fit view (0)");
+
   const initialView = parseViewBox(await canvas.getAttribute("viewBox"));
   await expectGridCoversView(grid, initialView);
-  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.keyboard.press("=");
+  const shortcutZoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(shortcutZoomedView.width).toBeLessThan(initialView.width);
+  await page.keyboard.press("-");
+  const shortcutZoomedOutView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(shortcutZoomedOutView.width).toBeCloseTo(initialView.width, 5);
+  expect(shortcutZoomedOutView.height).toBeCloseTo(initialView.height, 5);
+  await page.keyboard.press("=");
+  await page.keyboard.press("0");
+  const shortcutFittedView = parseViewBox(await canvas.getAttribute("viewBox"));
+  expect(shortcutFittedView.width).toBeGreaterThan(shortcutZoomedView.width);
+  expect(shortcutFittedView.width).toBeGreaterThanOrEqual(899);
+
+  const viewBeforeInspectorKeys = parseViewBox(await canvas.getAttribute("viewBox"));
+  await page.getByTestId("node-name-input").click();
+  await page.keyboard.press("=");
+  await page.keyboard.press("-");
+  await page.keyboard.press("0");
+  expect(parseViewBox(await canvas.getAttribute("viewBox"))).toEqual(
+    viewBeforeInspectorKeys,
+  );
+
+  await zoomInButton.click();
   const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(zoomedView.width).toBeLessThan(initialView.width);
 
   for (let step = 0; step < 7; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await zoomOutButton.click();
   }
   const wideView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(wideView.width).toBeGreaterThan(OLD_MAX_VIEW_WIDTH);
@@ -947,7 +976,7 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
   expect(pannedView.x).toBeLessThan(wideView.x);
   await expectGridCoversView(grid, pannedView);
 
-  await page.getByRole("button", { name: "Fit view" }).click();
+  await fitViewButton.click();
   const fittedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(fittedView.width).toBeGreaterThanOrEqual(899);
   expect(fittedView.width).toBeLessThan(wideView.width);
@@ -986,7 +1015,7 @@ test("zooms, pans, fits the view, and keeps dragged nodes recoverable", async ({
     });
   }
 
-  await page.getByRole("button", { name: "Fit view" }).click();
+  await fitViewButton.click();
 
   const node = page.getByTestId("node-0");
   const nodeBox = await node.boundingBox();

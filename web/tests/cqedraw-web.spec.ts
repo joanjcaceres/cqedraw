@@ -120,6 +120,13 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
   await page.mouse.move(0, 0);
   await expect(selectButton.locator(".tool-button-tooltip")).toBeHidden();
 
+  const boxSelectButton = page.getByRole("button", {
+    exact: true,
+    name: "Box Select",
+  });
+  await expect(boxSelectButton).toHaveAttribute("aria-label", "Box Select");
+  await expect(boxSelectButton).toHaveAttribute("title", "Box Select");
+
   const pasteButton = page.getByRole("button", {
     exact: true,
     name: "Paste",
@@ -128,6 +135,7 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
   await expect(pasteButton).toHaveAttribute("title", "Paste");
   await page.keyboard.press("Tab");
   await expect(selectButton).toBeFocused();
+  await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
@@ -400,7 +408,7 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12");
 });
 
-test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
+test("selects nodes with box select mode and keeps shift-drag shortcut", async ({
   page,
 }) => {
   await page.goto("/");
@@ -411,20 +419,18 @@ test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
   await canvas.click({ position: { x: 330, y: 220 } });
   await canvas.click({ position: { x: 500, y: 220 } });
 
-  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByRole("button", { exact: true, name: "Box Select" }).click();
   const mergeButton = page.getByRole("button", { name: "Merge" });
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
   }
 
-  await page.keyboard.down("Shift");
   await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
   await page.mouse.down();
   await page.mouse.move(canvasBox.x + 380, canvasBox.y + 260);
   await expect(page.getByTestId("selection-marquee")).toBeVisible();
   await page.mouse.up();
-  await page.keyboard.up("Shift");
 
   await expect(page.getByTestId("selection-marquee")).toHaveCount(0);
   await expect(page.getByText("2 nodes selected")).toBeVisible();
@@ -481,6 +487,7 @@ test("selects nodes with a shift-drag marquee and clears empty boxes", async ({
   await expect(page.getByTestId("node-1")).toBeVisible();
   await expect(page.getByTestId("node-2")).toBeVisible();
 
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
   await page.keyboard.down("Shift");
   await page.mouse.move(canvasBox.x + 650, canvasBox.y + 360);
   await page.mouse.down();

@@ -1,6 +1,6 @@
 export const GROUND_NODE_ID = -1;
 
-export type ToolMode = "select" | "node" | "edge" | "ground";
+export type ToolMode = "select" | "box-select" | "node" | "edge" | "ground";
 
 export interface CircuitNode {
   identifier: number;

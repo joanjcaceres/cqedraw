@@ -1,6 +1,7 @@
 import {
   ClipboardCopy,
   ClipboardPaste,
+  BoxSelect,
   Circle,
   CircleHelp,
   Copy,
@@ -332,9 +333,9 @@ export function App() {
       setOutput(null);
       return;
     }
-    if (mode === "select") {
+    if (mode === "select" || mode === "box-select") {
       event.currentTarget.setPointerCapture(event.pointerId);
-      if (event.shiftKey) {
+      if (mode === "box-select" || event.shiftKey) {
         setMarqueeState({
           pointerId: event.pointerId,
           start: point,
@@ -414,7 +415,9 @@ export function App() {
       return;
     }
 
-    if (mode === "select" && event.shiftKey) {
+    const isSelectionMode = mode === "select" || mode === "box-select";
+
+    if (isSelectionMode && event.shiftKey) {
       toggleNodeSelection(nodeId);
       setNodeDragState(null);
       setPanState(null);
@@ -422,7 +425,7 @@ export function App() {
     }
 
     const isDraggingExistingSelection =
-      mode === "select" &&
+      isSelectionMode &&
       selectedNodeIds.length > 1 &&
       selectedNodeIds.includes(nodeId);
     const dragNodeIds = isDraggingExistingSelection ? selectedNodeIds : [nodeId];
@@ -473,7 +476,7 @@ export function App() {
     if (
       marqueeState &&
       marqueeState.pointerId === event.pointerId &&
-      mode === "select"
+      (mode === "select" || mode === "box-select")
     ) {
       const current = svgPoint(event);
       setMarqueeState((state) =>
@@ -519,7 +522,7 @@ export function App() {
     if (
       marqueeState &&
       marqueeState.pointerId === event.pointerId &&
-      mode === "select"
+      (mode === "select" || mode === "box-select")
     ) {
       const selectionRect = rectFromPoints(marqueeState.start, svgPoint(event));
       const selectedIds = nodeIdsInsideRect(project.state.nodes, selectionRect);
@@ -854,6 +857,12 @@ export function App() {
             onClick={() => setModeAndReset("select")}
           />
           <ToolButton
+            active={mode === "box-select"}
+            icon={<BoxSelect size={17} />}
+            label="Box Select"
+            onClick={() => setModeAndReset("box-select")}
+          />
+          <ToolButton
             active={mode === "node"}
             highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
             icon={<Circle size={17} />}
@@ -963,6 +972,7 @@ export function App() {
             className={[
               "circuit-canvas",
               mode === "select" ? "pan-ready" : "",
+              mode === "box-select" ? "box-select-ready" : "",
               panState ? "panning" : "",
               marqueeState ? "selecting" : "",
               tutorialStep === "first-node" || tutorialStep === "second-node"
@@ -1354,7 +1364,7 @@ function HelpDialog({
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
           <li>Hover over toolbar icons or tab to them to see their labels.</li>
-          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or Shift-drag to box-select nodes.</li>
+          <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste to duplicate selected nodes and their contained connections.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>

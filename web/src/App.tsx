@@ -238,45 +238,6 @@ export function App() {
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    function handleProjectHistoryKeyDown(event: globalThis.KeyboardEvent) {
-      if (
-        event.defaultPrevented ||
-        shouldIgnoreProjectHistoryShortcut(
-          event.target,
-          helpOpen || tutorialResetOpen,
-        )
-      ) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      const usesHistoryModifier = event.metaKey || event.ctrlKey;
-      if (!usesHistoryModifier || event.altKey) {
-        return;
-      }
-
-      if (key === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          redoProjectChange();
-        } else {
-          undoProjectChange();
-        }
-        return;
-      }
-
-      if (key === "y") {
-        event.preventDefault();
-        redoProjectChange();
-      }
-    }
-
-    window.addEventListener("keydown", handleProjectHistoryKeyDown);
-    return () =>
-      window.removeEventListener("keydown", handleProjectHistoryKeyDown);
-  }, [helpOpen, tutorialResetOpen]);
-
-  useEffect(() => {
     const canvasElement = canvasRef.current;
     if (!canvasElement) {
       return;
@@ -733,8 +694,19 @@ export function App() {
       setOutput(null);
       return;
     }
-    if (selectedNodeId !== null) {
-      commitProjectChange((current) => removeNode(current, selectedNodeId));
+    const nodeIdsToDelete =
+      selectedNodeIds.length > 0
+        ? selectedNodeIds
+        : selectedNodeId !== null
+          ? [selectedNodeId]
+          : [];
+    if (nodeIdsToDelete.length > 0) {
+      commitProjectChange((current) =>
+        nodeIdsToDelete.reduce(
+          (nextProject, nodeId) => removeNode(nextProject, nodeId),
+          current,
+        ),
+      );
       setSelectedNodeIds([]);
       setSelectedNodeId(null);
       setOutput(null);
@@ -974,20 +946,121 @@ export function App() {
   }
 
   useEffect(() => {
-    if (!pastePreview) {
-      return;
-    }
+    function handleAppKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        shouldIgnoreAppShortcut(event.target, helpOpen || tutorialResetOpen)
+      ) {
+        return;
+      }
 
-    function handlePastePreviewKeyDown(event: globalThis.KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      const hasSystemModifier = event.metaKey || event.ctrlKey;
+
       if (event.key === "Escape") {
         event.preventDefault();
-        cancelPastePreview();
+        if (!pastePreview && pendingEdgeNodeId !== null) {
+          setEngineStatus("Edge cancelled.");
+        }
+        setModeAndReset("select");
+        return;
+      }
+
+      if (hasSystemModifier && !event.altKey) {
+        if (key === "z") {
+          event.preventDefault();
+          if (event.shiftKey) {
+            redoProjectChange();
+          } else {
+            undoProjectChange();
+          }
+          return;
+        }
+
+        if (key === "y") {
+          event.preventDefault();
+          redoProjectChange();
+          return;
+        }
+
+        if (key === "c" && !event.shiftKey) {
+          event.preventDefault();
+          copySelectedGraphElements();
+          return;
+        }
+
+        if (key === "v" && !event.shiftKey) {
+          event.preventDefault();
+          startPastePreview();
+          return;
+        }
+
+        if (key === "s" && !event.shiftKey) {
+          event.preventDefault();
+          saveProject();
+          return;
+        }
+
+        if (key === "o" && !event.shiftKey) {
+          event.preventDefault();
+          fileInputRef.current?.click();
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void generateOutput();
+        }
+        return;
+      }
+
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        (selectedEdgeId !== null ||
+          selectedNodeId !== null ||
+          selectedNodeIds.length > 0)
+      ) {
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+
+      if (event.shiftKey) {
+        return;
+      }
+
+      if (key === "m") {
+        mergeSelectedNodes();
+        return;
+      }
+      if (key === "v") {
+        setModeAndReset("select");
+        return;
+      }
+      if (key === "b") {
+        setModeAndReset("box-select");
+        return;
+      }
+      if (key === "n") {
+        setModeAndReset("node");
+        return;
+      }
+      if (key === "e") {
+        setModeAndReset("edge");
+        return;
+      }
+      if (key === "g") {
+        setModeAndReset("ground");
       }
     }
 
-    window.addEventListener("keydown", handlePastePreviewKeyDown);
-    return () => window.removeEventListener("keydown", handlePastePreviewKeyDown);
-  }, [pastePreview]);
+    window.addEventListener("keydown", handleAppKeyDown);
+    return () => window.removeEventListener("keydown", handleAppKeyDown);
+  });
 
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
@@ -1014,12 +1087,14 @@ export function App() {
             active={mode === "select"}
             icon={<MousePointer2 size={17} />}
             label="Select"
+            shortcut="V"
             onClick={() => setModeAndReset("select")}
           />
           <ToolButton
             active={mode === "box-select"}
             icon={<BoxSelect size={17} />}
             label="Box Select"
+            shortcut="B"
             onClick={() => setModeAndReset("box-select")}
           />
           <ToolButton
@@ -1027,6 +1102,7 @@ export function App() {
             highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
             icon={<Circle size={17} />}
             label="Node"
+            shortcut="N"
             onClick={() => setModeAndReset("node")}
           />
           <ToolButton
@@ -1034,6 +1110,7 @@ export function App() {
             highlight={tutorialStep === "edge-mode"}
             icon={<GitBranch size={17} />}
             label="Edge"
+            shortcut="E"
             onClick={() => setModeAndReset("edge")}
           />
           <ToolButton
@@ -1041,39 +1118,46 @@ export function App() {
             highlight={tutorialStep === "ground-mode"}
             icon={<GroundIcon size={17} />}
             label="Ground"
+            shortcut="G"
             onClick={() => setModeAndReset("ground")}
           />
           <ToolButton
             disabled={selectedNodeIds.length < 2}
             icon={<Merge size={17} />}
             label="Merge"
+            shortcut="M"
             onClick={mergeSelectedNodes}
           />
           <ToolButton
             icon={<ClipboardCopy size={17} />}
             label="Copy Selection"
+            shortcut="Ctrl/Cmd+C"
             onClick={copySelectedGraphElements}
           />
           <ToolButton
             icon={<ClipboardPaste size={17} />}
             label="Paste"
+            shortcut="Ctrl/Cmd+V"
             onClick={startPastePreview}
           />
           <ToolButton
             icon={<Trash2 size={17} />}
             label="Delete"
+            shortcut="Del/Backspace"
             onClick={deleteSelection}
           />
           <ToolButton
             disabled={!canUndo}
             icon={<Undo2 size={17} />}
             label="Undo"
+            shortcut="Ctrl/Cmd+Z"
             onClick={undoProjectChange}
           />
           <ToolButton
             disabled={!canRedo}
             icon={<Redo2 size={17} />}
             label="Redo"
+            shortcut="Ctrl/Cmd+Y"
             onClick={redoProjectChange}
           />
         </div>
@@ -1082,6 +1166,7 @@ export function App() {
             highlight={tutorialStep === "generate"}
             icon={<Play size={17} />}
             label="Generate"
+            shortcut="Ctrl/Cmd+Enter"
             onClick={generateOutput}
           />
           <ToolButton
@@ -1090,13 +1175,19 @@ export function App() {
             label="Copy"
             onClick={copySnippet}
           />
-          <ToolButton icon={<Download size={17} />} label="Save" onClick={saveProject} />
+          <ToolButton
+            icon={<Download size={17} />}
+            label="Save"
+            shortcut="Ctrl/Cmd+S"
+            onClick={saveProject}
+          />
           <span aria-live="polite" data-testid="save-status">
             {hasUnsavedChanges ? "Unsaved changes" : "Saved"}
           </span>
           <ToolButton
             icon={<Upload size={17} />}
             label="Load"
+            shortcut="Ctrl/Cmd+O"
             onClick={() => fileInputRef.current?.click()}
           />
           <ToolButton
@@ -1290,6 +1381,7 @@ export function App() {
                 <label>
                   <span>Node</span>
                   <input
+                    data-testid="node-name-input"
                     value={selectedNode.name}
                     onChange={(event) =>
                       commitProjectChange((current) =>
@@ -1535,10 +1627,12 @@ function HelpDialog({
           <li>Use Ground, then click a node to add or remove its ground reference.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
-          <li>Hover over toolbar icons or tab to them to see their labels.</li>
+          <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
-          <li>Use Copy Selection and Paste to duplicate selected nodes and their contained connections.</li>
-          <li>Use Undo and Redo, or Ctrl/Cmd+Z and Ctrl/Cmd+Y, to move through project edits.</li>
+          <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
+          <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, Esc cancel, Delete remove selection.</li>
+          <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
+          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to generate.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -1636,6 +1730,7 @@ function ToolButton({
   icon,
   label,
   onClick,
+  shortcut,
 }: {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
@@ -1644,7 +1739,10 @@ function ToolButton({
   icon?: ReactNode;
   label: string;
   onClick: () => void;
+  shortcut?: string;
 }) {
+  const tooltipLabel = shortcut ? `${label} (${shortcut})` : label;
+
   return (
     <button
       aria-label={label}
@@ -1656,14 +1754,14 @@ function ToolButton({
       ].join(" ")}
       disabled={disabled}
       ref={buttonRef}
-      title={label}
+      title={tooltipLabel}
       type="button"
       onClick={onClick}
     >
       {icon}
       <span className="sr-only">{label}</span>
       <span aria-hidden="true" className="tool-button-tooltip">
-        {label}
+        {tooltipLabel}
       </span>
     </button>
   );
@@ -1888,7 +1986,7 @@ function appendProjectHistoryEntry(
   return [...history, project].slice(-PROJECT_HISTORY_LIMIT);
 }
 
-function shouldIgnoreProjectHistoryShortcut(
+function shouldIgnoreAppShortcut(
   target: EventTarget | null,
   hasOpenDialog: boolean,
 ): boolean {

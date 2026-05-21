@@ -60,6 +60,70 @@ test("prompts before closing only while the project has unsaved changes", async 
   await expectBeforeUnloadProtection(page, false);
 });
 
+test("undoes and redoes node creation and deletion", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  const undoButton = page.getByRole("button", { name: "Undo" });
+  const redoButton = page.getByRole("button", { name: "Redo" });
+  await expect(undoButton).toBeDisabled();
+  await expect(redoButton).toBeDisabled();
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(undoButton).toBeEnabled();
+  await expect(redoButton).toBeDisabled();
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+
+  await page.keyboard.press("Control+Z");
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expect(undoButton).toBeDisabled();
+  await expect(redoButton).toBeEnabled();
+
+  await page.keyboard.press("Control+Y");
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+
+  await undoButton.click();
+  await expect(page.getByTestId("node-0")).toBeVisible();
+
+  await page.keyboard.press("Control+Shift+Z");
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+});
+
+test("does not intercept native undo while editing inspector fields", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+
+  const capacitanceInput = page.getByTestId("cap-input");
+  await capacitanceInput.fill("Ctest");
+  await expect(capacitanceInput).toHaveValue("Ctest");
+  await page.keyboard.press("Control+Z");
+
+  await expect(page.getByTestId("output-status")).not.toContainText(
+    "Undid last change.",
+  );
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+});
+
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
   await page.goto("/");
 
@@ -126,6 +190,19 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
   });
   await expect(boxSelectButton).toHaveAttribute("aria-label", "Box Select");
   await expect(boxSelectButton).toHaveAttribute("title", "Box Select");
+
+  const undoButton = page.getByRole("button", {
+    exact: true,
+    name: "Undo",
+  });
+  const redoButton = page.getByRole("button", {
+    exact: true,
+    name: "Redo",
+  });
+  await expect(undoButton).toHaveAttribute("aria-label", "Undo");
+  await expect(undoButton).toHaveAttribute("title", "Undo");
+  await expect(redoButton).toHaveAttribute("aria-label", "Redo");
+  await expect(redoButton).toHaveAttribute("title", "Redo");
 
   const pasteButton = page.getByRole("button", {
     exact: true,
@@ -406,6 +483,23 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12");
+
+  await page.keyboard.press("Control+Z");
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Undid last change.",
+  );
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("edge-1")).toHaveCount(1);
+
+  await page.keyboard.press("Control+Y");
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Redid last change.",
+  );
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("edge-1")).toHaveCount(1);
 });
 
 test("selects nodes with box select mode and keeps shift-drag shortcut", async ({

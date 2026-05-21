@@ -11,7 +11,9 @@ import {
   Merge,
   MousePointer2,
   Play,
+  Redo2,
   Trash2,
+  Undo2,
   Upload,
   ZoomIn,
   ZoomOut,
@@ -70,6 +72,7 @@ const WHEEL_ZOOM_SENSITIVITY = 0.001;
 const WHEEL_DELTA_LIMIT = 600;
 const WHEEL_DELTA_LINE_MODE = 1;
 const WHEEL_DELTA_PAGE_MODE = 2;
+const PROJECT_HISTORY_LIMIT = 100;
 
 interface ViewBox {
   x: number;
@@ -92,6 +95,7 @@ interface PanState {
 
 interface NodeDragState {
   pointerId: number;
+  startProject: CircuitProject;
   startPoint: Point;
   nodePositions: NodeDragPosition[];
 }
@@ -126,6 +130,11 @@ interface PastePreviewState {
   anchor: Point;
 }
 
+interface ProjectHistory {
+  past: CircuitProject[];
+  future: CircuitProject[];
+}
+
 type TutorialStep =
   | "welcome"
   | "first-node"
@@ -147,6 +156,10 @@ export function App() {
   const [cleanProjectSnapshot, setCleanProjectSnapshot] = useState(() =>
     serializeProjectForDirtyCheck(emptyProject()),
   );
+  const [projectHistory, setProjectHistory] = useState<ProjectHistory>({
+    past: [],
+    future: [],
+  });
   const [mode, setMode] = useState<ToolMode>("node");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
@@ -170,6 +183,8 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
+  const projectRef = useRef<CircuitProject>(project);
+  const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
   const gridRect = gridRectForView(viewBox);
 
   useEffect(() => {
@@ -205,6 +220,8 @@ export function App() {
     [project],
   );
   const hasUnsavedChanges = currentProjectSnapshot !== cleanProjectSnapshot;
+  const canUndo = projectHistory.past.length > 0;
+  const canRedo = projectHistory.future.length > 0;
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -219,6 +236,45 @@ export function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    function handleProjectHistoryKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        shouldIgnoreProjectHistoryShortcut(
+          event.target,
+          helpOpen || tutorialResetOpen,
+        )
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const usesHistoryModifier = event.metaKey || event.ctrlKey;
+      if (!usesHistoryModifier || event.altKey) {
+        return;
+      }
+
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoProjectChange();
+        } else {
+          undoProjectChange();
+        }
+        return;
+      }
+
+      if (key === "y") {
+        event.preventDefault();
+        redoProjectChange();
+      }
+    }
+
+    window.addEventListener("keydown", handleProjectHistoryKeyDown);
+    return () =>
+      window.removeEventListener("keydown", handleProjectHistoryKeyDown);
+  }, [helpOpen, tutorialResetOpen]);
 
   useEffect(() => {
     const canvasElement = canvasRef.current;
@@ -288,6 +344,94 @@ export function App() {
     setMarqueeState(null);
   }
 
+  function setProjectState(nextProject: CircuitProject) {
+    projectRef.current = nextProject;
+    setProject(nextProject);
+  }
+
+  function setProjectHistoryState(nextHistory: ProjectHistory) {
+    projectHistoryRef.current = nextHistory;
+    setProjectHistory(nextHistory);
+  }
+
+  function recordProjectHistory(previousProject: CircuitProject) {
+    const history = projectHistoryRef.current;
+    setProjectHistoryState({
+      past: appendProjectHistoryEntry(history.past, previousProject),
+      future: [],
+    });
+  }
+
+  function commitProjectChange(
+    updateProject: (current: CircuitProject) => CircuitProject,
+  ) {
+    const currentProject = projectRef.current;
+    const next = updateProject(currentProject);
+    if (projectsMatch(currentProject, next)) {
+      return;
+    }
+    recordProjectHistory(currentProject);
+    setProjectState(next);
+  }
+
+  function resetProjectInteractionState() {
+    setSelectedNodeIds([]);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+  }
+
+  function restoreProjectFromHistory(nextProject: CircuitProject, message: string) {
+    setProjectState(nextProject);
+    resetProjectInteractionState();
+    setOutput(null);
+    setEngineStatus(message);
+  }
+
+  function undoProjectChange() {
+    const history = projectHistoryRef.current;
+    if (history.past.length === 0) {
+      setEngineStatus("Nothing to undo.");
+      return;
+    }
+
+    const currentProject = projectRef.current;
+    const previous = history.past[history.past.length - 1];
+    setProjectHistoryState({
+      past: history.past.slice(0, -1),
+      future: [currentProject, ...history.future].slice(0, PROJECT_HISTORY_LIMIT),
+    });
+    restoreProjectFromHistory(previous, "Undid last change.");
+  }
+
+  function redoProjectChange() {
+    const history = projectHistoryRef.current;
+    if (history.future.length === 0) {
+      setEngineStatus("Nothing to redo.");
+      return;
+    }
+
+    const currentProject = projectRef.current;
+    const next = history.future[0];
+    setProjectHistoryState({
+      past: appendProjectHistoryEntry(history.past, currentProject),
+      future: history.future.slice(1),
+    });
+    restoreProjectFromHistory(next, "Redid last change.");
+  }
+
+  function recordCompletedNodeDrag(dragState: NodeDragState | null) {
+    if (!dragState || projectsMatch(dragState.startProject, projectRef.current)) {
+      return;
+    }
+    recordProjectHistory(dragState.startProject);
+    setOutput(null);
+  }
+
   function selectSingleNode(nodeId: number) {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeId(nodeId);
@@ -322,7 +466,7 @@ export function App() {
     }
 
     if (mode === "node") {
-      setProject((current) => {
+      commitProjectChange((current) => {
         const next = addNode(current, point.x, point.y);
         const id = next.state.node_counter - 1;
         setSelectedNodeIds([id]);
@@ -377,7 +521,7 @@ export function App() {
       if (pendingEdgeNodeId === null) {
         setPendingEdgeNodeId(nodeId);
       } else {
-        setProject((current) => {
+        commitProjectChange((current) => {
           const before = current.state.edge_counter;
           const next = addEdge(current, pendingEdgeNodeId, nodeId);
           if (next.state.edge_counter > before) {
@@ -397,7 +541,7 @@ export function App() {
     }
 
     if (mode === "ground") {
-      setProject((current) => {
+      commitProjectChange((current) => {
         const existing = current.state.edges.find(
           (edge) => edge.is_ground && edge.nodes[0] === nodeId,
         );
@@ -462,6 +606,7 @@ export function App() {
 
     setNodeDragState({
       pointerId: event.pointerId,
+      startProject: project,
       startPoint: svgPointFromClient(svg, event.clientX, event.clientY),
       nodePositions,
     });
@@ -498,9 +643,16 @@ export function App() {
         point.y - nodeDragState.startPoint.y,
         viewBox,
       );
-      setProject((current) =>
-        moveDraggedNodes(current, nodeDragState.nodePositions, delta.x, delta.y),
-      );
+      setProject((current) => {
+        const next = moveDraggedNodes(
+          current,
+          nodeDragState.nodePositions,
+          delta.x,
+          delta.y,
+        );
+        projectRef.current = next;
+        return next;
+      });
       return;
     }
 
@@ -541,11 +693,15 @@ export function App() {
       return;
     }
 
+    if (nodeDragState && nodeDragState.pointerId === event.pointerId) {
+      recordCompletedNodeDrag(nodeDragState);
+    }
     setNodeDragState(null);
     setPanState(null);
   }
 
   function handleCanvasPointerCancel() {
+    recordCompletedNodeDrag(nodeDragState);
     setNodeDragState(null);
     setPanState(null);
     setMarqueeState(null);
@@ -572,13 +728,13 @@ export function App() {
 
   function deleteSelection() {
     if (selectedEdgeId !== null) {
-      setProject((current) => removeEdge(current, selectedEdgeId));
+      commitProjectChange((current) => removeEdge(current, selectedEdgeId));
       setSelectedEdgeId(null);
       setOutput(null);
       return;
     }
     if (selectedNodeId !== null) {
-      setProject((current) => removeNode(current, selectedNodeId));
+      commitProjectChange((current) => removeNode(current, selectedNodeId));
       setSelectedNodeIds([]);
       setSelectedNodeId(null);
       setOutput(null);
@@ -613,7 +769,8 @@ export function App() {
     }
     const detailText = details.length > 0 ? ` (${details.join("; ")})` : "";
 
-    setProject(result.project);
+    recordProjectHistory(projectRef.current);
+    setProjectState(result.project);
     setSelectedNodeIds([selectedNodeId]);
     setSelectedNodeId(selectedNodeId);
     setSelectedEdgeId(null);
@@ -663,8 +820,9 @@ export function App() {
       return;
     }
 
-    const result = pasteSelectionClipboard(project, selectionClipboard, anchor);
-    setProject(result.project);
+    const result = pasteSelectionClipboard(projectRef.current, selectionClipboard, anchor);
+    recordProjectHistory(projectRef.current);
+    setProjectState(result.project);
     setSelectedNodeIds(result.nodeIds);
     setSelectedNodeId(result.nodeIds[result.nodeIds.length - 1] ?? null);
     setSelectedEdgeId(null);
@@ -734,7 +892,8 @@ export function App() {
   async function loadProject(file: File) {
     const parsed = JSON.parse(await file.text());
     const next = normalizeProject(parsed);
-    setProject(next);
+    setProjectState(next);
+    setProjectHistoryState({ past: [], future: [] });
     setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setViewBox(fitProjectView(next));
     setSelectedEdgeId(null);
@@ -753,7 +912,8 @@ export function App() {
 
   function beginTutorial() {
     const next = emptyProject();
-    setProject(next);
+    setProjectState(next);
+    setProjectHistoryState({ past: [], future: [] });
     setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
     setMode("node");
     clearNodeSelection();
@@ -903,6 +1063,18 @@ export function App() {
             icon={<Trash2 size={17} />}
             label="Delete"
             onClick={deleteSelection}
+          />
+          <ToolButton
+            disabled={!canUndo}
+            icon={<Undo2 size={17} />}
+            label="Undo"
+            onClick={undoProjectChange}
+          />
+          <ToolButton
+            disabled={!canRedo}
+            icon={<Redo2 size={17} />}
+            label="Redo"
+            onClick={redoProjectChange}
           />
         </div>
         <div className="toolbar actions" aria-label="Project actions">
@@ -1083,7 +1255,7 @@ export function App() {
                     data-testid="cap-input"
                     value={selectedEdge.capacitance_text ?? ""}
                     onChange={(event) => {
-                      setProject((current) =>
+                      commitProjectChange((current) =>
                         updateEdgeValues(current, selectedEdge.identifier, {
                           capacitanceText: event.target.value,
                         }),
@@ -1103,7 +1275,7 @@ export function App() {
                     data-testid="ind-input"
                     value={selectedEdge.inductance_text ?? ""}
                     onChange={(event) => {
-                      setProject((current) =>
+                      commitProjectChange((current) =>
                         updateEdgeValues(current, selectedEdge.identifier, {
                           inductanceText: event.target.value,
                         }),
@@ -1120,7 +1292,7 @@ export function App() {
                   <input
                     value={selectedNode.name}
                     onChange={(event) =>
-                      setProject((current) =>
+                      commitProjectChange((current) =>
                         renameNode(current, selectedNode.identifier, event.target.value),
                       )
                     }
@@ -1366,6 +1538,7 @@ function HelpDialog({
           <li>Hover over toolbar icons or tab to them to see their labels.</li>
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste to duplicate selected nodes and their contained connections.</li>
+          <li>Use Undo and Redo, or Ctrl/Cmd+Z and Ctrl/Cmd+Y, to move through project edits.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
@@ -1696,6 +1869,41 @@ function gridRectForView(viewBox: ViewBox): ViewBox {
 
 function serializeProjectForDirtyCheck(project: CircuitProject): string {
   return JSON.stringify(project);
+}
+
+function projectsMatch(first: CircuitProject, second: CircuitProject): boolean {
+  return (
+    serializeProjectForDirtyCheck(first) === serializeProjectForDirtyCheck(second)
+  );
+}
+
+function appendProjectHistoryEntry(
+  history: CircuitProject[],
+  project: CircuitProject,
+): CircuitProject[] {
+  const latest = history[history.length - 1];
+  if (latest && projectsMatch(latest, project)) {
+    return history;
+  }
+  return [...history, project].slice(-PROJECT_HISTORY_LIMIT);
+}
+
+function shouldIgnoreProjectHistoryShortcut(
+  target: EventTarget | null,
+  hasOpenDialog: boolean,
+): boolean {
+  if (hasOpenDialog) {
+    return true;
+  }
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return Boolean(
+    target.isContentEditable ||
+      target.closest(
+        'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+      ),
+  );
 }
 
 function clampNodeDragDeltaToView(

@@ -12,6 +12,7 @@ import {
   MousePointer2,
   Play,
   Redo2,
+  Repeat2,
   Trash2,
   Undo2,
   Upload,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   KeyboardEvent,
+  FormEvent,
   PointerEvent,
   ReactNode,
   Ref,
@@ -32,6 +34,8 @@ import {
 import {
   addEdge,
   addNode,
+  analyzeConcatenateSelection,
+  concatenateSelection,
   emptyProject,
   mergeNodes,
   moveGroundEdge,
@@ -191,6 +195,7 @@ export function App() {
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
+  const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [tutorialPromptOpen, setTutorialPromptOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
@@ -198,6 +203,7 @@ export function App() {
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
   const projectRef = useRef<CircuitProject>(project);
@@ -887,6 +893,53 @@ export function App() {
     setEngineStatus(`Copied ${clipboard.nodes.length} node(s) to clipboard.`);
   }
 
+  function openConcatenateDialog() {
+    if (selectedNodeIds.length === 0) {
+      setEngineStatus("Select at least one node to concatenate.");
+      return;
+    }
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setGroundDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+    setConcatenateDialogOpen(true);
+  }
+
+  function closeConcatenateDialog() {
+    setConcatenateDialogOpen(false);
+    window.requestAnimationFrame(() => concatenateButtonRef.current?.focus());
+  }
+
+  function concatenateSelectedGraphElements(repeats: number, portCount: number) {
+    const result = concatenateSelection(projectRef.current, selectedNodeIds, repeats, {
+      portCount,
+    });
+    closeConcatenateDialog();
+    if (!result) {
+      setEngineStatus("No repeatable nodes were added.");
+      return;
+    }
+
+    recordProjectHistory(projectRef.current);
+    setProjectState(result.project);
+    setSelectedNodeIds(result.nodeIds);
+    setSelectedNodeId(result.nodeIds[result.nodeIds.length - 1] ?? null);
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setGroundDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+    setMode("select");
+    setOutput(null);
+    setEngineStatus(
+      `Concatenated ${repeats} repeat${repeats === 1 ? "" : "s"}; added ${result.nodeIds.length} node(s).`,
+    );
+  }
+
   function startPastePreview() {
     if (!selectionClipboard) {
       setEngineStatus("Clipboard is empty.");
@@ -1074,7 +1127,10 @@ export function App() {
     function handleAppKeyDown(event: globalThis.KeyboardEvent) {
       if (
         event.defaultPrevented ||
-        shouldIgnoreAppShortcut(event.target, helpOpen || tutorialResetOpen)
+        shouldIgnoreAppShortcut(
+          event.target,
+          helpOpen || tutorialResetOpen || concatenateDialogOpen,
+        )
       ) {
         return;
       }
@@ -1162,6 +1218,11 @@ export function App() {
         mergeSelectedNodes();
         return;
       }
+      if (key === "d") {
+        event.preventDefault();
+        openConcatenateDialog();
+        return;
+      }
       if (key === "v") {
         setModeAndReset("select");
         return;
@@ -1196,6 +1257,7 @@ export function App() {
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
   const activePasteClipboard = pastePreview ? selectionClipboard : null;
+  const concatenateAnalysis = analyzeConcatenateSelection(project, selectedNodeIds);
 
   return (
     <main className="app-shell">
@@ -1264,6 +1326,14 @@ export function App() {
             label="Paste"
             shortcut="Ctrl/Cmd+V"
             onClick={startPastePreview}
+          />
+          <ToolButton
+            buttonRef={concatenateButtonRef}
+            disabled={selectedNodeIds.length === 0}
+            icon={<Repeat2 size={17} />}
+            label="Concatenate"
+            shortcut="D"
+            onClick={openConcatenateDialog}
           />
           <ToolButton
             icon={<Trash2 size={17} />}
@@ -1565,6 +1635,15 @@ export function App() {
           onConfirm={confirmTutorialReset}
         />
       ) : null}
+      {concatenateDialogOpen ? (
+        <ConcatenateDialog
+          defaultPortCount={concatenateAnalysis.autoPortCount}
+          maxPortCount={concatenateAnalysis.maxPortCount}
+          selectedCount={selectedNodeIds.length}
+          onCancel={closeConcatenateDialog}
+          onConfirm={concatenateSelectedGraphElements}
+        />
+      ) : null}
       {helpOpen ? <HelpDialog onClose={closeHelp} onStartTutorial={requestTutorialStart} /> : null}
     </main>
   );
@@ -1664,6 +1743,118 @@ function TutorialCallout({
   );
 }
 
+function ConcatenateDialog({
+  defaultPortCount,
+  maxPortCount,
+  selectedCount,
+  onCancel,
+  onConfirm,
+}: {
+  defaultPortCount: number;
+  maxPortCount: number;
+  selectedCount: number;
+  onCancel: () => void;
+  onConfirm: (repeats: number, portCount: number) => void;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [repeatText, setRepeatText] = useState("1");
+  const [portText, setPortText] = useState(String(defaultPortCount));
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedRepeats = repeatText.trim();
+    const trimmedPorts = portText.trim();
+    const repeats = Number(trimmedRepeats);
+    if (!Number.isInteger(repeats) || repeats < 1) {
+      setError("Enter a whole number of at least 1.");
+      return;
+    }
+    const portCount = Number(trimmedPorts);
+    if (
+      trimmedPorts === "" ||
+      !Number.isInteger(portCount) ||
+      portCount < 0 ||
+      portCount > maxPortCount
+    ) {
+      setError(`Enter a port count from 0 to ${maxPortCount}.`);
+      return;
+    }
+    onConfirm(repeats, portCount);
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="concatenate-dialog-title"
+        aria-modal="true"
+        className="help-dialog"
+        onKeyDown={(event) => handleDialogKeyDown(event, dialogRef.current, onCancel)}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <form onSubmit={handleSubmit}>
+          <header>
+            <h2 id="concatenate-dialog-title">Concatenate selection</h2>
+          </header>
+          <p>{selectedCount} node{selectedCount === 1 ? "" : "s"} selected.</p>
+          <label className="dialog-field">
+            <span>Number of repeats</span>
+            <input
+              aria-describedby={error ? "concatenate-dialog-error" : undefined}
+              aria-label="Number of repeats"
+              data-testid="concatenate-repeat-input"
+              min="1"
+              ref={inputRef}
+              step="1"
+              type="number"
+              value={repeatText}
+              onChange={(event) => {
+                setRepeatText(event.target.value);
+                setError("");
+              }}
+            />
+          </label>
+          <label className="dialog-field">
+            <span>Connection ports</span>
+            <input
+              aria-describedby={error ? "concatenate-dialog-error" : undefined}
+              aria-label="Connection ports"
+              data-testid="concatenate-port-input"
+              max={maxPortCount}
+              min="0"
+              step="1"
+              type="number"
+              value={portText}
+              onChange={(event) => {
+                setPortText(event.target.value);
+                setError("");
+              }}
+            />
+          </label>
+          {error ? (
+            <p className="dialog-error" id="concatenate-dialog-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="dialog-actions">
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button type="submit">Concatenate</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function TutorialResetDialog({
   onCancel,
   onConfirm,
@@ -1756,7 +1947,8 @@ function HelpDialog({
           <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
           <li>Use the canvas buttons, wheel, or trackpad to zoom; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
-          <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, Esc cancel, Delete remove selection.</li>
+          <li>Use Concatenate to repeat the selected block to the right.</li>
+          <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
           <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
           <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to generate.</li>
           <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>

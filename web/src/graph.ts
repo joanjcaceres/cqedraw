@@ -1,6 +1,17 @@
-import { CircuitEdge, CircuitProject, CircuitState, GROUND_NODE_ID } from "./types";
+import {
+  CircuitEdge,
+  CircuitNode,
+  CircuitProject,
+  CircuitState,
+  GROUND_NODE_ID,
+} from "./types";
 
 const GROUND_LINE_LENGTH = 104;
+const CONCATENATE_NODE_RADIUS = 11;
+const CONCATENATE_MIN_SPACING = Math.max(CONCATENATE_NODE_RADIUS * 4, 40);
+const CONCATENATE_PORT_TOLERANCE = CONCATENATE_NODE_RADIUS * 2;
+const CONCATENATE_ZERO_WIDTH = CONCATENATE_NODE_RADIUS * 6;
+const COORDINATE_EPSILON = 1e-6;
 
 export interface MergeNodesSummary {
   mergedNodes: number;
@@ -12,6 +23,25 @@ export interface MergeNodesSummary {
 export interface MergeNodesResult {
   project: CircuitProject;
   summary: MergeNodesSummary;
+}
+
+export interface ConcatenateSelectionResult {
+  project: CircuitProject;
+  nodeIds: number[];
+}
+
+export interface ConcatenateSelectionOptions {
+  portCount?: number;
+}
+
+export interface ConcatenateSelectionAnalysis {
+  autoPortCount: number;
+  maxPortCount: number;
+}
+
+interface ConcatenateBoundaryPair {
+  left: CircuitNode;
+  right: CircuitNode;
 }
 
 export function emptyProject(): CircuitProject {
@@ -32,6 +62,10 @@ export function emptyProject(): CircuitProject {
 }
 
 export function nextNodeName(state: CircuitState): string {
+  return createNodeNameAllocator(state)();
+}
+
+function createNodeNameAllocator(state: CircuitState): () => string {
   const used = new Set(
     state.nodes
       .map((node) => node.name)
@@ -39,10 +73,13 @@ export function nextNodeName(state: CircuitState): string {
       .map((name) => Number(name.slice(1))),
   );
   let index = 1;
-  while (used.has(index)) {
-    index += 1;
-  }
-  return `N${index}`;
+  return () => {
+    while (used.has(index)) {
+      index += 1;
+    }
+    used.add(index);
+    return `N${index}`;
+  };
 }
 
 export function addNode(project: CircuitProject, x: number, y: number): CircuitProject {
@@ -132,7 +169,15 @@ export function hasRegularEdge(
   firstNode: number,
   secondNode: number,
 ): boolean {
-  return state.edges.some((edge) => {
+  return hasRegularEdgeInList(state.edges, firstNode, secondNode);
+}
+
+function hasRegularEdgeInList(
+  edges: CircuitEdge[],
+  firstNode: number,
+  secondNode: number,
+): boolean {
+  return edges.some((edge) => {
     if (edge.is_ground) {
       return false;
     }
@@ -142,6 +187,10 @@ export function hasRegularEdge(
       (first === secondNode && second === firstNode)
     );
   });
+}
+
+function hasGroundEdge(edges: CircuitEdge[], nodeId: number): boolean {
+  return edges.some((edge) => edge.is_ground && edge.nodes[0] === nodeId);
 }
 
 export function toggleGround(project: CircuitProject, nodeId: number): CircuitProject {
@@ -215,6 +264,267 @@ export function moveGroundEdge(
       ),
     },
   };
+}
+
+export function concatenateSelection(
+  project: CircuitProject,
+  selectedNodeIds: Iterable<number>,
+  repeats: number,
+  options: ConcatenateSelectionOptions = {},
+): ConcatenateSelectionResult | null {
+  const repeatCount = Math.floor(repeats);
+  if (repeatCount < 1) {
+    return null;
+  }
+
+  const selectedNodes = selectedNodesForConcatenate(project, selectedNodeIds);
+  if (selectedNodes.length === 0) {
+    return null;
+  }
+
+  const selectedIdSet = new Set(selectedNodes.map((node) => node.identifier));
+  const minX = Math.min(...selectedNodes.map((node) => node.x));
+  const maxX = Math.max(...selectedNodes.map((node) => node.x));
+  const blockWidth = maxX - minX;
+  const dx =
+    (blockWidth > COORDINATE_EPSILON ? blockWidth : CONCATENATE_ZERO_WIDTH) +
+    CONCATENATE_MIN_SPACING;
+
+  const originalEdges = project.state.edges.filter((edge) =>
+    edge.is_ground
+      ? selectedIdSet.has(edge.nodes[0])
+      : selectedIdSet.has(edge.nodes[0]) && selectedIdSet.has(edge.nodes[1]),
+  );
+
+  const boundaryPairs = concatenateBoundaryPairs(selectedNodes, options.portCount);
+  const leftIndexMap = new Map(
+    boundaryPairs.map((pair, index) => [pair.left.identifier, index]),
+  );
+  const currentTailMap = new Map(
+    boundaryPairs.map((pair, index) => [index, pair.right.identifier]),
+  );
+
+  let nextProject = project;
+  let edgeCounter = nextProject.state.edge_counter;
+  const nextEdges = [...nextProject.state.edges];
+  const allNewNodeIds: number[] = [];
+  const allocateNodeName = createNodeNameAllocator(nextProject.state);
+
+  for (let replicaIndex = 1; replicaIndex <= repeatCount; replicaIndex += 1) {
+    const nodeIdMap = new Map<number, number>();
+    const shiftX = dx * replicaIndex;
+
+    for (const original of selectedNodes) {
+      const leftIndex = leftIndexMap.get(original.identifier);
+      if (leftIndex !== undefined) {
+        const tailNodeId = currentTailMap.get(leftIndex);
+        if (tailNodeId !== undefined) {
+          nodeIdMap.set(original.identifier, tailNodeId);
+          continue;
+        }
+      }
+
+      const newNodeId = nextProject.state.node_counter;
+      const newNode: CircuitNode = {
+        identifier: newNodeId,
+        name: allocateNodeName(),
+        x: original.x + shiftX,
+        y: original.y,
+      };
+      nextProject = {
+        ...nextProject,
+        state: {
+          ...nextProject.state,
+          node_counter: newNodeId + 1,
+          nodes: [...nextProject.state.nodes, newNode],
+        },
+      };
+      nodeIdMap.set(original.identifier, newNodeId);
+      allNewNodeIds.push(newNodeId);
+    }
+
+    for (const edge of originalEdges) {
+      if (edge.is_ground) {
+        const sourceId = nodeIdMap.get(edge.nodes[0]);
+        if (
+          sourceId !== undefined &&
+          !hasGroundEdge(nextEdges, sourceId)
+        ) {
+          nextEdges.push({
+            ...edge,
+            identifier: edgeCounter,
+            nodes: [sourceId, GROUND_NODE_ID] as [number, number],
+          });
+          edgeCounter += 1;
+        }
+        continue;
+      }
+
+      const firstId = nodeIdMap.get(edge.nodes[0]);
+      const secondId = nodeIdMap.get(edge.nodes[1]);
+      if (
+        firstId !== undefined &&
+        secondId !== undefined &&
+        firstId !== secondId &&
+        !hasRegularEdgeInList(nextEdges, firstId, secondId)
+      ) {
+        nextEdges.push({
+          ...edge,
+          identifier: edgeCounter,
+          nodes: [firstId, secondId] as [number, number],
+        });
+        edgeCounter += 1;
+      }
+    }
+
+    for (const [index, pair] of boundaryPairs.entries()) {
+      const tailNodeId = nodeIdMap.get(pair.right.identifier);
+      if (tailNodeId !== undefined) {
+        currentTailMap.set(index, tailNodeId);
+      }
+    }
+  }
+
+  if (allNewNodeIds.length === 0) {
+    return null;
+  }
+
+  return {
+    project: {
+      ...nextProject,
+      state: {
+        ...nextProject.state,
+        edge_counter: edgeCounter,
+        edges: nextEdges,
+        selected_nodes: allNewNodeIds,
+        focus_node: allNewNodeIds[allNewNodeIds.length - 1] ?? null,
+        selected_node: null,
+      },
+    },
+    nodeIds: allNewNodeIds,
+  };
+}
+
+export function analyzeConcatenateSelection(
+  project: CircuitProject,
+  selectedNodeIds: Iterable<number>,
+): ConcatenateSelectionAnalysis {
+  const selectedNodes = selectedNodesForConcatenate(project, selectedNodeIds);
+  if (selectedNodes.length === 0) {
+    return { autoPortCount: 0, maxPortCount: 0 };
+  }
+  return {
+    autoPortCount: concatenateBoundaryPairs(selectedNodes).length,
+    maxPortCount: maxConcatenatePortCount(selectedNodes),
+  };
+}
+
+function selectedNodesForConcatenate(
+  project: CircuitProject,
+  selectedNodeIds: Iterable<number>,
+): CircuitNode[] {
+  const nodesById = new Map(
+    project.state.nodes.map((node) => [node.identifier, node]),
+  );
+  return [...new Set(selectedNodeIds)]
+    .sort((first, second) => first - second)
+    .map((nodeId) => nodesById.get(nodeId))
+    .filter((node): node is CircuitNode => node !== undefined);
+}
+
+function concatenateBoundaryPairs(
+  selectedNodes: CircuitNode[],
+  requestedPortCount?: number,
+): ConcatenateBoundaryPair[] {
+  if (maxConcatenatePortCount(selectedNodes) === 0) {
+    return [];
+  }
+
+  if (requestedPortCount !== undefined) {
+    return requestedConcatenateBoundaryPairs(selectedNodes, requestedPortCount);
+  }
+
+  const minX = Math.min(...selectedNodes.map((node) => node.x));
+  const maxX = Math.max(...selectedNodes.map((node) => node.x));
+  const blockWidth = maxX - minX;
+  const boundaryTolerance = Math.min(
+    CONCATENATE_PORT_TOLERANCE,
+    blockWidth / 3,
+  );
+  const leftNodes = selectedNodes
+    .filter((node) => node.x <= minX + boundaryTolerance)
+    .sort(compareNodesByYThenX);
+  const leftIds = new Set(leftNodes.map((node) => node.identifier));
+  const rightNodes = selectedNodes
+    .filter(
+      (node) =>
+        node.x >= maxX - boundaryTolerance && !leftIds.has(node.identifier),
+    )
+    .sort(compareNodesByYThenX);
+
+  return pairBoundaryNodes(leftNodes, rightNodes);
+}
+
+function requestedConcatenateBoundaryPairs(
+  selectedNodes: CircuitNode[],
+  requestedPortCount: number,
+): ConcatenateBoundaryPair[] {
+  const portCount = clampNumber(
+    Math.floor(requestedPortCount),
+    0,
+    maxConcatenatePortCount(selectedNodes),
+  );
+  if (portCount === 0) {
+    return [];
+  }
+
+  const leftNodes = [...selectedNodes]
+    .sort(compareNodesByXThenY)
+    .slice(0, portCount)
+    .sort(compareNodesByYThenX);
+  const leftIds = new Set(leftNodes.map((node) => node.identifier));
+  const rightNodes = selectedNodes
+    .filter((node) => !leftIds.has(node.identifier))
+    .sort((first, second) => compareNodesByXThenY(second, first))
+    .slice(0, portCount)
+    .sort(compareNodesByYThenX);
+
+  return pairBoundaryNodes(leftNodes, rightNodes);
+}
+
+function pairBoundaryNodes(
+  leftNodes: CircuitNode[],
+  rightNodes: CircuitNode[],
+): ConcatenateBoundaryPair[] {
+  const pairCount = Math.min(leftNodes.length, rightNodes.length);
+  return Array.from({ length: pairCount }, (_, index) => ({
+    left: leftNodes[index],
+    right: rightNodes[index],
+  }));
+}
+
+function maxConcatenatePortCount(selectedNodes: CircuitNode[]): number {
+  if (selectedNodes.length < 2) {
+    return 0;
+  }
+  const minX = Math.min(...selectedNodes.map((node) => node.x));
+  const maxX = Math.max(...selectedNodes.map((node) => node.x));
+  if (maxX - minX <= COORDINATE_EPSILON) {
+    return 0;
+  }
+  return Math.floor(selectedNodes.length / 2);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function compareNodesByXThenY(first: CircuitNode, second: CircuitNode): number {
+  return first.x - second.x || first.y - second.y || first.identifier - second.identifier;
+}
+
+function compareNodesByYThenX(first: CircuitNode, second: CircuitNode): number {
+  return first.y - second.y || first.x - second.x || first.identifier - second.identifier;
 }
 
 export function removeNode(project: CircuitProject, nodeId: number): CircuitProject {

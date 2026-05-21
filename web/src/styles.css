@@ -246,6 +246,10 @@ textarea {
   cursor: grab;
 }
 
+.circuit-canvas.box-select-ready {
+  cursor: crosshair;
+}
+
 .circuit-canvas.panning {
   cursor: grabbing;
 }

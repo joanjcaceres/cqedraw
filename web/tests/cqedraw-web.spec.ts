@@ -967,6 +967,21 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   await expect(page.getByText("2 nodes selected")).toBeVisible();
   await expect(page.getByText("Merge will keep node 1")).toBeVisible();
   await expect(mergeButton).toBeEnabled();
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
+
+  await canvas.click({ position: { x: 760, y: 440 } });
+  await expect(page.getByText("2 nodes selected")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selection cleared.",
+  );
+
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 380, canvasBox.y + 260);
+  await page.mouse.up();
+
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(mergeButton).toBeEnabled();
 
   const node0 = page.getByTestId("node-0");
   const node1 = page.getByTestId("node-1");

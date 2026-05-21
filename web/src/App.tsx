@@ -456,6 +456,10 @@ export function App() {
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
     const point = svgPoint(event);
+    const hadSelection =
+      selectedNodeIds.length > 0 ||
+      selectedNodeId !== null ||
+      selectedEdgeId !== null;
     if (pastePreview) {
       completePastePreview(point);
       return;
@@ -496,6 +500,9 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
+    if (hadSelection) {
+      setEngineStatus("Selection cleared.");
+    }
   }
 
   function handleNodePointerDown(

@@ -550,21 +550,28 @@ export function App() {
     }
 
     if (mode === "ground") {
+      const existing = project.state.edges.find(
+        (edge) => edge.is_ground && edge.nodes[0] === nodeId,
+      );
+      if (existing) {
+        clearNodeSelection();
+        setSelectedEdgeId(existing.identifier);
+        setPendingEdgeNodeId(null);
+        setPanState(null);
+        setMarqueeState(null);
+        setGroundDragState(null);
+        setEngineStatus("Selected existing ground connection.");
+        return;
+      }
+
       commitProjectChange((current) => {
-        const existing = current.state.edges.find(
-          (edge) => edge.is_ground && edge.nodes[0] === nodeId,
-        );
         const next = toggleGround(current, nodeId);
-        if (existing) {
-          setSelectedNodeIds([nodeId]);
-          setSelectedNodeId(nodeId);
-        } else {
-          clearNodeSelection();
-        }
-        setSelectedEdgeId(existing ? null : current.state.edge_counter);
+        clearNodeSelection();
+        setSelectedEdgeId(current.state.edge_counter);
         return next;
       });
       setOutput(null);
+      setEngineStatus("Added ground connection.");
       return;
     }
 
@@ -1976,7 +1983,7 @@ function HelpDialog({
         <ol>
           <li>Use Node and click the canvas to place circuit nodes.</li>
           <li>Use Edge, then click two nodes to connect them.</li>
-          <li>Use Ground, then click a node to add or remove its ground reference.</li>
+          <li>Use Ground, then click a node to add its ground reference; select and delete a ground connection to remove it.</li>
           <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
           <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
           <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>

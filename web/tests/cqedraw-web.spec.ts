@@ -533,6 +533,71 @@ test("moves ground branches without changing generated output", async ({ page })
   expect(afterLoad.y2).toBeCloseTo(afterMove.y2, 3);
 });
 
+test("keeps existing ground when Ground mode clicks a grounded node", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 220, y: 220 } });
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Added ground connection.",
+  );
+  await page.getByTestId("cap-input").fill("Cg");
+  await page.getByTestId("ind-input").fill("1/Lg_inv");
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  const groundEdge = page.getByTestId("edge-0");
+  const beforeMove = await parseSvgLine(groundEdge);
+  const groundBox = await page.getByTestId("ground-symbol-0").boundingBox();
+  if (!groundBox) {
+    throw new Error("Ground symbol box is unavailable.");
+  }
+  await page.mouse.move(
+    groundBox.x + groundBox.width / 2,
+    groundBox.y + groundBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    groundBox.x + groundBox.width / 2 + 80,
+    groundBox.y + groundBox.height / 2 - 45,
+  );
+  await page.mouse.up();
+  const afterMove = await parseSvgLine(groundEdge);
+  expect(afterMove.x2 - beforeMove.x2).toBeGreaterThan(40);
+  expect(afterMove.y2 - beforeMove.y2).toBeLessThan(-20);
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+
+  await expect(page.getByTestId("edge-0")).toHaveCount(1);
+  await expect(page.getByTestId("ground-symbol-0")).toHaveClass(/selected/);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selected existing ground connection.",
+  );
+  await expect(page.getByTestId("cap-input")).toHaveValue("Cg");
+  await expect(page.getByTestId("ind-input")).toHaveValue("1/Lg_inv");
+  const afterSecondGroundClick = await parseSvgLine(groundEdge);
+  expect(afterSecondGroundClick.x2).toBeCloseTo(afterMove.x2, 3);
+  expect(afterSecondGroundClick.y2).toBeCloseTo(afterMove.y2, 3);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cg");
+  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = Lg_inv");
+
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Deleted ground connection.",
+  );
+});
+
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
   await page.goto("/");
 

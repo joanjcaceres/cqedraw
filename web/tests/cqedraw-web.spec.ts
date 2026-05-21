@@ -956,6 +956,9 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   if (!canvasBox) {
     throw new Error("Canvas box is unavailable.");
   }
+  const node0 = page.getByTestId("node-0");
+  const node1 = page.getByTestId("node-1");
+  const node2 = page.getByTestId("node-2");
 
   await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
   await page.mouse.down();
@@ -975,6 +978,25 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
     "Selection cleared.",
   );
 
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await node0.click();
+  await expect(node0).toHaveClass(/selected/);
+  await expect(page.getByTestId("output-status")).toContainText("Selected 1 node.");
+
+  await node1.click({ modifiers: ["Shift"] });
+  await expect(page.getByText("2 nodes selected")).toBeVisible();
+  await expect(page.getByTestId("output-status")).toContainText("Selected 2 nodes.");
+
+  await node0.click({ modifiers: ["Shift"] });
+  await expect(page.getByText("2 nodes selected")).toHaveCount(0);
+  await expect(page.getByTestId("output-status")).toContainText("Selected 1 node.");
+
+  await canvas.click({ position: { x: 760, y: 440 } });
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Selection cleared.",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Box Select" }).click();
   await page.mouse.move(canvasBox.x + 120, canvasBox.y + 180);
   await page.mouse.down();
   await page.mouse.move(canvasBox.x + 380, canvasBox.y + 260);
@@ -983,9 +1005,6 @@ test("selects nodes with box select mode and keeps shift-drag shortcut", async (
   await expect(page.getByText("2 nodes selected")).toBeVisible();
   await expect(mergeButton).toBeEnabled();
 
-  const node0 = page.getByTestId("node-0");
-  const node1 = page.getByTestId("node-1");
-  const node2 = page.getByTestId("node-2");
   const node0Start = await parseSvgCircleCenter(node0);
   const node1Start = await parseSvgCircleCenter(node1);
   const node2Start = await parseSvgCircleCenter(node2);

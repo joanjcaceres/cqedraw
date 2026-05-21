@@ -432,6 +432,7 @@ export function App() {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeId(nodeId);
     setSelectedEdgeId(null);
+    setEngineStatus(selectionStatusMessage(1));
   }
 
   function clearNodeSelection() {
@@ -441,17 +442,20 @@ export function App() {
 
   function toggleNodeSelection(nodeId: number) {
     setSelectedEdgeId(null);
-    setSelectedNodeIds((current) => {
-      if (current.includes(nodeId)) {
-        const next = current.filter((id) => id !== nodeId);
-        setSelectedNodeId((focused) =>
-          focused === nodeId ? next[next.length - 1] ?? null : focused,
-        );
-        return next;
-      }
+    const isSelected = selectedNodeIds.includes(nodeId);
+    const next = isSelected
+      ? selectedNodeIds.filter((id) => id !== nodeId)
+      : [...selectedNodeIds, nodeId];
+
+    setSelectedNodeIds(next);
+    if (isSelected) {
+      setSelectedNodeId((focused) =>
+        focused === nodeId ? next[next.length - 1] ?? null : focused,
+      );
+    } else {
       setSelectedNodeId(nodeId);
-      return [...current, nodeId];
-    });
+    }
+    setEngineStatus(selectionStatusMessage(next.length));
   }
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
@@ -501,7 +505,7 @@ export function App() {
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
     if (hadSelection) {
-      setEngineStatus("Selection cleared.");
+      setEngineStatus(selectionStatusMessage(0));
     }
   }
 
@@ -737,9 +741,7 @@ export function App() {
       setNodeDragState(null);
       setGroundDragState(null);
       setEngineStatus(
-        selectedIds.length === 0
-          ? "Selection cleared."
-          : `Selected ${selectedIds.length} node${selectedIds.length === 1 ? "" : "s"}.`,
+        selectionStatusMessage(selectedIds.length),
       );
       return;
     }
@@ -775,6 +777,9 @@ export function App() {
       return;
     }
 
+    const edge = project.state.edges.find(
+      (candidate) => candidate.identifier === edgeId,
+    );
     setSelectedEdgeId(edgeId);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
@@ -782,6 +787,9 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setEngineStatus(
+      edge?.is_ground ? "Selected ground connection." : "Selected connection.",
+    );
   }
 
   function handleGroundPointerDown(
@@ -810,6 +818,7 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setEngineStatus("Selected ground connection.");
     if (mode === "select" || mode === "box-select") {
       event.currentTarget.setPointerCapture(event.pointerId);
       startGroundDrag(event, edge);
@@ -2680,6 +2689,12 @@ function projectsMatch(first: CircuitProject, second: CircuitProject): boolean {
   return (
     serializeProjectForDirtyCheck(first) === serializeProjectForDirtyCheck(second)
   );
+}
+
+function selectionStatusMessage(nodeCount: number): string {
+  return nodeCount === 0
+    ? "Selection cleared."
+    : `Selected ${nodeCount} node${nodeCount === 1 ? "" : "s"}.`;
 }
 
 function deletionStatusMessage(nodeCount: number, connectionCount: number): string {

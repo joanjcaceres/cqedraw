@@ -6,6 +6,7 @@ import {
   emptyProject,
   hasRegularEdge,
   mergeNodes,
+  moveGroundEdge,
   normalizeProject,
   removeNode,
   toggleGround,
@@ -80,6 +81,32 @@ describe("graph state", () => {
     expect(project.state.nodes.map((node) => node.identifier)).toEqual([0, 2]);
     expect(project.state.edges).toHaveLength(1);
     expect(project.state.edges[0].nodes).toEqual([2, GROUND_NODE_ID]);
+  });
+
+  it("moves only the selected ground edge endpoint", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addEdge(project, 0, 1);
+    project = toggleGround(project, 1);
+    project = updateEdgeValues(project, 1, {
+      capacitanceText: "Cg",
+      inductanceText: "1/Lg_inv",
+    });
+
+    const moved = moveGroundEdge(project, 1, 64, -32);
+
+    expect(moved.state.nodes).toEqual(project.state.nodes);
+    expect(moved.state.edges[0]).toEqual(project.state.edges[0]);
+    expect(moved.state.edges[1]).toMatchObject({
+      identifier: 1,
+      nodes: [1, GROUND_NODE_ID],
+      capacitance_text: "Cg",
+      inductance_text: "1/Lg_inv",
+      ground_offset_x: 64,
+      ground_offset_y: -32,
+      is_ground: true,
+    });
   });
 
   it("merges selected nodes into a survivor and removes internal edges", () => {

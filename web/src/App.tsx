@@ -34,6 +34,7 @@ import {
   addNode,
   emptyProject,
   mergeNodes,
+  moveGroundEdge,
   normalizeProject,
   removeEdge,
   removeNode,
@@ -106,6 +107,14 @@ interface NodeDragPosition {
   y: number;
 }
 
+interface GroundDragState {
+  pointerId: number;
+  edgeId: number;
+  startProject: CircuitProject;
+  startPoint: Point;
+  startOffset: Point;
+}
+
 interface MarqueeState {
   pointerId: number;
   start: Point;
@@ -168,6 +177,9 @@ export function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [pendingEdgeNodeId, setPendingEdgeNodeId] = useState<number | null>(null);
   const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
+  const [groundDragState, setGroundDragState] = useState<GroundDragState | null>(
+    null,
+  );
   const [panState, setPanState] = useState<PanState | null>(null);
   const [marqueeState, setMarqueeState] = useState<MarqueeState | null>(null);
   const [selectionClipboard, setSelectionClipboard] =
@@ -257,6 +269,7 @@ export function App() {
       const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
       setPanState(null);
       setMarqueeState(null);
+      setGroundDragState(null);
       setViewBox((current) => zoomViewBox(current, factor, anchor));
     };
 
@@ -290,6 +303,7 @@ export function App() {
       setMode("select");
       setPendingEdgeNodeId(null);
       setNodeDragState(null);
+      setGroundDragState(null);
     }
     if (nextStep && nextStep !== tutorialStep) {
       setTutorialStep(nextStep);
@@ -303,6 +317,7 @@ export function App() {
     setMode(nextMode);
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
   }
@@ -343,6 +358,7 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
@@ -388,6 +404,14 @@ export function App() {
   }
 
   function recordCompletedNodeDrag(dragState: NodeDragState | null) {
+    if (!dragState || projectsMatch(dragState.startProject, projectRef.current)) {
+      return;
+    }
+    recordProjectHistory(dragState.startProject);
+    setOutput(null);
+  }
+
+  function recordCompletedGroundDrag(dragState: GroundDragState | null) {
     if (!dragState || projectsMatch(dragState.startProject, projectRef.current)) {
       return;
     }
@@ -462,6 +486,7 @@ export function App() {
     clearNodeSelection();
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
+    setGroundDragState(null);
   }
 
   function handleNodePointerDown(
@@ -471,6 +496,7 @@ export function App() {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     setMarqueeState(null);
+    setGroundDragState(null);
 
     if (pastePreview) {
       const svg = event.currentTarget.ownerSVGElement;
@@ -575,6 +601,28 @@ export function App() {
     });
   }
 
+  function startGroundDrag(
+    event: PointerEvent<SVGGElement>,
+    edge: CircuitEdge,
+  ) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) {
+      setGroundDragState(null);
+      return;
+    }
+
+    setGroundDragState({
+      pointerId: event.pointerId,
+      edgeId: edge.identifier,
+      startProject: projectRef.current,
+      startPoint: svgPointFromClient(svg, event.clientX, event.clientY),
+      startOffset: {
+        x: edge.ground_offset_x,
+        y: edge.ground_offset_y,
+      },
+    });
+  }
+
   function handleCanvasPointerMove(event: PointerEvent<SVGSVGElement>) {
     if (pastePreview) {
       setPastePreview({ anchor: svgPoint(event) });
@@ -590,6 +638,29 @@ export function App() {
       setMarqueeState((state) =>
         state?.pointerId === event.pointerId ? { ...state, current } : state,
       );
+      return;
+    }
+
+    if (
+      groundDragState &&
+      groundDragState.pointerId === event.pointerId &&
+      (mode === "select" || mode === "box-select")
+    ) {
+      const point = svgPoint(event);
+      const nextOffset = {
+        x: groundDragState.startOffset.x + point.x - groundDragState.startPoint.x,
+        y: groundDragState.startOffset.y + point.y - groundDragState.startPoint.y,
+      };
+      setProject((current) => {
+        const next = moveGroundEdge(
+          current,
+          groundDragState.edgeId,
+          nextOffset.x,
+          nextOffset.y,
+        );
+        projectRef.current = next;
+        return next;
+      });
       return;
     }
 
@@ -648,6 +719,7 @@ export function App() {
       setMarqueeState(null);
       setPanState(null);
       setNodeDragState(null);
+      setGroundDragState(null);
       setEngineStatus(
         selectedIds.length === 0
           ? "Selection cleared."
@@ -659,13 +731,19 @@ export function App() {
     if (nodeDragState && nodeDragState.pointerId === event.pointerId) {
       recordCompletedNodeDrag(nodeDragState);
     }
+    if (groundDragState && groundDragState.pointerId === event.pointerId) {
+      recordCompletedGroundDrag(groundDragState);
+    }
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
   }
 
   function handleCanvasPointerCancel() {
     recordCompletedNodeDrag(nodeDragState);
+    recordCompletedGroundDrag(groundDragState);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     cancelPastePreview();
@@ -684,15 +762,51 @@ export function App() {
     setSelectedEdgeId(edgeId);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+  }
+
+  function handleGroundPointerDown(
+    event: PointerEvent<SVGGElement>,
+    edgeId: number,
+  ) {
+    event.stopPropagation();
+    if (pastePreview) {
+      const svg = event.currentTarget.ownerSVGElement;
+      if (svg) {
+        completePastePreview(svgPointFromClient(svg, event.clientX, event.clientY));
+      }
+      return;
+    }
+
+    const edge = projectRef.current.state.edges.find(
+      (candidate) => candidate.identifier === edgeId && candidate.is_ground,
+    );
+    if (!edge) {
+      return;
+    }
+
+    setSelectedEdgeId(edgeId);
+    clearNodeSelection();
+    setPendingEdgeNodeId(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+    if (mode === "select" || mode === "box-select") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      startGroundDrag(event, edge);
+    } else {
+      setGroundDragState(null);
+    }
   }
 
   function deleteSelection() {
     if (selectedEdgeId !== null) {
       commitProjectChange((current) => removeEdge(current, selectedEdgeId));
       setSelectedEdgeId(null);
+      setGroundDragState(null);
       setOutput(null);
       return;
     }
@@ -711,6 +825,7 @@ export function App() {
       );
       setSelectedNodeIds([]);
       setSelectedNodeId(null);
+      setGroundDragState(null);
       setOutput(null);
     }
   }
@@ -749,6 +864,7 @@ export function App() {
     setSelectedNodeId(selectedNodeId);
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
+    setGroundDragState(null);
     setOutput(null);
     setEngineStatus(
       `Merged ${selectedNodeIds.length} nodes into ${survivor?.name ?? `Node ${selectedNodeId}`}.${detailText}`,
@@ -763,6 +879,7 @@ export function App() {
     }
 
     setSelectionClipboard(clipboard);
+    setGroundDragState(null);
     setPastePreview(null);
     setEngineStatus(`Copied ${clipboard.nodes.length} node(s) to clipboard.`);
   }
@@ -776,6 +893,7 @@ export function App() {
     setMode("select");
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     setPastePreview({
@@ -802,6 +920,7 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
@@ -894,6 +1013,7 @@ export function App() {
     setSelectedEdgeId(null);
     setPendingEdgeNodeId(null);
     setNodeDragState(null);
+    setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
@@ -1294,6 +1414,7 @@ export function App() {
                 nodes={project.state.nodes}
                 selected={selectedEdgeId === edge.identifier}
                 onPointerDown={handleEdgePointerDown}
+                onGroundPointerDown={handleGroundPointerDown}
               />
             ))}
             {project.state.nodes.map((node) => (
@@ -1773,11 +1894,16 @@ function CircuitEdgeShape({
   edge,
   nodes,
   selected,
+  onGroundPointerDown,
   onPointerDown,
 }: {
   edge: CircuitEdge;
   nodes: CircuitNode[];
   selected: boolean;
+  onGroundPointerDown: (
+    event: PointerEvent<SVGGElement>,
+    edgeId: number,
+  ) => void;
   onPointerDown: (event: PointerEvent<SVGLineElement>, edgeId: number) => void;
 }) {
   const first = nodes.find((node) => node.identifier === edge.nodes[0]);
@@ -1824,7 +1950,16 @@ function CircuitEdgeShape({
           end={end}
         />
       )}
-      {edge.is_ground ? <GroundSymbol x={endX} y={endY} /> : null}
+      {edge.is_ground ? (
+        <GroundSymbol
+          edgeId={edge.identifier}
+          onPointerDown={onGroundPointerDown}
+          rotation={groundSymbolRotation(start, end)}
+          selected={selected}
+          x={endX}
+          y={endY}
+        />
+      ) : null}
       {valueLabels.map((valueLabel) => (
         <text
           key={valueLabel.testId}
@@ -1992,14 +2127,38 @@ function inductorPath(
   return segments.join(" ");
 }
 
-function GroundSymbol({ x, y }: { x: number; y: number }) {
+function GroundSymbol({
+  edgeId,
+  onPointerDown,
+  rotation,
+  selected,
+  x,
+  y,
+}: {
+  edgeId: number;
+  onPointerDown: (event: PointerEvent<SVGGElement>, edgeId: number) => void;
+  rotation: number;
+  selected: boolean;
+  x: number;
+  y: number;
+}) {
   return (
-    <g className="ground-symbol">
-      <line x1={x - 18} y1={y} x2={x + 18} y2={y} />
-      <line x1={x - 12} y1={y + 10} x2={x + 12} y2={y + 10} />
-      <line x1={x - 6} y1={y + 20} x2={x + 6} y2={y + 20} />
+    <g
+      className={selected ? "ground-symbol selected" : "ground-symbol"}
+      data-testid={`ground-symbol-${edgeId}`}
+      onPointerDown={(event) => onPointerDown(event, edgeId)}
+      transform={`translate(${x} ${y}) rotate(${rotation})`}
+    >
+      <circle className="ground-symbol-hit-target" cx={0} cy={10} r={28} />
+      <line x1={-18} y1={0} x2={18} y2={0} />
+      <line x1={-12} y1={10} x2={12} y2={10} />
+      <line x1={-6} y1={20} x2={6} y2={20} />
     </g>
   );
+}
+
+function groundSymbolRotation(start: Point, end: Point): number {
+  return (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI - 90;
 }
 
 function PastePreview({

@@ -194,6 +194,29 @@ export function updateEdgeValues(
   };
 }
 
+export function moveGroundEdge(
+  project: CircuitProject,
+  edgeId: number,
+  offsetX: number,
+  offsetY: number,
+): CircuitProject {
+  return {
+    ...project,
+    state: {
+      ...project.state,
+      edges: project.state.edges.map((edge) =>
+        edge.identifier === edgeId && edge.is_ground
+          ? {
+              ...edge,
+              ground_offset_x: offsetX,
+              ground_offset_y: offsetY,
+            }
+          : edge,
+      ),
+    },
+  };
+}
+
 export function removeNode(project: CircuitProject, nodeId: number): CircuitProject {
   return {
     ...project,

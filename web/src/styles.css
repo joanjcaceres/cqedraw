@@ -366,9 +366,26 @@ textarea {
 }
 
 .ground-symbol line {
+  pointer-events: none;
   stroke: #233b55;
   stroke-linecap: round;
   stroke-width: 4;
+}
+
+.ground-symbol.selected line {
+  stroke: #0aa6c2;
+  stroke-width: 5;
+}
+
+.ground-symbol-hit-target {
+  cursor: grab;
+  fill: transparent;
+  pointer-events: all;
+  stroke: none;
+}
+
+.ground-symbol-hit-target:active {
+  cursor: grabbing;
 }
 
 .canvas-hint {

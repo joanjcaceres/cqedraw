@@ -27,6 +27,7 @@ import {
   ReactNode,
   Ref,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -84,6 +85,7 @@ const INDUCTOR_SYMBOL_HALF_LENGTH = 42;
 const PARALLEL_LC_SYMBOL_HALF_LENGTH = 44;
 const INLINE_EDGE_EDITOR_OFFSET = 62;
 const INLINE_GROUND_EDITOR_OFFSET = 126;
+const INLINE_EDITOR_ABOVE_THRESHOLD_PX = 96;
 
 interface ViewBox {
   x: number;
@@ -158,9 +160,9 @@ type EdgeComponentKind = "none" | "capacitor" | "inductor" | "parallel-lc";
 type InlineEdgeEditorPlacement = "above" | "below";
 
 interface InlineEdgeEditorPosition {
-  leftPercent: number;
+  leftPx: number;
   placement: InlineEdgeEditorPlacement;
-  topPercent: number;
+  topPx: number;
 }
 
 type TutorialStep =
@@ -207,6 +209,8 @@ export function App() {
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
     useState<number | null>(null);
+  const [inlineValueEditorPosition, setInlineValueEditorPosition] =
+    useState<InlineEdgeEditorPosition | null>(null);
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -215,6 +219,7 @@ export function App() {
   const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const canvasRef = useRef<SVGSVGElement | null>(null);
+  const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inlineValueEditorRef = useRef<HTMLDivElement | null>(null);
   const inlineCapInputRef = useRef<HTMLInputElement | null>(null);
@@ -257,9 +262,6 @@ export function App() {
   );
   const inlineValueEditorEdge =
     selectedEdge?.identifier === inlineValueEditorEdgeId ? selectedEdge : null;
-  const inlineValueEditorPosition = inlineValueEditorEdge
-    ? inlineEdgeEditorPosition(inlineValueEditorEdge, project.state.nodes, viewBox)
-    : null;
   const currentProjectSnapshot = useMemo(
     () => serializeProjectForDirtyCheck(project),
     [project],
@@ -363,6 +365,28 @@ export function App() {
     return () =>
       document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
   }, [inlineValueEditorEdgeId]);
+
+  useLayoutEffect(() => {
+    if (!inlineValueEditorEdge) {
+      setInlineValueEditorPosition(null);
+      return;
+    }
+
+    function updateInlineEditorPosition() {
+      setInlineValueEditorPosition(
+        inlineEdgeEditorPosition(
+          inlineValueEditorEdge!,
+          projectRef.current.state.nodes,
+          canvasRef.current,
+          canvasStageRef.current,
+        ),
+      );
+    }
+
+    updateInlineEditorPosition();
+    window.addEventListener("resize", updateInlineEditorPosition);
+    return () => window.removeEventListener("resize", updateInlineEditorPosition);
+  }, [inlineValueEditorEdge, viewBox]);
 
   useEffect(() => {
     if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {
@@ -1607,7 +1631,7 @@ export function App() {
 
       <section className="workspace">
         <div className="canvas-pane">
-          <div className="canvas-stage">
+          <div className="canvas-stage" ref={canvasStageRef}>
             <div className="canvas-controls" aria-label="Canvas view controls">
               <IconButton
                 icon={<ZoomIn size={17} />}
@@ -2347,8 +2371,8 @@ function InlineEdgeValueEditor({
       ref={editorRef}
       role="group"
       style={{
-        left: `${position.leftPercent}%`,
-        top: `${position.topPercent}%`,
+        left: `${position.leftPx}px`,
+        top: `${position.topPx}px`,
       }}
       onKeyDown={handleKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
@@ -2893,8 +2917,12 @@ function edgeEndpoints(edge: CircuitEdge, nodes: CircuitNode[]) {
 function inlineEdgeEditorPosition(
   edge: CircuitEdge,
   nodes: CircuitNode[],
-  viewBox: ViewBox,
+  canvas: SVGSVGElement | null,
+  stage: HTMLDivElement | null,
 ): InlineEdgeEditorPosition | null {
+  if (!canvas || !stage) {
+    return null;
+  }
   const endpoints = edgeEndpoints(edge, nodes);
   if (!endpoints) {
     return null;
@@ -2910,16 +2938,21 @@ function inlineEdgeEditorPosition(
       ? INLINE_GROUND_EDITOR_OFFSET
       : -INLINE_EDGE_EDITOR_OFFSET,
   });
-  const rawTopPercent = ((anchor.y - viewBox.y) / viewBox.height) * 100;
+  const matrix = canvas.getScreenCTM();
+  if (!matrix) {
+    return null;
+  }
 
+  const point = canvas.createSVGPoint();
+  point.x = anchor.x;
+  point.y = anchor.y;
+  const screenPoint = point.matrixTransform(matrix);
+  const stageRect = stage.getBoundingClientRect();
+  const topPx = screenPoint.y - stageRect.top;
   return {
-    leftPercent: clamp(
-      ((anchor.x - viewBox.x) / viewBox.width) * 100,
-      12,
-      88,
-    ),
-    placement: rawTopPercent < 24 ? "below" : "above",
-    topPercent: clamp(rawTopPercent, 12, 88),
+    leftPx: screenPoint.x - stageRect.left,
+    placement: topPx < INLINE_EDITOR_ABOVE_THRESHOLD_PX ? "below" : "above",
+    topPx,
   };
 }
 

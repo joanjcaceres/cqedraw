@@ -358,6 +358,7 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
   const inlineIndInput = page.getByTestId("inline-ind-input");
   await expect(inlineEditor).toBeVisible();
   await expect(inlineCapInput).toBeFocused();
+  await expectInlineEditorCenteredOnEdge(page, "edge-0", inlineEditor);
 
   await inlineCapInput.fill("Cinline");
   await inlineIndInput.fill("1/Linline_inv");
@@ -1693,6 +1694,22 @@ async function parseSvgLine(locator: Locator) {
     x2: await numberAttribute(locator, "x2"),
     y2: await numberAttribute(locator, "y2"),
   };
+}
+
+async function expectInlineEditorCenteredOnEdge(
+  page: Page,
+  edgeTestId: string,
+  editor: Locator,
+) {
+  const edgeBox = await page.getByTestId(edgeTestId).boundingBox();
+  const editorBox = await editor.boundingBox();
+  if (!edgeBox || !editorBox) {
+    throw new Error("Expected edge and inline editor boxes to be available.");
+  }
+
+  const edgeCenterX = edgeBox.x + edgeBox.width / 2;
+  const editorCenterX = editorBox.x + editorBox.width / 2;
+  expect(Math.abs(editorCenterX - edgeCenterX)).toBeLessThan(2);
 }
 
 async function parseSvgRotation(locator: Locator) {

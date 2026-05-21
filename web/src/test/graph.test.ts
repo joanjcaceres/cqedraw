@@ -194,4 +194,30 @@ describe("graph state", () => {
       is_ground: true,
     });
   });
+
+  it("normalizes blank edge value text from loaded project JSON", () => {
+    const project = normalizeProject({
+      version: 1,
+      state: {
+        nodes: [
+          { identifier: 0, name: "A", x: 1, y: 2 },
+          { identifier: 1, name: "B", x: 3, y: 4 },
+        ],
+        edges: [
+          {
+            identifier: 0,
+            nodes: [0, 1],
+            capacitance_text: "   ",
+            inductance_text: "\t",
+            is_ground: false,
+          },
+        ],
+      },
+    });
+
+    expect(project.state.edges[0]).toMatchObject({
+      capacitance_text: null,
+      inductance_text: null,
+    });
+  });
 });

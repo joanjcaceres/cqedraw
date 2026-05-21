@@ -506,7 +506,8 @@ function textValue(value: unknown): string | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
-  return String(value);
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

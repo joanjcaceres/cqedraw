@@ -124,6 +124,126 @@ test("does not intercept native undo while editing inspector fields", async ({
   await expect(page.getByTestId("edge-0")).toHaveCount(1);
 });
 
+test("supports core web keyboard shortcuts without changing generated output", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  const selectButton = page.getByRole("button", { exact: true, name: "Select" });
+  const boxSelectButton = page.getByRole("button", {
+    exact: true,
+    name: "Box Select",
+  });
+  const nodeButton = page.getByRole("button", { exact: true, name: "Node" });
+  const edgeButton = page.getByRole("button", { exact: true, name: "Edge" });
+  const groundButton = page.getByRole("button", { exact: true, name: "Ground" });
+
+  await page.keyboard.press("v");
+  await expect(selectButton).toHaveClass(/active/);
+  await page.keyboard.press("b");
+  await expect(boxSelectButton).toHaveClass(/active/);
+  await page.keyboard.press("n");
+  await expect(nodeButton).toHaveClass(/active/);
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.keyboard.press("e");
+  await expect(edgeButton).toHaveClass(/active/);
+  await page.getByTestId("node-0").click();
+  await expect(page.getByTestId("node-0")).toHaveClass(/pending/);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("node-0")).not.toHaveClass(/pending/);
+  await expect(selectButton).toHaveClass(/active/);
+
+  await page.keyboard.press("e");
+  await expect(edgeButton).toHaveClass(/active/);
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C12");
+  await page.getByTestId("ind-input").fill("1/L12_inv");
+  await page.getByTestId("ind-input").evaluate((element: HTMLInputElement) => element.blur());
+
+  await page.keyboard.press("g");
+  await expect(groundButton).toHaveClass(/active/);
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("Cg");
+  await page.getByTestId("ind-input").fill("1/Lg_inv");
+  await page.getByTestId("ind-input").evaluate((element: HTMLInputElement) => element.blur());
+
+  await page.keyboard.press("Control+Enter");
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
+  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
+  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(1, 1) = L12_inv + Lg_inv",
+  );
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.keyboard.press("Control+S");
+  await downloadPromise;
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.keyboard.press("Control+O");
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "shortcut-loaded-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 1,
+        state: {
+          nodes: [{ identifier: 0, name: "Loaded", x: 250, y: 240 }],
+          edges: [],
+        },
+      }),
+    ),
+  });
+  await expect(page.getByText("Loaded")).toBeVisible();
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+});
+
+test("deletes selections without stealing inspector text entry", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.keyboard.press("n");
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await page.keyboard.press("v");
+  await page.getByTestId("node-0").click();
+
+  const nodeNameInput = page.getByTestId("node-name-input");
+  await expect(nodeNameInput).toHaveValue("N1");
+  await nodeNameInput.focus();
+  await page.keyboard.press("Backspace");
+  await expect(page.getByTestId("node-0")).toBeVisible();
+
+  await nodeNameInput.evaluate((element: HTMLInputElement) => element.blur());
+  await page.keyboard.press("Backspace");
+  await expect(page.getByTestId("node-0")).toHaveCount(0);
+
+  await page.keyboard.press("n");
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+  await page.keyboard.press("e");
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("node-2").click();
+
+  await page.keyboard.press("v");
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("node-2").click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { name: "Delete" }).click();
+
+  await expect(page.getByTestId("node-1")).toHaveCount(0);
+  await expect(page.getByTestId("node-2")).toHaveCount(0);
+  await expect(page.getByTestId("edge-0")).toHaveCount(0);
+});
+
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
   await page.goto("/");
 
@@ -171,7 +291,7 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     name: "Select",
   });
   await expect(selectButton).toHaveAttribute("aria-label", "Select");
-  await expect(selectButton).toHaveAttribute("title", "Select");
+  await expect(selectButton).toHaveAttribute("title", "Select (V)");
   await expect(selectButton.locator(".tool-button-tooltip")).toBeHidden();
   await expect(selectButton.locator(".tool-button-tooltip")).toHaveAttribute(
     "aria-hidden",
@@ -180,7 +300,9 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
 
   await selectButton.hover();
   await expect(selectButton.locator(".tool-button-tooltip")).toBeVisible();
-  await expect(selectButton.locator(".tool-button-tooltip")).toContainText("Select");
+  await expect(selectButton.locator(".tool-button-tooltip")).toContainText(
+    "Select (V)",
+  );
   await page.mouse.move(0, 0);
   await expect(selectButton.locator(".tool-button-tooltip")).toBeHidden();
 
@@ -189,7 +311,7 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     name: "Box Select",
   });
   await expect(boxSelectButton).toHaveAttribute("aria-label", "Box Select");
-  await expect(boxSelectButton).toHaveAttribute("title", "Box Select");
+  await expect(boxSelectButton).toHaveAttribute("title", "Box Select (B)");
 
   const undoButton = page.getByRole("button", {
     exact: true,
@@ -200,16 +322,40 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     name: "Redo",
   });
   await expect(undoButton).toHaveAttribute("aria-label", "Undo");
-  await expect(undoButton).toHaveAttribute("title", "Undo");
+  await expect(undoButton).toHaveAttribute("title", "Undo (Ctrl/Cmd+Z)");
   await expect(redoButton).toHaveAttribute("aria-label", "Redo");
-  await expect(redoButton).toHaveAttribute("title", "Redo");
+  await expect(redoButton).toHaveAttribute("title", "Redo (Ctrl/Cmd+Y)");
+
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveAttribute(
+    "title",
+    "Delete (Del/Backspace)",
+  );
+  await expect(page.getByRole("button", { name: "Merge" })).toHaveAttribute(
+    "title",
+    "Merge (M)",
+  );
+  await expect(page.getByRole("button", { name: "Generate" })).toHaveAttribute(
+    "title",
+    "Generate (Ctrl/Cmd+Enter)",
+  );
+  await expect(page.getByRole("button", { name: "Save" })).toHaveAttribute(
+    "title",
+    "Save (Ctrl/Cmd+S)",
+  );
+  await expect(page.getByRole("button", { name: "Load" })).toHaveAttribute(
+    "title",
+    "Load (Ctrl/Cmd+O)",
+  );
+  await expect(
+    page.getByRole("button", { name: "Copy Selection" }),
+  ).toHaveAttribute("title", "Copy Selection (Ctrl/Cmd+C)");
 
   const pasteButton = page.getByRole("button", {
     exact: true,
     name: "Paste",
   });
   await expect(pasteButton).toHaveAttribute("aria-label", "Paste");
-  await expect(pasteButton).toHaveAttribute("title", "Paste");
+  await expect(pasteButton).toHaveAttribute("title", "Paste (Ctrl/Cmd+V)");
   await page.keyboard.press("Tab");
   await expect(selectButton).toBeFocused();
   await page.keyboard.press("Tab");
@@ -220,7 +366,9 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
   await page.keyboard.press("Tab");
   await expect(pasteButton).toBeFocused();
   await expect(pasteButton.locator(".tool-button-tooltip")).toBeVisible();
-  await expect(pasteButton.locator(".tool-button-tooltip")).toContainText("Paste");
+  await expect(pasteButton.locator(".tool-button-tooltip")).toContainText(
+    "Paste (Ctrl/Cmd+V)",
+  );
 });
 
 test("restarts the tutorial from Help and confirms before clearing a project", async ({
@@ -466,7 +614,7 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(mergeButton).toBeEnabled();
   await expect(page.getByText("2 nodes selected")).toBeVisible();
 
-  await mergeButton.click();
+  await page.keyboard.press("m");
 
   await expect(page.getByTestId("output-status")).toContainText(
     "Merged 2 nodes into N2",
@@ -620,26 +768,26 @@ test("copies selected graph elements and pastes them from a preview", async ({
   await page.getByRole("button", { exact: true, name: "Select" }).click();
   await page.getByTestId("node-0").click();
   await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
-  await page.getByRole("button", { exact: true, name: "Copy Selection" }).click();
+  await page.keyboard.press("Control+C");
   await expect(page.getByTestId("output-status")).toContainText(
     "Copied 2 node(s) to clipboard.",
   );
 
-  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await page.keyboard.press("Control+V");
   await expect(page.getByTestId("paste-preview")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("paste-preview")).toHaveCount(0);
   await expect(page.getByTestId("node-2")).toHaveCount(0);
   await expect(page.getByTestId("output-status")).toContainText("Paste cancelled.");
 
-  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await page.keyboard.press("Control+V");
   await expect(page.getByTestId("paste-preview")).toBeVisible();
   await page.getByRole("button", { name: "Node" }).click();
   await expect(page.getByTestId("paste-preview")).toHaveCount(0);
   await expect(page.getByTestId("output-status")).toContainText("Paste cancelled.");
   await expect(page.getByTestId("node-2")).toHaveCount(0);
 
-  await page.getByRole("button", { exact: true, name: "Paste" }).click();
+  await page.keyboard.press("Control+V");
   await expect(page.getByTestId("paste-preview")).toBeVisible();
   await page.getByTestId("edge-0").click({ force: true });
 

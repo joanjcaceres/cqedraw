@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
@@ -393,6 +394,107 @@ test("renders component symbols for regular and ground edge values", async ({
   expect(await symbolCoordinatesStayWithinHalfLength(page, "edge-symbol-1", 10)).toBe(
     true,
   );
+});
+
+test("moves ground branches without changing generated output", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 180, y: 220 } });
+  await canvas.click({ position: { x: 340, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C12");
+  await page.getByTestId("ind-input").fill("1/L12_inv");
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("Cg");
+  await page.getByTestId("ind-input").fill("1/Lg_inv");
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(1, 1) = L12_inv + Lg_inv",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  const groundEdge = page.getByTestId("edge-1");
+  const beforeMove = await parseSvgLine(groundEdge);
+  expect(Math.abs(beforeMove.x2 - beforeMove.x1)).toBeLessThan(1);
+  expect(Math.abs(beforeMove.y2 - beforeMove.y1 - 104)).toBeLessThan(1);
+
+  const groundBox = await page.getByTestId("ground-symbol-1").boundingBox();
+  if (!groundBox) {
+    throw new Error("Ground symbol box is unavailable.");
+  }
+  await page.mouse.move(
+    groundBox.x + groundBox.width / 2,
+    groundBox.y + groundBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    groundBox.x + groundBox.width / 2 + 95,
+    groundBox.y + groundBox.height / 2 - 70,
+  );
+  await page.mouse.up();
+
+  const afterMove = await parseSvgLine(groundEdge);
+  expect(afterMove.x2 - beforeMove.x2).toBeGreaterThan(50);
+  expect(afterMove.y2 - beforeMove.y2).toBeLessThan(-35);
+  expect(Math.abs(await parseSvgRotation(page.getByTestId("ground-symbol-1")))).toBeGreaterThan(
+    10,
+  );
+  await expect(page.getByTestId("ground-symbol-1")).toHaveClass(/selected/);
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
+  await expect(page.getByTestId("l-entries")).toContainText(
+    "(1, 1) = L12_inv + Lg_inv",
+  );
+
+  await page.keyboard.press("Control+Z");
+  const afterUndo = await parseSvgLine(groundEdge);
+  expect(afterUndo.x2).toBeCloseTo(beforeMove.x2, 3);
+  expect(afterUndo.y2).toBeCloseTo(beforeMove.y2, 3);
+
+  await page.keyboard.press("Control+Y");
+  const afterRedo = await parseSvgLine(groundEdge);
+  expect(afterRedo.x2).toBeCloseTo(afterMove.x2, 3);
+  expect(afterRedo.y2).toBeCloseTo(afterMove.y2, 3);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error("Saved project download path is unavailable.");
+  }
+  const savedProject = JSON.parse(await readFile(downloadPath, "utf8"));
+  const savedGround = savedProject.state.edges.find(
+    (edge: { identifier: number }) => edge.identifier === 1,
+  );
+  expect(savedGround).toMatchObject({
+    identifier: 1,
+    is_ground: true,
+  });
+  expect(savedGround.ground_offset_x).toBeCloseTo(afterMove.x2 - afterMove.x1, 3);
+  expect(savedGround.ground_offset_y).toBeCloseTo(afterMove.y2 - afterMove.y1, 3);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "moved-ground-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(savedProject)),
+  });
+
+  const afterLoad = await parseSvgLine(groundEdge);
+  expect(afterLoad.x2).toBeCloseTo(afterMove.x2, 3);
+  expect(afterLoad.y2).toBeCloseTo(afterMove.y2, 3);
 });
 
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
@@ -1112,6 +1214,15 @@ async function parseSvgLine(locator: Locator) {
     x2: await numberAttribute(locator, "x2"),
     y2: await numberAttribute(locator, "y2"),
   };
+}
+
+async function parseSvgRotation(locator: Locator) {
+  const transform = await locator.getAttribute("transform");
+  const match = transform?.match(/rotate\((-?\d+(?:\.\d+)?)\)/);
+  if (!match) {
+    throw new Error(`Missing rotate transform: ${transform}`);
+  }
+  return Number(match[1]);
 }
 
 async function numberAttribute(locator: Locator, name: string) {

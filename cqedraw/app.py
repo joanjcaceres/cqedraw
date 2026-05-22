@@ -21,6 +21,7 @@ from .core import (
     compute_matrices,
     compute_matrix_entries,
     finalize_matrix_entries,
+    matrix_node_records,
 )
 
 
@@ -2336,7 +2337,17 @@ class CircuitGraphApp:
             self.nodes.keys(),
             self._core_edges(),
         )
-        return build_snippet(size, c_branches, l_inv_branches, josephson_branches)
+        matrix_nodes = matrix_node_records(
+            self.nodes.keys(),
+            {node_id: node.name for node_id, node in self.nodes.items()},
+        )
+        return build_snippet(
+            size,
+            c_branches,
+            l_inv_branches,
+            josephson_branches,
+            matrix_nodes,
+        )
 
     def _copy_snippet(self) -> None:
         if not self.nodes:

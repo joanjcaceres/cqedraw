@@ -56,8 +56,15 @@ export interface OutputResult {
   l_inv_parameters: string[];
   josephson_parameters: string[];
   josephson_branches: JosephsonBranchRecord[];
+  matrix_nodes: MatrixNodeRecord[];
   snippet: string;
   error?: string;
+}
+
+export interface MatrixNodeRecord {
+  project_node_id: number;
+  matrix_index: number;
+  name: string | null;
 }
 
 export interface JosephsonBranchRecord {

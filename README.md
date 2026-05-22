@@ -110,11 +110,14 @@ Projects can be saved and loaded as JSON files from the GUI. Use the `Snippet`
 button to copy generated Python code for the current capacitance matrix and
 inverse-inductance matrix. The generated snippet returns sparse SciPy CSR
 matrices so large circuits do not allocate dense zero-filled arrays.
+Canvas node labels show the matrix row/column index used in generated output;
+the editable node name is preserved as metadata in the inspector and snippet
+node maps.
 
 ## Using With SCCircuits
 
-The copied snippet defines `circuit_matrices`, `C_matrix`, `L_inv_matrix`, and
-`josephson_branches`.
+The copied snippet defines `circuit_matrices`, `C_matrix`, `L_inv_matrix`,
+`josephson_branches`, `MATRIX_NODES`, and `NODE_INDEX_MAP`.
 Paste that snippet into your analysis script or notebook, then pass the
 parameter values as a mapping:
 
@@ -136,6 +139,7 @@ non_linear_nodes = (
 
 bbq = BBQ(C_matrix, L_inv_matrix, non_linear_nodes=non_linear_nodes)
 
+print("Project node to matrix index:", NODE_INDEX_MAP)
 print("Linear mode frequencies (GHz):", bbq.linear_modes_GHz)
 print("Phase ZPF:", bbq.phase_zpf_list)
 ```

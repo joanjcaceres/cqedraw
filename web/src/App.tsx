@@ -1,4 +1,5 @@
 import {
+  Check,
   ClipboardCopy,
   ClipboardPaste,
   BoxSelect,
@@ -86,6 +87,8 @@ const WHEEL_DELTA_LIMIT = 600;
 const WHEEL_DELTA_LINE_MODE = 1;
 const WHEEL_DELTA_PAGE_MODE = 2;
 const PROJECT_HISTORY_LIMIT = 100;
+const COPY_MATRICES_STATUS =
+  "Copied matrices to clipboard. Paste them into Python or a notebook.";
 const CAPACITOR_SYMBOL_HALF_LENGTH = 22;
 const INDUCTOR_SYMBOL_HALF_LENGTH = 42;
 const PARALLEL_LC_SYMBOL_HALF_LENGTH = 44;
@@ -227,6 +230,7 @@ export function App() {
   const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
   const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
   const [tutorialCopied, setTutorialCopied] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -282,6 +286,8 @@ export function App() {
     project.state.nodes.length > 0 || project.state.edges.length > 0;
   const canStartNewProject =
     hasProjectContent || hasUnsavedChanges || output !== null || canUndo || canRedo;
+  const hasGeneratedSnippet = Boolean(output?.snippet);
+  const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -1187,6 +1193,7 @@ export function App() {
 
   async function runGenerateOutput(): Promise<OutputResult | null> {
     setEngineStatus("Loading Python engine and generating...");
+    setSnippetCopied(false);
     try {
       const result = await clientRef.current!.generate(project);
       if (result.error) {
@@ -1207,7 +1214,8 @@ export function App() {
       return;
     }
     await navigator.clipboard.writeText(result.snippet);
-    setEngineStatus("Snippet copied.");
+    setEngineStatus(COPY_MATRICES_STATUS);
+    setSnippetCopied(true);
     setTutorialCopied(true);
   }
 
@@ -1631,12 +1639,16 @@ export function App() {
             shortcut="Ctrl/Cmd+Enter"
             onClick={generateOutput}
           />
-          <ToolButton
-            highlight={tutorialStep === "copy"}
-            icon={<Copy size={17} />}
-            label="Copy"
-            onClick={copySnippet}
-          />
+          {hasGeneratedSnippet ? (
+            <ToolButton
+              confirmation={snippetCopied ? "Copied" : undefined}
+              highlight={tutorialStep === "copy"}
+              icon={snippetCopied ? <Check size={17} /> : <Copy size={17} />}
+              iconOnly={false}
+              label="Copy matrices"
+              onClick={copySnippet}
+            />
+          ) : null}
           <ToolButton
             icon={<Download size={17} />}
             label="Save"
@@ -1802,7 +1814,15 @@ export function App() {
               />
             ) : null}
           </div>
-          <div className="status-line" data-testid="output-status">
+          <div
+            aria-live="polite"
+            className={[
+              "status-line",
+              statusIsCopyConfirmation ? "status-line-success" : "",
+            ].join(" ")}
+            data-testid="output-status"
+            role="status"
+          >
             {engineStatus}
           </div>
         </div>
@@ -1894,12 +1914,6 @@ export function App() {
               testId="l-entries"
               entries={output?.l_inv_entries ?? []}
             />
-            <textarea
-              data-testid="snippet-output"
-              value={output?.snippet ?? ""}
-              readOnly
-              spellCheck={false}
-            />
           </section>
         </aside>
       </section>
@@ -1957,7 +1971,7 @@ function CanvasHint() {
           then select an edge to enter C/L.
         </tspan>
         <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Generate and Copy create the Python matrix snippet.
+          Generate builds matrices; Copy matrices appears when ready.
         </tspan>
       </text>
     </g>
@@ -2708,18 +2722,22 @@ function InlineEdgeValueEditor({
 function ToolButton({
   active = false,
   buttonRef,
+  confirmation,
   disabled = false,
   highlight = false,
   icon,
+  iconOnly = true,
   label,
   onClick,
   shortcut,
 }: {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
+  confirmation?: string;
   disabled?: boolean;
   highlight?: boolean;
   icon?: ReactNode;
+  iconOnly?: boolean;
   label: string;
   onClick: () => void;
   shortcut?: string;
@@ -2731,7 +2749,7 @@ function ToolButton({
       aria-label={label}
       className={[
         "tool-button",
-        "tool-button-icon-only",
+        iconOnly ? "tool-button-icon-only" : "tool-button-with-label",
         active ? "active" : "",
         highlight ? "tutorial-highlight" : "",
       ].join(" ")}
@@ -2742,7 +2760,12 @@ function ToolButton({
       onClick={onClick}
     >
       {icon}
-      <span className="sr-only">{label}</span>
+      <span className={iconOnly ? "sr-only" : "tool-button-label"}>{label}</span>
+      {confirmation ? (
+        <span aria-hidden="true" className="tool-button-confirmation">
+          {confirmation}
+        </span>
+      ) : null}
       <span aria-hidden="true" className="tool-button-tooltip">
         {tooltipLabel}
       </span>
@@ -3796,8 +3819,8 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
   },
   copy: {
     progress: "Step 11 of 11",
-    title: "Copy the snippet",
-    body: "Click Copy to place the generated Python matrix snippet on the clipboard.",
+    title: "Copy matrices",
+    body: "Click Copy matrices to place the generated Python matrix snippet on the clipboard.",
   },
   finish: {
     progress: "Done",

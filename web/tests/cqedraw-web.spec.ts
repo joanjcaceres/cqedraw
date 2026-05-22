@@ -77,10 +77,16 @@ test("starts a new project after confirmation", async ({ page }) => {
   await expect(undoButton).toBeEnabled();
   await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
   await expectBeforeUnloadProtection(page, true);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Copy matrices" }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
-  await expect(page.getByTestId("snippet-output")).not.toHaveValue("");
+  await expect(page.getByTestId("snippet-output")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Copy matrices" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Zoom out" }).click();
   const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(zoomedView.width).toBeGreaterThan(CANVAS_WIDTH);
@@ -95,7 +101,6 @@ test("starts a new project after confirmation", async ({ page }) => {
   await expect(dialog).toHaveCount(0);
   await expect(newProjectButton).toBeFocused();
   await expect(page.getByTestId("node-0")).toBeVisible();
-  await expect(page.getByTestId("snippet-output")).not.toHaveValue("");
   await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
 
   await newProjectButton.click();
@@ -107,9 +112,11 @@ test("starts a new project after confirmation", async ({ page }) => {
   await expect(page.getByTestId("output-status")).toContainText(
     "Started new project.",
   );
-  await expect(page.getByTestId("snippet-output")).toHaveValue("");
   await expect(page.getByTestId("save-status")).toContainText("Saved");
   await expectBeforeUnloadProtection(page, false);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Copy matrices" }),
+  ).toHaveCount(0);
   await expect(newProjectButton).toBeDisabled();
   await expect(nodeButton).toBeFocused();
   await expect(undoButton).toBeDisabled();
@@ -761,7 +768,7 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
     "Click the canvas to place nodes.",
   );
   await expect(page.getByTestId("canvas-hint")).toContainText(
-    "Generate and Copy create the Python matrix snippet.",
+    "Generate builds matrices; Copy matrices appears when ready.",
   );
 
   await page.getByRole("button", { name: "Help" }).click();
@@ -985,10 +992,16 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C + Cg");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = 1/L");
-  await expect(page.getByTestId("tutorial-callout")).toContainText("Copy the snippet");
+  await expect(page.getByTestId("tutorial-callout")).toContainText("Copy matrices");
 
-  await page.getByRole("button", { exact: true, name: "Copy" }).click();
-  await expect(page.getByTestId("output-status")).toContainText("Snippet copied.");
+  await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Copied matrices to clipboard. Paste them into Python or a notebook.",
+  );
+  await expect(page.getByTestId("output-status")).toHaveClass(/status-line-success/);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Copy matrices" }),
+  ).toContainText("Copied");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Tutorial complete");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Save and Load");
 
@@ -1659,8 +1672,12 @@ test("disables concatenate pairings to duplicate the selected block", async ({
 });
 
 test("creates a small circuit and generates matching C and L_inv entries", async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: "http://127.0.0.1:4173",
+  });
   await page.goto("/");
 
   const canvas = page.getByTestId("canvas");
@@ -1701,13 +1718,22 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
   await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
-  await expect(page.getByTestId("snippet-output")).toContainText("def circuit_matrices");
-  await expect(page.getByTestId("snippet-output")).toContainText("def C_matrix");
-  await expect(page.getByTestId("snippet-output")).toContainText("def L_inv_matrix");
-  await expect(page.getByTestId("snippet-output")).not.toContainText("def C_matrix_func");
-  await expect(page.getByTestId("snippet-output")).not.toContainText(
-    "def L_inv_matrix_func",
+  await expect(page.getByTestId("snippet-output")).toHaveCount(0);
+
+  await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Copied matrices to clipboard. Paste them into Python or a notebook.",
   );
+  await expect(page.getByTestId("output-status")).toHaveClass(/status-line-success/);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Copy matrices" }),
+  ).toContainText("Copied");
+  const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedSnippet).toContain("def circuit_matrices");
+  expect(copiedSnippet).toContain("def C_matrix");
+  expect(copiedSnippet).toContain("def L_inv_matrix");
+  expect(copiedSnippet).not.toContain("def C_matrix_func");
+  expect(copiedSnippet).not.toContain("def L_inv_matrix_func");
 });
 
 test("does not create duplicate edges between the same two nodes", async ({ page }) => {

@@ -129,6 +129,25 @@ textarea {
   width: 38px;
 }
 
+.tool-button-with-label {
+  font-weight: 700;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.tool-button-label {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tool-button-confirmation {
+  color: #9bdad3;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .tool-button svg {
   flex: 0 0 auto;
 }
@@ -481,7 +500,18 @@ textarea {
 .status-line {
   color: #31435a;
   min-height: 32px;
-  padding: 8px 2px 0;
+  padding: 8px 10px 0;
+}
+
+.status-line-success {
+  background: #dff8ef;
+  border: 1px solid #8ed5bd;
+  border-radius: 7px;
+  color: #0f5b48;
+  font-weight: 700;
+  margin: 6px 0 0;
+  min-height: 36px;
+  padding: 8px 10px;
 }
 
 .side-pane {
@@ -518,8 +548,7 @@ textarea {
   font-size: 12px;
 }
 
-.form-grid input,
-.output-panel textarea {
+.form-grid input {
   background: #ffffff;
   border: 1px solid #bdcbd8;
   border-radius: 7px;
@@ -549,8 +578,19 @@ textarea {
 .output-panel {
   border-bottom: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(220px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
   min-height: 0;
+}
+
+.entries {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.entries + .entries {
+  margin-top: 12px;
 }
 
 .entries h3 {
@@ -560,8 +600,8 @@ textarea {
 }
 
 .entries ol {
-  margin: 0 0 12px;
-  max-height: 110px;
+  margin: 0;
+  min-height: 0;
   overflow: auto;
   padding-left: 20px;
 }
@@ -570,13 +610,6 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   margin: 3px 0;
-}
-
-.output-panel textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  min-height: 0;
-  resize: none;
 }
 
 .hidden-file {

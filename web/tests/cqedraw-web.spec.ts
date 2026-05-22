@@ -1580,6 +1580,14 @@ test("expands concatenate pairings for irregular selected blocks", async ({
   await page.getByLabel("Pairing rows").fill("2");
   await expect(page.getByTestId("concatenate-pair-row-1")).toContainText("Pair 2");
   await expect(page.getByTestId("concatenate-preview-bridge-1")).toHaveCount(1);
+  await page.getByLabel("Pair 2 left port").selectOption({ label: "N4" });
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Each enabled pair needs unique nodes across left and right ports.",
+  );
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(0);
+  await page.getByLabel("Pair 2 left port").selectOption({ label: "N2" });
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByTestId("concatenate-preview-bridge-1")).toHaveCount(1);
   await dialog.getByRole("button", { name: "Concatenate" }).click();
 
   await expect(page.getByTestId("output-status")).toContainText(

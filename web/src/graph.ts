@@ -572,15 +572,14 @@ function explicitConcatenateBoundaryPairs(
   const nodeById = new Map(
     selectedNodes.map((node) => [node.identifier, node]),
   );
-  const usedLeftNodeIds = new Set<number>();
-  const usedRightNodeIds = new Set<number>();
+  const usedNodeIds = new Set<number>();
   const boundaryPairs: ConcatenateBoundaryPair[] = [];
 
   for (const requestedPair of requestedPairs) {
     if (
       requestedPair.leftNodeId === requestedPair.rightNodeId ||
-      usedLeftNodeIds.has(requestedPair.leftNodeId) ||
-      usedRightNodeIds.has(requestedPair.rightNodeId)
+      usedNodeIds.has(requestedPair.leftNodeId) ||
+      usedNodeIds.has(requestedPair.rightNodeId)
     ) {
       continue;
     }
@@ -590,8 +589,8 @@ function explicitConcatenateBoundaryPairs(
       continue;
     }
     boundaryPairs.push({ left, right });
-    usedLeftNodeIds.add(left.identifier);
-    usedRightNodeIds.add(right.identifier);
+    usedNodeIds.add(left.identifier);
+    usedNodeIds.add(right.identifier);
   }
 
   return boundaryPairs;

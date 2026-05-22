@@ -2078,6 +2078,12 @@ function ConcatenateDialog({
   const [dialogDragState, setDialogDragState] =
     useState<DialogDragState | null>(null);
   const nodeOptions = analysis.selectedNodes;
+  const activePairs = useMemo(
+    () => activeConcatenatePortPairs(pairRows),
+    [pairRows],
+  );
+  const pairError = concatenatePairValidationError(activePairs);
+  const visibleError = error || pairError;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -2085,8 +2091,8 @@ function ConcatenateDialog({
   }, []);
 
   useEffect(() => {
-    onPreviewChange(activeConcatenatePortPairs(pairRows));
-  }, [onPreviewChange, pairRows]);
+    onPreviewChange(pairError ? [] : activePairs);
+  }, [activePairs, onPreviewChange, pairError]);
 
   useEffect(() => () => onPreviewChange([]), [onPreviewChange]);
 
@@ -2190,17 +2196,8 @@ function ConcatenateDialog({
       setError(`Enter a pairing row count from 0 to ${analysis.maxPortCount}.`);
       return;
     }
-    const activePairs = activeConcatenatePortPairs(pairRows);
-    if (activePairs.some((pair) => pair.leftNodeId === pair.rightNodeId)) {
-      setError("Each enabled pair must use two different nodes.");
-      return;
-    }
-    if (hasDuplicatePairNode(activePairs, "leftNodeId")) {
-      setError("Each enabled pair needs a unique left port.");
-      return;
-    }
-    if (hasDuplicatePairNode(activePairs, "rightNodeId")) {
-      setError("Each enabled pair needs a unique right port.");
+    if (pairError) {
+      setError(pairError);
       return;
     }
     onConfirm(repeats, activePairs);
@@ -2243,7 +2240,7 @@ function ConcatenateDialog({
           <label className="dialog-field">
             <span>Number of repeats</span>
             <input
-              aria-describedby={error ? "concatenate-dialog-error" : undefined}
+              aria-describedby={visibleError ? "concatenate-dialog-error" : undefined}
               aria-label="Number of repeats"
               data-testid="concatenate-repeat-input"
               min="1"
@@ -2260,7 +2257,7 @@ function ConcatenateDialog({
           <label className="dialog-field">
             <span>Pairing rows</span>
             <input
-              aria-describedby={error ? "concatenate-dialog-error" : undefined}
+              aria-describedby={visibleError ? "concatenate-dialog-error" : undefined}
               aria-label="Pairing rows"
               data-testid="concatenate-port-input"
               max={analysis.maxPortCount}
@@ -2341,9 +2338,9 @@ function ConcatenateDialog({
               </div>
             )}
           </fieldset>
-          {error ? (
+          {visibleError ? (
             <p className="dialog-error" id="concatenate-dialog-error" role="alert">
-              {error}
+              {visibleError}
             </p>
           ) : null}
           <div className="dialog-actions">
@@ -2377,18 +2374,24 @@ function activeConcatenatePortPairs(
     }));
 }
 
-function hasDuplicatePairNode(
+function concatenatePairValidationError(
   portPairs: ConcatenatePortPair[],
-  key: keyof ConcatenatePortPair,
-): boolean {
+): string {
   const seenNodeIds = new Set<number>();
   for (const pair of portPairs) {
-    if (seenNodeIds.has(pair[key])) {
-      return true;
+    if (pair.leftNodeId === pair.rightNodeId) {
+      return "Each enabled pair must use two different nodes.";
     }
-    seenNodeIds.add(pair[key]);
+    if (
+      seenNodeIds.has(pair.leftNodeId) ||
+      seenNodeIds.has(pair.rightNodeId)
+    ) {
+      return "Each enabled pair needs unique nodes across left and right ports.";
+    }
+    seenNodeIds.add(pair.leftNodeId);
+    seenNodeIds.add(pair.rightNodeId);
   }
-  return false;
+  return "";
 }
 
 function NewProjectDialog({

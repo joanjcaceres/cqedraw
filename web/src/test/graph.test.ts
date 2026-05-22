@@ -313,6 +313,41 @@ describe("graph state", () => {
     ]);
   });
 
+  it("drops explicit concatenate pairs that reuse an endpoint", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 140, 220);
+    project = addNode(project, 260, 220);
+    project = addNode(project, 300, 120);
+    project = addEdge(project, 0, 1);
+    project = updateEdgeValues(project, 0, { capacitanceText: "C01" });
+    project = addEdge(project, 2, 3);
+    project = updateEdgeValues(project, 1, { capacitanceText: "C23" });
+
+    const result = concatenateSelection(project, [0, 1, 2, 3], 1, {
+      portPairs: [
+        { leftNodeId: 0, rightNodeId: 2 },
+        { leftNodeId: 2, rightNodeId: 3 },
+      ],
+    });
+
+    expect(result).not.toBeNull();
+    const next = result!.project;
+    expect(result!.nodeIds).toEqual([4, 5, 6]);
+    expect(next.state.edges.map((edge) => edge.nodes)).toEqual([
+      [0, 1],
+      [2, 3],
+      [2, 4],
+      [5, 6],
+    ]);
+    expect(next.state.edges.map((edge) => edge.capacitance_text)).toEqual([
+      "C01",
+      "C23",
+      "C01",
+      "C23",
+    ]);
+  });
+
   it("duplicates zero-width selections instead of collapsing their boundary", () => {
     let project = emptyProject();
     project = addNode(project, 120, 100);

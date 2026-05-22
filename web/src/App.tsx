@@ -3001,8 +3001,7 @@ function JosephsonSymbol({ halfLength }: { halfLength: number }) {
 
   return (
     <>
-      <line x1={-halfLength} y1={0} x2={-junctionHalf} y2={0} />
-      <line x1={junctionHalf} y1={0} x2={halfLength} y2={0} />
+      <line x1={-halfLength} y1={0} x2={halfLength} y2={0} />
       <line
         className="component-josephson"
         x1={-junctionHalf}
@@ -3100,9 +3099,7 @@ function ParallelComponentBranch({
   y: number;
 }) {
   if (component === "capacitor") {
-    const capacitor = capacitorGeometry(
-      Math.min(junctionX, compactSymbolHalfLength(junctionX, CAPACITOR_SYMBOL_HALF_LENGTH)),
-    );
+    const capacitor = parallelCapacitorGeometry(junctionX);
     return (
       <>
         <line x1={-junctionX} y1={y} x2={-capacitor.plateX} y2={y} />
@@ -3113,7 +3110,7 @@ function ParallelComponentBranch({
   }
 
   if (component === "inductor") {
-    const coil = inductorGeometry(junctionX, junctionX * 0.72, 10);
+    const coil = inductorGeometry(junctionX, junctionX * 0.62, 8);
     return (
       <>
         <line x1={-junctionX} y1={y} x2={-coil.half} y2={y} />
@@ -3130,8 +3127,7 @@ function ParallelComponentBranch({
   const armY = clamp(junctionHalf * 0.6, 4, 10);
   return (
     <>
-      <line x1={-junctionX} y1={y} x2={-junctionHalf} y2={y} />
-      <line x1={junctionHalf} y1={y} x2={junctionX} y2={y} />
+      <line x1={-junctionX} y1={y} x2={junctionX} y2={y} />
       <line
         className="component-josephson"
         x1={-junctionHalf}
@@ -3193,6 +3189,16 @@ function capacitorGeometry(symbolHalf: number): CapacitorGeometry {
   };
 }
 
+function parallelCapacitorGeometry(junctionX: number): CapacitorGeometry {
+  const capacitor = capacitorGeometry(
+    Math.min(junctionX, compactSymbolHalfLength(junctionX, CAPACITOR_SYMBOL_HALF_LENGTH)),
+  );
+  return {
+    ...capacitor,
+    plateHeight: clamp(capacitor.plateHeight, 8, 26),
+  };
+}
+
 function inductorGeometry(
   halfLength: number,
   preferredHalf: number,
@@ -3230,8 +3236,8 @@ function parallelComponentBranchOffset(
   componentCount: number,
 ): number {
   const maxBranchY = Math.max(1, halfLength - 12);
-  const preferredBranchY = componentCount > 2 ? 18 : 16;
-  return clamp(preferredBranchY, Math.min(4, maxBranchY), maxBranchY);
+  const preferredBranchY = componentCount > 2 ? 30 : 24;
+  return clamp(preferredBranchY, Math.min(6, maxBranchY), maxBranchY);
 }
 
 function branchOffsets(componentCount: number, branchY: number): number[] {
@@ -3677,24 +3683,45 @@ function edgeValueLabels(
     componentKind === "parallel-lj" ||
     componentKind === "parallel-lcj"
   ) {
+    const components = parallelComponentsForKind(componentKind);
+    const branchY = parallelComponentBranchOffset(geometry.length / 2, components.length);
+    const branchYs = branchOffsets(components.length, branchY);
+    const componentYs = new Map(
+      components.map((component, index) => [component, branchYs[index] ?? 0]),
+    );
+    const symbolHalf = compactSymbolHalfLength(
+      geometry.length / 2,
+      PARALLEL_LC_SYMBOL_HALF_LENGTH,
+    );
+    const labelX = Math.min(
+      geometry.length / 2 + 18,
+      Math.max(56, symbolHalf + 34),
+    );
+    const labelY = (componentY: number) => componentY + (componentY > 0 ? 18 : -14);
     const labels = [];
+    const capacitorY = componentYs.get("capacitor");
+    const inductorY = componentYs.get("inductor");
+    const josephsonY = componentYs.get("josephson");
     if (capacitanceText) {
+      const y = capacitorY ?? -branchY;
       labels.push({
-        point: localEdgePoint(geometry, { x: 0, y: -76 }),
+        point: localEdgePoint(geometry, { x: labelX, y: labelY(y) }),
         testId: `edge-value-cap-${edge.identifier}`,
         text: `C=${capacitanceText}`,
       });
     }
     if (inductanceText) {
+      const y = inductorY ?? branchY;
       labels.push({
-        point: localEdgePoint(geometry, { x: 0, y: 78 }),
+        point: localEdgePoint(geometry, { x: labelX, y: labelY(y) }),
         testId: `edge-value-ind-${edge.identifier}`,
         text: `L=${inductanceText}`,
       });
     }
     if (josephsonInductanceText) {
+      const y = josephsonY ?? branchY;
       labels.push({
-        point: localEdgePoint(geometry, { x: 58, y: 0 }),
+        point: localEdgePoint(geometry, { x: labelX, y: labelY(y) }),
         testId: `edge-value-jj-${edge.identifier}`,
         text: `LJ=${josephsonInductanceText}`,
       });

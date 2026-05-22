@@ -9,6 +9,7 @@ from cqedraw.app import CircuitGraphApp, Edge, GROUND_NODE_ID, Node
 from cqedraw.core import (
     CircuitEdgeData,
     build_snippet,
+    compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
 )
@@ -317,10 +318,20 @@ def test_app_matrix_wrappers_delegate_to_core_output_logic():
     size, c_entries, l_inv_entries = compute_matrix_entries(
         app.nodes.keys(), core_edges
     )
+    branch_size, c_branches, l_inv_branches = compute_matrix_branches(
+        app.nodes.keys(), core_edges
+    )
 
     assert app._compute_matrix_entries() == (size, c_entries, l_inv_entries)
+    assert app._compute_matrix_branches() == (
+        branch_size,
+        c_branches,
+        l_inv_branches,
+    )
     assert app._compute_matrices() == compute_matrices(app.nodes.keys(), core_edges)
-    assert app._build_snippet() == build_snippet(size, c_entries, l_inv_entries)
+    assert app._build_snippet() == build_snippet(
+        branch_size, c_branches, l_inv_branches
+    )
 
 
 def _numeric_matrix(
@@ -329,114 +340,50 @@ def _numeric_matrix(
     return np.array(sympy_matrix.subs(substitutions).tolist(), dtype=float)
 
 
-def test_matrix_function_snippet_uses_nonzero_entries_and_materializes_correctly():
-    app = _make_app()
-    size, c_entries, _ = app._compute_matrix_entries()
-
-    lines, params = app._matrix_function_snippet(
-        "C_matrix_entries",
-        "C_matrix_triplets",
-        "C_matrix_sparse",
-        "C_matrix_func",
-        size,
-        c_entries,
-    )
-
-    assert params == ["C1", "C2", "Cg"]
-    assert any("def C_matrix_entries" in line for line in lines)
-    assert any("def C_matrix_triplets" in line for line in lines)
-    assert any("def C_matrix_sparse" in line for line in lines)
-    assert any(
-        "return _sparse_matrix_from_entries(entries, (3, 3))" in line for line in lines
-    )
-    assert any(
-        "return _dense_matrix_from_entries(entries, (3, 3))" in line for line in lines
-    )
-
-    namespace: dict[str, object] = {}
-    exec(
-        "import math\nimport numpy as np\nfrom scipy import sparse\n\n"
-        + "\n".join(app._matrix_snippet_support_functions())
-        + "\n\n"
-        + "\n".join(lines),
-        namespace,
-    )
-
-    kwargs = {"C1": 1.0, "C2": 2.0, "Cg": 3.0}
-    entries = namespace["C_matrix_entries"](**kwargs)
-    rows, cols, data, shape = namespace["C_matrix_triplets"](**kwargs)
-    sparse_matrix = namespace["C_matrix_sparse"](**kwargs)
-    matrix = namespace["C_matrix_func"](**kwargs)
-
-    assert entries == [
-        (0, 0, 3.0),
-        (0, 1, -3.0),
-        (1, 0, -3.0),
-        (1, 1, 3.0),
-        (2, 2, 3.0),
-    ]
-    assert shape == (3, 3)
-    assert np.array_equal(rows, np.array([0, 0, 1, 1, 2]))
-    assert np.array_equal(cols, np.array([0, 1, 0, 1, 2]))
-    assert np.allclose(data, np.array([3.0, -3.0, -3.0, 3.0, 3.0]))
-    assert sparse.isspmatrix_csr(sparse_matrix)
-    assert np.allclose(sparse_matrix.toarray(), matrix)
-    assert np.allclose(
-        matrix,
-        np.array(
-            [
-                [3.0, -3.0, 0.0],
-                [-3.0, 3.0, 0.0],
-                [0.0, 0.0, 3.0],
-            ]
-        ),
-    )
-
-
 def test_build_snippet_matches_computed_c_and_l_inverse_matrices():
     app = _make_app()
     c_matrix, l_inv_matrix = app._compute_matrices()
     snippet = app._build_snippet()
 
     assert "from scipy import sparse" in snippet
-    assert "def C_matrix_entries" in snippet
-    assert "def C_matrix_sparse" in snippet
-    assert "def L_inv_matrix_entries" in snippet
-    assert "def L_inv_matrix_sparse" in snippet
+    assert "def circuit_matrices" in snippet
+    assert "def C_matrix" in snippet
+    assert "def L_inv_matrix" in snippet
+    assert "np.zeros" not in snippet
+    assert "def C_matrix_func" not in snippet
+    assert "def L_inv_matrix_func" not in snippet
 
     namespace: dict[str, object] = {}
     exec(snippet, namespace)
 
-    c_kwargs = {"C1": 1.0, "C2": 2.0, "Cg": 3.0}
-    l_kwargs = {"L1_inv": 4.0, "Lg_inv": 5.0}
+    params = {"C1": 1.0, "C2": 2.0, "Cg": 3.0, "L1_inv": 4.0, "Lg_inv": 5.0}
 
     c_expected = _numeric_matrix(
         c_matrix,
         {
-            sp.Symbol("C1"): c_kwargs["C1"],
-            sp.Symbol("C2"): c_kwargs["C2"],
-            sp.Symbol("Cg"): c_kwargs["Cg"],
+            sp.Symbol("C1"): params["C1"],
+            sp.Symbol("C2"): params["C2"],
+            sp.Symbol("Cg"): params["Cg"],
         },
     )
     l_expected = _numeric_matrix(
         l_inv_matrix,
         {
-            sp.Symbol("L1_inv"): l_kwargs["L1_inv"],
-            sp.Symbol("Lg_inv"): l_kwargs["Lg_inv"],
+            sp.Symbol("L1_inv"): params["L1_inv"],
+            sp.Symbol("Lg_inv"): params["Lg_inv"],
         },
     )
 
-    c_sparse = namespace["C_matrix_sparse"](**c_kwargs)
-    c_dense = namespace["C_matrix_func"](**c_kwargs)
-    l_sparse = namespace["L_inv_matrix_sparse"](**l_kwargs)
-    l_dense = namespace["L_inv_matrix_func"](**l_kwargs)
+    c_sparse, l_sparse = namespace["circuit_matrices"](params)
+    c_only = namespace["C_matrix"](params)
+    l_only = namespace["L_inv_matrix"](params)
 
     assert sparse.isspmatrix_csr(c_sparse)
     assert sparse.isspmatrix_csr(l_sparse)
     assert np.allclose(c_sparse.toarray(), c_expected)
-    assert np.allclose(c_dense, c_expected)
     assert np.allclose(l_sparse.toarray(), l_expected)
-    assert np.allclose(l_dense, l_expected)
+    assert np.allclose(c_only.toarray(), c_expected)
+    assert np.allclose(l_only.toarray(), l_expected)
 
 
 def test_merge_nodes_in_snapshot_rewires_edges_and_combines_ground_connections():

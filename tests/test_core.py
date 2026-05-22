@@ -1,5 +1,3 @@
-import inspect
-
 import numpy as np
 import sympy as sp
 from scipy import sparse
@@ -8,9 +6,11 @@ from cqedraw.core import (
     GROUND_NODE_ID,
     CircuitEdgeData,
     build_snippet,
+    compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
-    matrix_function_snippet,
+    matrix_branch_parameter_names,
+    matrix_parameter_names,
 )
 
 
@@ -104,74 +104,53 @@ def test_compute_matrix_entries_handles_empty_values_without_entries():
     assert l_inv_entries == {}
 
 
-def test_matrix_function_snippet_parameters_are_sorted_by_symbol_name():
+def test_matrix_parameter_names_are_sorted_by_symbol_name():
     _, c_entries, _ = compute_matrix_entries([15, 10, 11], _regression_edges())
 
-    _, params = matrix_function_snippet(
-        "C_matrix_entries",
-        "C_matrix_triplets",
-        "C_matrix_sparse",
-        "C_matrix_func",
-        3,
-        c_entries,
-    )
-
-    assert params == ["C_alpha", "C_beta", "C_ground"]
+    assert matrix_parameter_names(c_entries) == ["C_alpha", "C_beta", "C_ground"]
 
 
-def test_build_snippet_materializes_exact_dense_sparse_and_triplet_outputs():
-    size, c_entries, l_inv_entries = compute_matrix_entries(
+def test_compute_matrix_branches_combines_parallel_edges_and_cancellations():
+    size, c_branches, l_inv_branches = compute_matrix_branches(
         [15, 10, 11], _regression_edges()
     )
+
+    c_total = sp.Symbol("C_alpha") + sp.Symbol("C_beta")
+    l_total = sp.Symbol("L_alpha_inv") + sp.Symbol("L_beta_inv")
+
+    assert size == 3
+    assert c_branches == [
+        (0, 1, c_total),
+        (2, None, sp.Symbol("C_ground")),
+    ]
+    assert l_inv_branches == [
+        (0, 1, l_total),
+        (2, None, sp.Symbol("L_ground_inv")),
+    ]
+    assert matrix_branch_parameter_names(c_branches) == [
+        "C_alpha",
+        "C_beta",
+        "C_ground",
+    ]
+
+
+def test_build_snippet_materializes_exact_sparse_outputs():
+    size, c_branches, l_inv_branches = compute_matrix_branches(
+        [15, 10, 11], _regression_edges()
+    )
+    snippet = build_snippet(size, c_branches, l_inv_branches)
     namespace: dict[str, object] = {}
 
-    exec(build_snippet(size, c_entries, l_inv_entries), namespace)
+    exec(snippet, namespace)
 
-    c_kwargs = {"C_alpha": 1.0, "C_beta": 2.0, "C_ground": 3.0}
-    l_kwargs = {"L_alpha_inv": 4.0, "L_beta_inv": 5.0, "L_ground_inv": 6.0}
-
-    c_entries_result = namespace["C_matrix_entries"](**c_kwargs)
-    c_rows, c_cols, c_data, c_shape = namespace["C_matrix_triplets"](**c_kwargs)
-    c_sparse = namespace["C_matrix_sparse"](**c_kwargs)
-    c_dense = namespace["C_matrix_func"](**c_kwargs)
-
-    l_entries_result = namespace["L_inv_matrix_entries"](**l_kwargs)
-    l_rows, l_cols, l_data, l_shape = namespace["L_inv_matrix_triplets"](**l_kwargs)
-    l_sparse = namespace["L_inv_matrix_sparse"](**l_kwargs)
-    l_dense = namespace["L_inv_matrix_func"](**l_kwargs)
-
-    assert (
-        inspect.signature(namespace["C_matrix_func"]).parameters.keys()
-        == c_kwargs.keys()
-    )
-    assert (
-        inspect.signature(namespace["L_inv_matrix_func"]).parameters.keys()
-        == l_kwargs.keys()
-    )
-
-    assert c_entries_result == [
-        (0, 0, 3.0),
-        (0, 1, -3.0),
-        (1, 0, -3.0),
-        (1, 1, 3.0),
-        (2, 2, 3.0),
-    ]
-    assert l_entries_result == [
-        (0, 0, 9.0),
-        (0, 1, -9.0),
-        (1, 0, -9.0),
-        (1, 1, 9.0),
-        (2, 2, 6.0),
-    ]
-
-    assert c_shape == (3, 3)
-    assert l_shape == (3, 3)
-    assert np.array_equal(c_rows, np.array([0, 0, 1, 1, 2]))
-    assert np.array_equal(c_cols, np.array([0, 1, 0, 1, 2]))
-    assert np.allclose(c_data, np.array([3.0, -3.0, -3.0, 3.0, 3.0]))
-    assert np.array_equal(l_rows, np.array([0, 0, 1, 1, 2]))
-    assert np.array_equal(l_cols, np.array([0, 1, 0, 1, 2]))
-    assert np.allclose(l_data, np.array([9.0, -9.0, -9.0, 9.0, 6.0]))
+    params = {
+        "C_alpha": 1.0,
+        "C_beta": 2.0,
+        "C_ground": 3.0,
+        "L_alpha_inv": 4.0,
+        "L_beta_inv": 5.0,
+        "L_ground_inv": 6.0,
+    }
 
     c_expected = np.array(
         [
@@ -187,9 +166,115 @@ def test_build_snippet_materializes_exact_dense_sparse_and_triplet_outputs():
             [0.0, 0.0, 6.0],
         ]
     )
+
+    assert namespace["MATRIX_SHAPE"] == (3, 3)
+    assert namespace["PARAMETER_NAMES"] == (
+        "C_alpha",
+        "C_beta",
+        "C_ground",
+        "L_alpha_inv",
+        "L_beta_inv",
+        "L_ground_inv",
+    )
+    assert namespace["C_PARAMETER_NAMES"] == ("C_alpha", "C_beta", "C_ground")
+    assert namespace["L_INV_PARAMETER_NAMES"] == (
+        "L_alpha_inv",
+        "L_beta_inv",
+        "L_ground_inv",
+    )
+
+    c_sparse, l_sparse = namespace["circuit_matrices"](params)
+    c_only = namespace["C_matrix"](params)
+    l_only = namespace["L_inv_matrix"](params)
+
     assert sparse.isspmatrix_csr(c_sparse)
     assert sparse.isspmatrix_csr(l_sparse)
     assert np.allclose(c_sparse.toarray(), c_expected)
-    assert np.allclose(c_dense, c_expected)
     assert np.allclose(l_sparse.toarray(), l_expected)
-    assert np.allclose(l_dense, l_expected)
+    assert np.allclose(c_only.toarray(), c_expected)
+    assert np.allclose(l_only.toarray(), l_expected)
+
+    assert "np.zeros" not in snippet
+    assert "def C_matrix_func" not in snippet
+    assert "def L_inv_matrix_func" not in snippet
+    assert "def C_matrix_triplets" not in snippet
+    assert "def L_inv_matrix_triplets" not in snippet
+
+
+def test_build_snippet_reports_missing_parameter_names():
+    size, c_branches, l_inv_branches = compute_matrix_branches(
+        [15, 10, 11], _regression_edges()
+    )
+    namespace: dict[str, object] = {}
+
+    exec(build_snippet(size, c_branches, l_inv_branches), namespace)
+
+    try:
+        namespace["circuit_matrices"]({"C_alpha": 1.0})
+    except KeyError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected missing parameters to raise KeyError.")
+
+    assert "Missing parameter values" in message
+    assert "C_beta" in message
+    assert "C_ground" in message
+    assert "L_alpha_inv" in message
+    assert "L_beta_inv" in message
+    assert "L_ground_inv" in message
+
+
+def test_build_snippet_scales_with_sparse_chain_entries():
+    node_count = 250
+    edges = [
+        CircuitEdgeData(
+            (node_id, node_id + 1),
+            sp.Symbol(f"C{node_id}"),
+            sp.Symbol(f"L{node_id}_inv"),
+        )
+        for node_id in range(node_count - 1)
+    ]
+    size, c_branches, l_inv_branches = compute_matrix_branches(range(node_count), edges)
+    snippet = build_snippet(size, c_branches, l_inv_branches)
+    namespace: dict[str, object] = {}
+
+    exec(snippet, namespace)
+    params = {name: 1.0 for name in namespace["PARAMETER_NAMES"]}
+    c_sparse, l_sparse = namespace["circuit_matrices"](params)
+    expected_nnz = node_count + 2 * (node_count - 1)
+
+    assert c_sparse.shape == (node_count, node_count)
+    assert l_sparse.shape == (node_count, node_count)
+    assert sparse.isspmatrix_csr(c_sparse)
+    assert sparse.isspmatrix_csr(l_sparse)
+    assert c_sparse.nnz == expected_nnz
+    assert l_sparse.nnz == expected_nnz
+    assert c_sparse.nnz < node_count * node_count // 10
+    assert "np.zeros" not in snippet
+
+
+def test_build_snippet_groups_repeated_branch_expressions():
+    node_count = 250
+    edges = [
+        CircuitEdgeData(
+            (node_id, node_id + 1),
+            sp.Symbol("C"),
+            1 / sp.Symbol("L"),
+        )
+        for node_id in range(node_count - 1)
+    ]
+    size, c_branches, l_inv_branches = compute_matrix_branches(range(node_count), edges)
+    snippet = build_snippet(size, c_branches, l_inv_branches)
+    namespace: dict[str, object] = {}
+
+    exec(snippet, namespace)
+    c_sparse, l_sparse = namespace["circuit_matrices"]({"C": 2.0, "L": 4.0})
+    expanded_entry_lines = 2 * (node_count + 2 * (node_count - 1))
+
+    assert c_sparse.shape == (node_count, node_count)
+    assert l_sparse.shape == (node_count, node_count)
+    assert c_sparse.nnz == node_count + 2 * (node_count - 1)
+    assert l_sparse.nnz == node_count + 2 * (node_count - 1)
+    assert snippet.count('params["C"]') == 1
+    assert snippet.count('1/params["L"]') == 1
+    assert len(snippet.splitlines()) < expanded_entry_lines

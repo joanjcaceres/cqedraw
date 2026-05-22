@@ -140,7 +140,7 @@ Be especially careful with changes that affect:
 - Node numbering, merge behavior, or ground handling.
 - Capacitance or inverse-inductance matrix assembly.
 - Symbol parsing or ordering.
-- Generated Python snippets, including sparse and dense matrix helpers.
+- Generated Python snippets, including sparse matrix helpers.
 - Saved project JSON that may be loaded by future versions.
 
 When a pull request intentionally changes output behavior, document the old and

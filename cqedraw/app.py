@@ -12,14 +12,14 @@ import sympy as sp
 from .core import (
     GROUND_NODE_ID,
     CircuitEdgeData,
+    MatrixBranches,
     MatrixEntries,
     accumulate_matrix_entry,
     build_snippet,
+    compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
     finalize_matrix_entries,
-    matrix_function_snippet,
-    matrix_snippet_support_functions,
 )
 
 
@@ -335,7 +335,7 @@ class CircuitGraphApp:
             toolbar,
             text="Snippet",
             command=self._copy_snippet,
-            tooltip="Copy NumPy/SymPy snippet to clipboard.",
+            tooltip="Copy sparse SciPy matrix snippet to clipboard.",
         )
 
         self.canvas = tk.Canvas(self.root, bg="white")
@@ -2212,34 +2212,15 @@ class CircuitGraphApp:
     def _compute_matrix_entries(self) -> Tuple[int, MatrixEntries, MatrixEntries]:
         return compute_matrix_entries(self.nodes.keys(), self._core_edges())
 
+    def _compute_matrix_branches(self) -> Tuple[int, MatrixBranches, MatrixBranches]:
+        return compute_matrix_branches(self.nodes.keys(), self._core_edges())
+
     def _compute_matrices(self) -> Tuple[sp.Matrix, sp.Matrix]:
         return compute_matrices(self.nodes.keys(), self._core_edges())
 
-    @staticmethod
-    def _matrix_snippet_support_functions() -> list[str]:
-        return matrix_snippet_support_functions()
-
-    def _matrix_function_snippet(
-        self,
-        entries_func_name: str,
-        triplet_func_name: str,
-        sparse_func_name: str,
-        dense_func_name: str,
-        size: int,
-        entries: MatrixEntries,
-    ) -> Tuple[list[str], list[str]]:
-        return matrix_function_snippet(
-            entries_func_name,
-            triplet_func_name,
-            sparse_func_name,
-            dense_func_name,
-            size,
-            entries,
-        )
-
     def _build_snippet(self) -> str:
-        size, c_entries, l_inv_entries = self._compute_matrix_entries()
-        return build_snippet(size, c_entries, l_inv_entries)
+        size, c_branches, l_inv_branches = self._compute_matrix_branches()
+        return build_snippet(size, c_branches, l_inv_branches)
 
     def _copy_snippet(self) -> None:
         if not self.nodes:

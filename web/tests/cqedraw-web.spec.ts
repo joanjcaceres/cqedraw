@@ -275,7 +275,11 @@ test("supports core web keyboard shortcuts without changing generated output", a
       }),
     ),
   });
-  await expect(page.getByText("Loaded")).toBeVisible();
+  await expect(page.getByTestId("node-matrix-label-0")).toContainText("0");
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByTestId("node-0").click();
+  await expect(page.getByTestId("node-name-input")).toHaveValue("Loaded");
+  await expect(page.getByTestId("node-matrix-index-input")).toHaveValue("0");
   await expect(page.getByTestId("save-status")).toContainText("Saved");
 });
 
@@ -654,10 +658,10 @@ test("exports Josephson junction branch metadata and phase direction", async ({
     "parallel-lcj",
   );
   await expect(page.getByTestId("edge-value-jj-0")).toContainText("LJ=Lj");
-  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N2 - N1");
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: 1 - 0");
 
   await page.getByRole("button", { name: "Reverse" }).click();
-  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N1 - N2");
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: 0 - 1");
 
   await page.getByRole("button", { name: "Ground" }).click();
   await page.getByTestId("node-1").click();
@@ -678,9 +682,16 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("jj-branches")).toContainText(
     "edge 1: phase index 1 - GND, LJ = Lground_j",
   );
+  await expect(page.getByTestId("matrix-nodes")).toContainText(
+    "0: N1 (project node 0)",
+  );
+  await expect(page.getByTestId("matrix-nodes")).toContainText(
+    "1: N2 (project node 1)",
+  );
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
   const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedSnippet).toContain("NODE_INDEX_MAP");
   expect(copiedSnippet).toContain("JOSEPHSON_BRANCHES");
   expect(copiedSnippet).toContain("def josephson_branches");
   expect(copiedSnippet).toContain('"phase_positive_index": 0');
@@ -711,7 +722,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   });
   await page.getByTestId("edge-0").click({ force: true });
   await expect(page.getByTestId("jj-ind-input")).toHaveValue("Lj");
-  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N1 - N2");
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: 0 - 1");
 });
 
 test("moves ground branches without changing generated output", async ({ page }) => {
@@ -1511,8 +1522,8 @@ test("copies selected graph elements and pastes them from a preview", async ({
   await expect(page.getByTestId("output-status")).toContainText("Pasted 2 node(s).");
   await expect(page.getByTestId("node-2")).toBeVisible();
   await expect(page.getByTestId("node-3")).toBeVisible();
-  await expect(canvas.getByText("N3")).toBeVisible();
-  await expect(canvas.getByText("N4")).toBeVisible();
+  await expect(page.getByTestId("node-matrix-label-2")).toContainText("2");
+  await expect(page.getByTestId("node-matrix-label-3")).toContainText("3");
   await expect(page.getByTestId("merge-target-summary")).toContainText(
     "Merge keeps N4",
   );
@@ -1611,8 +1622,8 @@ test("concatenates selected graph blocks", async ({ page }) => {
   await expect(page.getByTestId("node-2")).toBeVisible();
   await expect(page.getByTestId("node-3")).toBeVisible();
   await expect(page.getByTestId("edge-4")).toHaveCount(1);
-  await expect(canvas.getByText("N3")).toBeVisible();
-  await expect(canvas.getByText("N4")).toBeVisible();
+  await expect(page.getByTestId("node-matrix-label-2")).toContainText("2");
+  await expect(page.getByTestId("node-matrix-label-3")).toContainText("3");
   await expect(page.getByTestId("merge-target-summary")).toContainText(
     "Merge keeps N4",
   );

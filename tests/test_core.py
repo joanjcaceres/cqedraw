@@ -12,6 +12,7 @@ from cqedraw.core import (
     compute_matrix_entries,
     josephson_parameter_names,
     matrix_branch_parameter_names,
+    matrix_node_records,
     matrix_parameter_names,
 )
 
@@ -136,11 +137,35 @@ def test_compute_matrix_branches_combines_parallel_edges_and_cancellations():
     ]
 
 
+def test_matrix_node_records_follow_matrix_index_order():
+    records = matrix_node_records(
+        [15, 10, 11],
+        {10: "N1", 11: "N2", 15: "N3"},
+    )
+
+    assert [
+        (record.project_node_id, record.matrix_index, record.name)
+        for record in records
+    ] == [
+        (10, 0, "N1"),
+        (11, 1, "N2"),
+        (15, 2, "N3"),
+    ]
+
+
 def test_build_snippet_materializes_exact_sparse_outputs():
     size, c_branches, l_inv_branches = compute_matrix_branches(
         [15, 10, 11], _regression_edges()
     )
-    snippet = build_snippet(size, c_branches, l_inv_branches)
+    snippet = build_snippet(
+        size,
+        c_branches,
+        l_inv_branches,
+        matrix_nodes=matrix_node_records(
+            [15, 10, 11],
+            {10: "N1", 11: "N2", 15: "N3"},
+        ),
+    )
     namespace: dict[str, object] = {}
 
     exec(snippet, namespace)
@@ -184,6 +209,13 @@ def test_build_snippet_materializes_exact_sparse_outputs():
         "L_beta_inv",
         "L_ground_inv",
     )
+    assert namespace["MATRIX_NODES"] == (
+        {"project_node_id": 10, "matrix_index": 0, "name": "N1"},
+        {"project_node_id": 11, "matrix_index": 1, "name": "N2"},
+        {"project_node_id": 15, "matrix_index": 2, "name": "N3"},
+    )
+    assert namespace["NODE_INDEX_MAP"] == {10: 0, 11: 1, 15: 2}
+    assert namespace["NODE_NAME_MAP"] == {10: "N1", 11: "N2", 15: "N3"}
 
     c_sparse, l_sparse = namespace["circuit_matrices"](params)
     c_only = namespace["C_matrix"](params)

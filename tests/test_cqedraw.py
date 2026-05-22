@@ -12,6 +12,7 @@ from cqedraw.core import (
     compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
+    matrix_node_records,
 )
 
 
@@ -329,8 +330,12 @@ def test_app_matrix_wrappers_delegate_to_core_output_logic():
         l_inv_branches,
     )
     assert app._compute_matrices() == compute_matrices(app.nodes.keys(), core_edges)
+    matrix_nodes = matrix_node_records(
+        app.nodes.keys(),
+        {node_id: node.name for node_id, node in app.nodes.items()},
+    )
     assert app._build_snippet() == build_snippet(
-        branch_size, c_branches, l_inv_branches
+        branch_size, c_branches, l_inv_branches, matrix_nodes=matrix_nodes
     )
 
 
@@ -349,12 +354,16 @@ def test_build_snippet_matches_computed_c_and_l_inverse_matrices():
     assert "def circuit_matrices" in snippet
     assert "def C_matrix" in snippet
     assert "def L_inv_matrix" in snippet
+    assert "NODE_INDEX_MAP" in snippet
     assert "np.zeros" not in snippet
     assert "def C_matrix_func" not in snippet
     assert "def L_inv_matrix_func" not in snippet
 
     namespace: dict[str, object] = {}
     exec(snippet, namespace)
+
+    assert namespace["NODE_INDEX_MAP"] == {10: 0, 11: 1, 15: 2}
+    assert namespace["NODE_NAME_MAP"] == {10: "N1", 11: "N2", 15: "N3"}
 
     params = {"C1": 1.0, "C2": 2.0, "Cg": 3.0, "L1_inv": 4.0, "Lg_inv": 5.0}
 

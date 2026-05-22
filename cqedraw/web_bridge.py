@@ -22,6 +22,7 @@ from .core import (
     compute_matrix_entries,
     josephson_parameter_names,
     matrix_parameter_names,
+    matrix_node_records,
 )
 
 
@@ -55,6 +56,13 @@ def _phase_sign(value: Any) -> int:
 
 def _node_ids(state: dict[str, Any]) -> list[int]:
     return [int(node["identifier"]) for node in state.get("nodes", [])]
+
+
+def _node_names(state: dict[str, Any]) -> dict[int, str]:
+    return {
+        int(node["identifier"]): str(node.get("name") or f"N{node['identifier']}")
+        for node in state.get("nodes", [])
+    }
 
 
 def _edge_data(state: dict[str, Any]) -> list[CircuitEdgeData]:
@@ -116,9 +124,21 @@ def _josephson_branch_records(branches: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _matrix_node_records(records: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "project_node_id": record.project_node_id,
+            "matrix_index": record.matrix_index,
+            "name": record.name,
+        }
+        for record in records
+    ]
+
+
 def generate_output(project: dict[str, Any]) -> dict[str, Any]:
     state = _project_state(project)
     node_ids = _node_ids(state)
+    matrix_nodes = matrix_node_records(node_ids, _node_names(state))
     edges = _edge_data(state)
     size, c_entries, l_inv_entries = compute_matrix_entries(
         node_ids, edges
@@ -133,11 +153,13 @@ def generate_output(project: dict[str, Any]) -> dict[str, Any]:
         "l_inv_parameters": matrix_parameter_names(l_inv_entries),
         "josephson_parameters": josephson_parameter_names(josephson_branches),
         "josephson_branches": _josephson_branch_records(josephson_branches),
+        "matrix_nodes": _matrix_node_records(matrix_nodes),
         "snippet": build_snippet(
             snippet_size,
             c_branches,
             l_inv_branches,
             josephson_branches,
+            matrix_nodes,
         ),
     }
 

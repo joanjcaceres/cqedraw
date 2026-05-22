@@ -84,10 +84,16 @@ def test_generate_output_returns_json_safe_core_results():
     ]
     assert result["josephson_parameters"] == []
     assert result["josephson_branches"] == []
+    assert result["matrix_nodes"] == [
+        {"project_node_id": 10, "matrix_index": 0, "name": "N1"},
+        {"project_node_id": 11, "matrix_index": 1, "name": "N2"},
+        {"project_node_id": 15, "matrix_index": 2, "name": "N3"},
+    ]
     assert "def circuit_matrices" in result["snippet"]
     assert "def C_matrix" in result["snippet"]
     assert "def L_inv_matrix" in result["snippet"]
     assert "def josephson_branches" in result["snippet"]
+    assert "NODE_INDEX_MAP" in result["snippet"]
     assert "def C_matrix_func" not in result["snippet"]
     assert "def L_inv_matrix_func" not in result["snippet"]
 

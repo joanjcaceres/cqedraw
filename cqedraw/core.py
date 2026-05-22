@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, Mapping, Optional, Tuple
 
 import sympy as sp
 from sympy.printing.pycode import PythonCodePrinter
@@ -16,6 +16,7 @@ BranchKey = Tuple[int, Optional[int]]
 MatrixBranches = list[Tuple[int, Optional[int], sp.Expr]]
 ProjectNodes = Tuple[int, int]
 MatrixNodes = Tuple[int, Optional[int]]
+MatrixNodeRecords = list["MatrixNodeData"]
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,28 @@ class JosephsonBranchData:
     inductance_expr: sp.Expr
 
 
+@dataclass(frozen=True)
+class MatrixNodeData:
+    project_node_id: int
+    matrix_index: int
+    name: Optional[str] = None
+
+
 JosephsonBranches = list[JosephsonBranchData]
+
+
+def matrix_node_records(
+    node_ids: Iterable[int], node_names: Optional[Mapping[int, str]] = None
+) -> MatrixNodeRecords:
+    names = node_names or {}
+    return [
+        MatrixNodeData(
+            project_node_id=node_id,
+            matrix_index=index,
+            name=names.get(node_id),
+        )
+        for index, node_id in enumerate(sorted(node_ids))
+    ]
 
 
 def accumulate_matrix_entry(
@@ -358,6 +380,38 @@ def _josephson_branches_literal(branches: JosephsonBranches) -> list[str]:
     return lines
 
 
+def _matrix_nodes_literal(records: MatrixNodeRecords) -> list[str]:
+    if not records:
+        return [
+            "MATRIX_NODES = ()",
+            "NODE_INDEX_MAP = {}",
+            "NODE_NAME_MAP = {}",
+        ]
+
+    indent = " " * 4
+    lines = ["MATRIX_NODES = ("]
+    for record in records:
+        lines.append(f"{indent}{{")
+        lines.append(f"{indent*2}\"project_node_id\": {record.project_node_id!r},")
+        lines.append(f"{indent*2}\"matrix_index\": {record.matrix_index!r},")
+        lines.append(f"{indent*2}\"name\": {json.dumps(record.name)},")
+        lines.append(f"{indent}}},")
+    lines.extend(
+        [
+            ")",
+            (
+                "NODE_INDEX_MAP = "
+                "{node[\"project_node_id\"]: node[\"matrix_index\"] for node in MATRIX_NODES}"
+            ),
+            (
+                "NODE_NAME_MAP = "
+                "{node[\"project_node_id\"]: node[\"name\"] for node in MATRIX_NODES}"
+            ),
+        ]
+    )
+    return lines
+
+
 def _josephson_branch_records_literal(branches: JosephsonBranches) -> list[str]:
     indent = " " * 4
     if not branches:
@@ -383,9 +437,12 @@ def build_snippet(
     c_branches: MatrixBranches,
     l_inv_branches: MatrixBranches,
     josephson_branches: Optional[JosephsonBranches] = None,
+    matrix_nodes: Optional[MatrixNodeRecords] = None,
 ) -> str:
     if josephson_branches is None:
         josephson_branches = []
+    if matrix_nodes is None:
+        matrix_nodes = []
     c_params = matrix_branch_parameter_names(c_branches)
     l_params = matrix_branch_parameter_names(l_inv_branches)
     josephson_params = josephson_parameter_names(josephson_branches)
@@ -404,6 +461,7 @@ def build_snippet(
         "ELEMENTARY_CHARGE = 1.602176634e-19",
         "REDUCED_FLUX_QUANTUM = PLANCK_CONSTANT / (4 * math.pi * ELEMENTARY_CHARGE)",
     ]
+    snippet_lines.extend(_matrix_nodes_literal(matrix_nodes))
     snippet_lines.extend(_josephson_branches_literal(josephson_branches))
     snippet_lines.extend(
         [

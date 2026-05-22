@@ -282,6 +282,10 @@ export function App() {
     () => project.state.edges.find((edge) => edge.identifier === selectedEdgeId) ?? null,
     [project, selectedEdgeId],
   );
+  const matrixNodeLabels = useMemo(
+    () => matrixNodeLabelMap(project.state.nodes),
+    [project.state.nodes],
+  );
   const inlineValueEditorEdge =
     selectedEdge?.identifier === inlineValueEditorEdgeId ? selectedEdge : null;
   const currentProjectSnapshot = useMemo(
@@ -1519,8 +1523,10 @@ export function App() {
 
   const selectedEdgeLabel = selectedEdge
     ? selectedEdge.is_ground
-      ? `Ground ${selectedEdge.nodes[0]}`
-      : `${selectedEdge.nodes[0]}-${selectedEdge.nodes[1]}`
+      ? `Ground ${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}`
+      : `${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}-${
+          matrixNodeLabels.get(selectedEdge.nodes[1]) ?? selectedEdge.nodes[1]
+        }`
     : null;
   const mergeTargetNode =
     selectedNodeIds.length > 1 && selectedNodeId !== null
@@ -1805,8 +1811,13 @@ export function App() {
                     r={NODE_RADIUS}
                     onPointerDown={(event) => handleNodePointerDown(event, node.identifier)}
                   />
-                  <text className="node-label" x={node.x + 16} y={node.y + 5}>
-                    {node.name}
+                  <text
+                    className="node-label"
+                    data-testid={`node-matrix-label-${node.identifier}`}
+                    x={node.x + 16}
+                    y={node.y + 5}
+                  >
+                    {matrixNodeLabels.get(node.identifier) ?? node.identifier}
                   </text>
                 </g>
               ))}
@@ -1906,7 +1917,7 @@ export function App() {
                 {selectedEdge.josephson_inductance_text?.trim() ? (
                   <div className="phase-control" data-testid="jj-phase-control">
                     <span data-testid="jj-phase-label">
-                      {josephsonPhaseLabel(selectedEdge, project.state.nodes)}
+                      {josephsonPhaseLabel(selectedEdge, matrixNodeLabels)}
                     </span>
                     <button
                       type="button"
@@ -1925,7 +1936,15 @@ export function App() {
             ) : selectedNode ? (
               <div className="form-grid">
                 <label>
-                  <span>Node</span>
+                  <span>Matrix index</span>
+                  <input
+                    data-testid="node-matrix-index-input"
+                    readOnly
+                    value={matrixNodeLabels.get(selectedNode.identifier) ?? ""}
+                  />
+                </label>
+                <label>
+                  <span>Name</span>
                   <input
                     data-testid="node-name-input"
                     value={selectedNode.name}
@@ -1959,6 +1978,7 @@ export function App() {
               testId="l-entries"
               entries={output?.l_inv_entries ?? []}
             />
+            <MatrixNodeList nodes={output?.matrix_nodes ?? []} />
             <JosephsonBranchList branches={output?.josephson_branches ?? []} />
           </section>
         </aside>
@@ -3481,6 +3501,22 @@ function EntryList({
   );
 }
 
+function MatrixNodeList({ nodes }: { nodes: OutputResult["matrix_nodes"] }) {
+  return (
+    <div className="entries">
+      <h3>Matrix nodes</h3>
+      <ol data-testid="matrix-nodes">
+        {nodes.map((node) => (
+          <li key={node.project_node_id}>
+            {node.matrix_index}: {node.name ?? `node ${node.project_node_id}`}{" "}
+            (project node {node.project_node_id})
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function JosephsonBranchList({
   branches,
 }: {
@@ -3544,12 +3580,15 @@ function edgeEndpoints(edge: CircuitEdge, nodes: CircuitNode[]) {
   };
 }
 
-function josephsonPhaseLabel(edge: CircuitEdge, nodes: CircuitNode[]): string {
-  const first = nodeDisplayName(edge.nodes[0], nodes);
+function josephsonPhaseLabel(
+  edge: CircuitEdge,
+  matrixNodeLabels: Map<number, string>,
+): string {
+  const first = matrixNodeLabels.get(edge.nodes[0]) ?? String(edge.nodes[0]);
   const second =
     edge.nodes[1] === GROUND_NODE_ID
       ? "GND"
-      : nodeDisplayName(edge.nodes[1], nodes);
+      : matrixNodeLabels.get(edge.nodes[1]) ?? String(edge.nodes[1]);
   const positive =
     edge.josephson_phase_sign === -1
       ? edge.is_ground
@@ -3569,8 +3608,12 @@ function josephsonPhaseLabel(edge: CircuitEdge, nodes: CircuitNode[]): string {
   return `Phase: ${positive} - ${negative}`;
 }
 
-function nodeDisplayName(nodeId: number, nodes: CircuitNode[]): string {
-  return nodes.find((node) => node.identifier === nodeId)?.name ?? `N${nodeId}`;
+function matrixNodeLabelMap(nodes: CircuitNode[]): Map<number, string> {
+  return new Map(
+    [...nodes]
+      .sort((first, second) => first.identifier - second.identifier)
+      .map((node, index) => [node.identifier, String(index)]),
+  );
 }
 
 function inlineEdgeEditorPosition(

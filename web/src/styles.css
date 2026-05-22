@@ -203,6 +203,12 @@ textarea {
   position: relative;
 }
 
+.canvas-stage {
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
 .canvas-controls {
   display: flex;
   gap: 6px;
@@ -227,6 +233,56 @@ textarea {
 
 .icon-button:hover {
   background: #e6eef6;
+}
+
+.inline-edge-editor {
+  background: #ffffff;
+  border: 1px solid #aebfce;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(7, 19, 39, 0.2);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  padding: 10px;
+  pointer-events: auto;
+  position: absolute;
+  width: 180px;
+  z-index: 4;
+}
+
+.inline-edge-editor-above {
+  transform: translate(-50%, calc(-100% - 12px));
+}
+
+.inline-edge-editor-below {
+  transform: translate(-50%, 12px);
+}
+
+.inline-edge-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.inline-edge-editor span {
+  color: #40536b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inline-edge-editor input {
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.inline-edge-editor input:focus {
+  border-color: #1fbad6;
+  box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
+  outline: none;
 }
 
 .circuit-canvas {

@@ -697,12 +697,12 @@ export function App() {
       if (existing) {
         clearNodeSelection();
         setSelectedEdgeId(existing.identifier);
-        setInlineValueEditorEdgeId(null);
+        setInlineValueEditorEdgeId(existing.identifier);
         setPendingEdgeNodeId(null);
         setPanState(null);
         setMarqueeState(null);
         setGroundDragState(null);
-        setEngineStatus("Selected existing ground connection.");
+        setEngineStatus("Selected existing ground connection. Enter C/L values.");
         return;
       }
 
@@ -932,7 +932,7 @@ export function App() {
       (candidate) => candidate.identifier === edgeId,
     );
     setSelectedEdgeId(edgeId);
-    setInlineValueEditorEdgeId(null);
+    setInlineValueEditorEdgeId(edgeId);
     clearNodeSelection();
     setPendingEdgeNodeId(null);
     setGroundDragState(null);
@@ -940,7 +940,9 @@ export function App() {
     setMarqueeState(null);
     setPastePreview(null);
     setEngineStatus(
-      edge?.is_ground ? "Selected ground connection." : "Selected connection.",
+      edge?.is_ground
+        ? "Selected ground connection. Enter C/L values."
+        : "Selected connection. Enter C/L values.",
     );
   }
 

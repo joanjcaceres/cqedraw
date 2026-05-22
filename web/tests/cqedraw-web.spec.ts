@@ -594,6 +594,126 @@ test("renders component symbols for regular and ground edge values", async ({
   );
 });
 
+test("keeps parallel component lanes stable while dragging near vertical", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 180 } });
+  await canvas.click({ position: { x: 130, y: 380 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C");
+  await page.getByTestId("ind-input").fill("L");
+
+  const symbol = page.getByTestId("edge-symbol-0");
+  await expect(symbol).toHaveAttribute("data-component-kind", "parallel-lc");
+  await expectCapacitorLeftOfInductor(symbol);
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  const canvasBox = await canvas.boundingBox();
+  const nodeBox = await page.getByTestId("node-1").boundingBox();
+  if (!canvasBox || !nodeBox) {
+    throw new Error("Expected canvas and node boxes to be available.");
+  }
+
+  await page.mouse.move(nodeBox.x + nodeBox.width / 2, nodeBox.y + nodeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 190, canvasBox.y + 380);
+  await page.mouse.up();
+
+  await expectCapacitorLeftOfInductor(symbol);
+});
+
+test("exports Josephson junction branch metadata and phase direction", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: "http://127.0.0.1:4173",
+  });
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("Cj");
+  await page.getByTestId("ind-input").fill("Lgeom");
+  await page.getByTestId("jj-ind-input").fill("Lj");
+  await expect(page.getByTestId("edge-symbol-0")).toHaveAttribute(
+    "data-component-kind",
+    "parallel-lcj",
+  );
+  await expect(page.getByTestId("edge-value-jj-0")).toContainText("LJ=Lj");
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N2 - N1");
+
+  await page.getByRole("button", { name: "Reverse" }).click();
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N1 - N2");
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("jj-ind-input").fill("Lground_j");
+  await expect(page.getByTestId("edge-symbol-1")).toHaveAttribute(
+    "data-component-kind",
+    "josephson",
+  );
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("l-entries")).toContainText("Lgeom");
+  await expect(page.getByTestId("l-entries")).toContainText("Lj");
+  await expect(page.getByTestId("l-entries")).toContainText("Lground_j");
+  await expect(page.getByTestId("jj-branches")).toContainText(
+    "edge 0: phase index 0 - 1, LJ = Lj",
+  );
+  await expect(page.getByTestId("jj-branches")).toContainText(
+    "edge 1: phase index 1 - GND, LJ = Lground_j",
+  );
+
+  await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
+  const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedSnippet).toContain("JOSEPHSON_BRANCHES");
+  expect(copiedSnippet).toContain("def josephson_branches");
+  expect(copiedSnippet).toContain('"phase_positive_index": 0');
+  expect(copiedSnippet).toContain('"phase_negative_index": 1');
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error("Saved project download path is unavailable.");
+  }
+  const savedProject = JSON.parse(await readFile(downloadPath, "utf8"));
+  expect(savedProject.version).toBe(2);
+  expect(savedProject.state.edges[0]).toMatchObject({
+    josephson_inductance_text: "Lj",
+    josephson_phase_sign: -1,
+  });
+  expect(savedProject.state.edges[1]).toMatchObject({
+    josephson_inductance_text: "Lground_j",
+    josephson_phase_sign: 1,
+  });
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "jj-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(savedProject)),
+  });
+  await page.getByTestId("edge-0").click({ force: true });
+  await expect(page.getByTestId("jj-ind-input")).toHaveValue("Lj");
+  await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: N1 - N2");
+});
+
 test("moves ground branches without changing generated output", async ({ page }) => {
   await page.goto("/");
 
@@ -708,7 +828,7 @@ test("keeps existing ground when Ground mode clicks a grounded node", async ({
   await page.getByTestId("node-0").dblclick();
   await expect(page.getByTestId("edge-0")).toHaveCount(1);
   await expect(page.getByTestId("output-status")).toContainText(
-    "Selected existing ground connection.",
+    "Added ground connection.",
   );
   await page.getByTestId("cap-input").fill("Cg");
   await page.getByTestId("ind-input").fill("1/Lg_inv");
@@ -778,7 +898,7 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   await expect(helpDialog).toBeVisible();
   await expect(helpDialog).toContainText("Use Node and click the canvas");
   await expect(helpDialog).toContainText("Use New project to clear the drawing");
-  await expect(helpDialog).toContainText("Cj, 40e-15, and 1/Lj_inv");
+  await expect(helpDialog).toContainText("Cj, 40e-15, Lgeom, and Lj");
   await expect(closeButton).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(helpDialog.getByRole("button", { name: "Start tutorial" })).toBeFocused();
@@ -1732,6 +1852,7 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   expect(copiedSnippet).toContain("def circuit_matrices");
   expect(copiedSnippet).toContain("def C_matrix");
   expect(copiedSnippet).toContain("def L_inv_matrix");
+  expect(copiedSnippet).toContain("def josephson_branches");
   expect(copiedSnippet).not.toContain("def C_matrix_func");
   expect(copiedSnippet).not.toContain("def L_inv_matrix_func");
 });
@@ -1778,6 +1899,31 @@ async function symbolCoordinatesStayWithinHalfLength(
       (coordinate) => Math.abs(coordinate) <= maxAbsCoordinate + 0.1,
     );
   }, halfLength);
+}
+
+async function expectCapacitorLeftOfInductor(symbol: Locator) {
+  const centers = await symbol.evaluate((element) => {
+    const plates = Array.from(
+      element.querySelectorAll('[data-component-part="capacitor-plate"]'),
+    );
+    const coil = element.querySelector('[data-component-part="inductor-coil"]');
+    if (plates.length !== 2 || !coil) {
+      throw new Error("Expected capacitor plates and inductor coil.");
+    }
+    const capacitorX =
+      plates
+        .map((plate) => {
+          const box = plate.getBoundingClientRect();
+          return box.left + box.width / 2;
+        })
+        .reduce((sum, centerX) => sum + centerX, 0) / plates.length;
+    const coilBox = coil.getBoundingClientRect();
+    return {
+      capacitorX,
+      inductorX: coilBox.left + coilBox.width / 2,
+    };
+  });
+  expect(centers.capacitorX).toBeLessThan(centers.inductorX);
 }
 
 async function capacitorPlateHeight(symbol: Locator) {

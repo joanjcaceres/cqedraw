@@ -261,11 +261,11 @@ textarea {
   box-shadow: 0 12px 30px rgba(7, 19, 39, 0.2);
   display: grid;
   gap: 8px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 10px;
   pointer-events: auto;
   position: absolute;
-  width: 180px;
+  width: 288px;
   z-index: 4;
 }
 
@@ -404,6 +404,10 @@ textarea {
 
 .edge-component-symbol .component-plate {
   stroke-linecap: butt;
+}
+
+.edge-component-symbol .component-josephson {
+  stroke-linecap: round;
 }
 
 .selection-marquee {
@@ -561,6 +565,33 @@ textarea {
 .form-grid input.tutorial-highlight-control {
   border-color: #c28a00;
   box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+}
+
+.phase-control {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.phase-control span {
+  color: #40536b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.phase-control button {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  cursor: pointer;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.phase-control button:hover {
+  background: #e6eef6;
 }
 
 .metrics {

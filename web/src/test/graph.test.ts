@@ -49,12 +49,45 @@ describe("graph state", () => {
       capacitance_text: "C12",
       inductance_expr: "L12",
       inductance_text: "L12",
+      josephson_inductance_expr: null,
+      josephson_inductance_text: null,
+      josephson_phase_sign: 1,
       is_ground: false,
     });
     expect(project.state.edges[1]).toMatchObject({
       identifier: 1,
       nodes: [1, GROUND_NODE_ID],
       is_ground: true,
+    });
+  });
+
+  it("stores Josephson inductance and phase sign on edges", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 240, 120);
+    project = addEdge(project, 0, 1);
+    project = updateEdgeValues(project, 0, {
+      inductanceText: "Lgeom",
+      josephsonInductanceText: "Lj",
+      josephsonPhaseSign: -1,
+    });
+
+    expect(project.state.edges[0]).toMatchObject({
+      inductance_expr: "Lgeom",
+      inductance_text: "Lgeom",
+      josephson_inductance_expr: "Lj",
+      josephson_inductance_text: "Lj",
+      josephson_phase_sign: -1,
+    });
+
+    project = updateEdgeValues(project, 0, {
+      josephsonInductanceText: "",
+    });
+
+    expect(project.state.edges[0]).toMatchObject({
+      josephson_inductance_expr: null,
+      josephson_inductance_text: null,
+      josephson_phase_sign: -1,
     });
   });
 
@@ -405,11 +438,13 @@ describe("graph state", () => {
     project = updateEdgeValues(project, 0, {
       capacitanceText: "Cg1",
       inductanceText: "Lg1",
+      josephsonInductanceText: "Lj1",
     });
     project = toggleGround(project, 1);
     project = updateEdgeValues(project, 1, {
       capacitanceText: "Cg2",
       inductanceText: "Lg2",
+      josephsonInductanceText: "Lj2",
     });
 
     const result = mergeNodes(project, 0, [0, 1]);
@@ -422,6 +457,7 @@ describe("graph state", () => {
       nodes: [0, GROUND_NODE_ID],
       capacitance_text: "(Cg1) + (Cg2)",
       inductance_text: "1 / (1 / (Lg1) + 1 / (Lg2))",
+      josephson_inductance_text: "1 / (1 / (Lj1) + 1 / (Lj2))",
       is_ground: true,
     });
   });
@@ -435,11 +471,13 @@ describe("graph state", () => {
     project = updateEdgeValues(project, 0, {
       capacitanceText: "C02",
       inductanceText: "L02",
+      josephsonInductanceText: "Lj02",
     });
     project = addEdge(project, 1, 2);
     project = updateEdgeValues(project, 1, {
       capacitanceText: "C12",
       inductanceText: "L12",
+      josephsonInductanceText: "Lj12",
     });
 
     const result = mergeNodes(project, 0, [0, 1]);
@@ -451,6 +489,7 @@ describe("graph state", () => {
       nodes: [0, 2],
       capacitance_text: "(C02) + (C12)",
       inductance_text: "1 / (1 / (L02) + 1 / (L12))",
+      josephson_inductance_text: "1 / (1 / (Lj02) + 1 / (Lj12))",
       is_ground: false,
     });
     expect(hasRegularEdge(result.project.state, 2, 0)).toBe(true);
@@ -469,6 +508,9 @@ describe("graph state", () => {
             capacitance_text: "Cg",
             inductance_expr: "Lg",
             inductance_text: "Lg",
+            josephson_inductance_expr: "Ljg",
+            josephson_inductance_text: "Ljg",
+            josephson_phase_sign: -1,
             is_ground: true,
           },
         ],
@@ -481,6 +523,8 @@ describe("graph state", () => {
       nodes: [10, -1],
       capacitance_text: "Cg",
       inductance_text: "Lg",
+      josephson_inductance_text: "Ljg",
+      josephson_phase_sign: -1,
       is_ground: true,
     });
   });
@@ -508,6 +552,8 @@ describe("graph state", () => {
     expect(project.state.edges[0]).toMatchObject({
       capacitance_text: null,
       inductance_text: null,
+      josephson_inductance_text: null,
+      josephson_phase_sign: 1,
     });
   });
 });

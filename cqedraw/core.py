@@ -14,6 +14,8 @@ GROUND_NODE_ID = -1
 MatrixEntries = Dict[Tuple[int, int], sp.Expr]
 BranchKey = Tuple[int, Optional[int]]
 MatrixBranches = list[Tuple[int, Optional[int], sp.Expr]]
+ProjectNodes = Tuple[int, int]
+MatrixNodes = Tuple[int, Optional[int]]
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,23 @@ class CircuitEdgeData:
     nodes: Tuple[int, int]
     capacitance_expr: Optional[sp.Expr]
     l_inverse_expr: Optional[sp.Expr]
+    identifier: Optional[int] = None
+    josephson_inductance_expr: Optional[sp.Expr] = None
+    josephson_phase_sign: int = 1
+
+
+@dataclass(frozen=True)
+class JosephsonBranchData:
+    edge_identifier: Optional[int]
+    project_nodes: ProjectNodes
+    matrix_nodes: MatrixNodes
+    phase_positive_index: Optional[int]
+    phase_negative_index: Optional[int]
+    phase_sign: int
+    inductance_expr: sp.Expr
+
+
+JosephsonBranches = list[JosephsonBranchData]
 
 
 def accumulate_matrix_entry(
@@ -61,6 +80,17 @@ def finalize_matrix_branches(branches: Dict[BranchKey, sp.Expr]) -> MatrixBranch
     return finalized
 
 
+def edge_l_inverse_expr(edge: CircuitEdgeData) -> Optional[sp.Expr]:
+    terms: list[sp.Expr] = []
+    if edge.l_inverse_expr is not None:
+        terms.append(edge.l_inverse_expr)
+    if edge.josephson_inductance_expr is not None:
+        terms.append(sp.Integer(1) / edge.josephson_inductance_expr)
+    if not terms:
+        return None
+    return sp.simplify(sum(terms, sp.Integer(0)))
+
+
 def compute_matrix_entries(
     node_ids: Iterable[int], edges: Iterable[CircuitEdgeData]
 ) -> Tuple[int, MatrixEntries, MatrixEntries]:
@@ -78,8 +108,9 @@ def compute_matrix_entries(
         if second_node == GROUND_NODE_ID:
             if edge.capacitance_expr is not None:
                 accumulate_matrix_entry(c_entries, i, i, edge.capacitance_expr)
-            if edge.l_inverse_expr is not None:
-                accumulate_matrix_entry(l_inv_entries, i, i, edge.l_inverse_expr)
+            l_inverse_expr = edge_l_inverse_expr(edge)
+            if l_inverse_expr is not None:
+                accumulate_matrix_entry(l_inv_entries, i, i, l_inverse_expr)
             continue
 
         if second_node not in index_map:
@@ -91,8 +122,9 @@ def compute_matrix_entries(
             accumulate_matrix_entry(c_entries, j, j, value)
             accumulate_matrix_entry(c_entries, i, j, -value)
             accumulate_matrix_entry(c_entries, j, i, -value)
-        if edge.l_inverse_expr is not None:
-            value = edge.l_inverse_expr
+        l_inverse_expr = edge_l_inverse_expr(edge)
+        if l_inverse_expr is not None:
+            value = l_inverse_expr
             accumulate_matrix_entry(l_inv_entries, i, i, value)
             accumulate_matrix_entry(l_inv_entries, j, j, value)
             accumulate_matrix_entry(l_inv_entries, i, j, -value)
@@ -127,14 +159,66 @@ def compute_matrix_branches(
 
         if edge.capacitance_expr is not None:
             accumulate_matrix_branch(c_branches, i, j, edge.capacitance_expr)
-        if edge.l_inverse_expr is not None:
-            accumulate_matrix_branch(l_inv_branches, i, j, edge.l_inverse_expr)
+        l_inverse_expr = edge_l_inverse_expr(edge)
+        if l_inverse_expr is not None:
+            accumulate_matrix_branch(l_inv_branches, i, j, l_inverse_expr)
 
     return (
         size,
         finalize_matrix_branches(c_branches),
         finalize_matrix_branches(l_inv_branches),
     )
+
+
+def compute_josephson_branches(
+    node_ids: Iterable[int], edges: Iterable[CircuitEdgeData]
+) -> JosephsonBranches:
+    sorted_node_ids = sorted(node_ids)
+    index_map = {node_id: idx for idx, node_id in enumerate(sorted_node_ids)}
+    branches: JosephsonBranches = []
+    for edge in edges:
+        if edge.josephson_inductance_expr is None:
+            continue
+
+        first_node, second_node = edge.nodes
+        if first_node not in index_map:
+            continue
+        first_index = index_map[first_node]
+
+        if second_node == GROUND_NODE_ID:
+            second_index: Optional[int] = None
+        else:
+            if second_node not in index_map:
+                continue
+            second_index = index_map[second_node]
+
+        phase_sign = -1 if edge.josephson_phase_sign == -1 else 1
+        if second_index is None:
+            if phase_sign == 1:
+                phase_positive_index: Optional[int] = first_index
+                phase_negative_index: Optional[int] = None
+            else:
+                phase_positive_index = None
+                phase_negative_index = first_index
+        elif phase_sign == 1:
+            phase_positive_index = second_index
+            phase_negative_index = first_index
+        else:
+            phase_positive_index = first_index
+            phase_negative_index = second_index
+
+        branches.append(
+            JosephsonBranchData(
+                edge_identifier=edge.identifier,
+                project_nodes=(first_node, second_node),
+                matrix_nodes=(first_index, second_index),
+                phase_positive_index=phase_positive_index,
+                phase_negative_index=phase_negative_index,
+                phase_sign=phase_sign,
+                inductance_expr=edge.josephson_inductance_expr,
+            )
+        )
+    return branches
 
 
 def compute_matrices(
@@ -167,6 +251,14 @@ def matrix_parameter_names(entries: MatrixEntries) -> list[str]:
 def matrix_branch_parameter_names(branches: MatrixBranches) -> list[str]:
     symbols = sorted(
         {symbol for _, _, expr in branches for symbol in expr.free_symbols},
+        key=lambda sym: sym.name,
+    )
+    return [symbol.name for symbol in symbols]
+
+
+def josephson_parameter_names(branches: JosephsonBranches) -> list[str]:
+    symbols = sorted(
+        {symbol for branch in branches for symbol in branch.inductance_expr.free_symbols},
         key=lambda sym: sym.name,
     )
     return [symbol.name for symbol in symbols]
@@ -225,12 +317,79 @@ def _matrix_branch_groups_literal(branches: MatrixBranches) -> list[str]:
     return lines
 
 
+def _python_tuple_literal(values: tuple[object, ...]) -> str:
+    if len(values) == 1:
+        return f"({values[0]!r},)"
+    return repr(values)
+
+
+def _josephson_branches_literal(branches: JosephsonBranches) -> list[str]:
+    if not branches:
+        return ["JOSEPHSON_BRANCHES = ()"]
+
+    indent = " " * 4
+    lines = ["JOSEPHSON_BRANCHES = ("]
+    for branch in branches:
+        lines.append(f"{indent}{{")
+        lines.append(f"{indent*2}\"edge_id\": {branch.edge_identifier!r},")
+        lines.append(
+            f"{indent*2}\"project_nodes\": "
+            f"{_python_tuple_literal(branch.project_nodes)},"
+        )
+        lines.append(
+            f"{indent*2}\"matrix_nodes\": "
+            f"{_python_tuple_literal(branch.matrix_nodes)},"
+        )
+        lines.append(
+            f"{indent*2}\"phase_positive_index\": "
+            f"{branch.phase_positive_index!r},"
+        )
+        lines.append(
+            f"{indent*2}\"phase_negative_index\": "
+            f"{branch.phase_negative_index!r},"
+        )
+        lines.append(f"{indent*2}\"phase_sign\": {branch.phase_sign!r},")
+        lines.append(
+            f"{indent*2}\"inductance_expr\": "
+            f"{json.dumps(str(branch.inductance_expr))},"
+        )
+        lines.append(f"{indent}}},")
+    lines.append(")")
+    return lines
+
+
+def _josephson_branch_records_literal(branches: JosephsonBranches) -> list[str]:
+    indent = " " * 4
+    if not branches:
+        return [f"{indent}return []"]
+
+    lines = [
+        f"{indent}_validate_params(params, JOSEPHSON_PARAMETER_NAMES)",
+        f"{indent}branches = []",
+    ]
+    for index, branch in enumerate(branches):
+        lines.append(f"{indent}L_j = {_param_expr_code(branch.inductance_expr)}")
+        lines.append(f"{indent}branches.append({{")
+        lines.append(f"{indent*2}**JOSEPHSON_BRANCHES[{index}],")
+        lines.append(f"{indent*2}\"L_j\": L_j,")
+        lines.append(f"{indent*2}\"E_j_GHz\": _josephson_energy_GHz(L_j),")
+        lines.append(f"{indent}}})")
+    lines.append(f"{indent}return branches")
+    return lines
+
+
 def build_snippet(
-    size: int, c_branches: MatrixBranches, l_inv_branches: MatrixBranches
+    size: int,
+    c_branches: MatrixBranches,
+    l_inv_branches: MatrixBranches,
+    josephson_branches: Optional[JosephsonBranches] = None,
 ) -> str:
+    if josephson_branches is None:
+        josephson_branches = []
     c_params = matrix_branch_parameter_names(c_branches)
     l_params = matrix_branch_parameter_names(l_inv_branches)
-    all_params = sorted(set(c_params) | set(l_params))
+    josephson_params = josephson_parameter_names(josephson_branches)
+    all_params = sorted(set(c_params) | set(l_params) | set(josephson_params))
     indent = " " * 4
     snippet_lines = [
         "import math",
@@ -240,6 +399,25 @@ def build_snippet(
         f"PARAMETER_NAMES = {_tuple_literal(all_params)}",
         f"C_PARAMETER_NAMES = {_tuple_literal(c_params)}",
         f"L_INV_PARAMETER_NAMES = {_tuple_literal(l_params)}",
+        f"JOSEPHSON_PARAMETER_NAMES = {_tuple_literal(josephson_params)}",
+        "PLANCK_CONSTANT = 6.62607015e-34",
+        "ELEMENTARY_CHARGE = 1.602176634e-19",
+        "REDUCED_FLUX_QUANTUM = PLANCK_CONSTANT / (4 * math.pi * ELEMENTARY_CHARGE)",
+    ]
+    snippet_lines.extend(_josephson_branches_literal(josephson_branches))
+    snippet_lines.extend(
+        [
+            "",
+            "def _josephson_energy_GHz(L_j):",
+            f"{indent}if L_j <= 0:",
+            f"{indent*2}raise ValueError(\"Josephson inductance must be positive.\")",
+            f"{indent}return REDUCED_FLUX_QUANTUM**2 / (L_j * PLANCK_CONSTANT * 1e9)",
+            "",
+            "def josephson_branches(params):",
+        ]
+    )
+    snippet_lines.extend(_josephson_branch_records_literal(josephson_branches))
+    snippet_lines.extend([
         "",
         "def _validate_params(params, parameter_names):",
         f"{indent}missing = [name for name in parameter_names if name not in params]",
@@ -272,7 +450,7 @@ def build_snippet(
         f"{indent}return matrix",
         "",
         "def _C_matrix_unchecked(params):",
-    ]
+    ])
     snippet_lines.extend(_matrix_branch_groups_literal(c_branches))
     snippet_lines.append("")
     snippet_lines.append("def _L_inv_matrix_unchecked(params):")

@@ -17,8 +17,10 @@ from .core import (
     CircuitEdgeData,
     MatrixEntries,
     build_snippet,
+    compute_josephson_branches,
     compute_matrix_branches,
     compute_matrix_entries,
+    josephson_parameter_names,
     matrix_parameter_names,
 )
 
@@ -44,6 +46,13 @@ def _parse_expr(text: Optional[str]) -> Optional[sp.Expr]:
     return sp.sympify(text, evaluate=False)
 
 
+def _phase_sign(value: Any) -> int:
+    try:
+        return -1 if int(value) == -1 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _node_ids(state: dict[str, Any]) -> list[int]:
     return [int(node["identifier"]) for node in state.get("nodes", [])]
 
@@ -57,6 +66,9 @@ def _edge_data(state: dict[str, Any]) -> list[CircuitEdgeData]:
 
         capacitance_expr = _parse_expr(_expression_text(edge, "capacitance"))
         inductance_expr = _parse_expr(_expression_text(edge, "inductance"))
+        josephson_inductance_expr = _parse_expr(
+            _expression_text(edge, "josephson_inductance")
+        )
         l_inverse_expr = (
             sp.Integer(1) / inductance_expr
             if inductance_expr is not None
@@ -68,6 +80,15 @@ def _edge_data(state: dict[str, Any]) -> list[CircuitEdgeData]:
                 nodes=(int(nodes[0]), int(nodes[1])),
                 capacitance_expr=capacitance_expr,
                 l_inverse_expr=l_inverse_expr,
+                identifier=(
+                    int(edge["identifier"])
+                    if edge.get("identifier") is not None
+                    else None
+                ),
+                josephson_inductance_expr=josephson_inductance_expr,
+                josephson_phase_sign=_phase_sign(
+                    edge.get("josephson_phase_sign", 1)
+                ),
             )
         )
     return edges
@@ -80,6 +101,21 @@ def _entry_records(entries: MatrixEntries) -> list[dict[str, Any]]:
     ]
 
 
+def _josephson_branch_records(branches: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "edge_id": branch.edge_identifier,
+            "project_nodes": list(branch.project_nodes),
+            "matrix_nodes": list(branch.matrix_nodes),
+            "phase_positive_index": branch.phase_positive_index,
+            "phase_negative_index": branch.phase_negative_index,
+            "phase_sign": branch.phase_sign,
+            "inductance_expr": str(branch.inductance_expr),
+        }
+        for branch in branches
+    ]
+
+
 def generate_output(project: dict[str, Any]) -> dict[str, Any]:
     state = _project_state(project)
     node_ids = _node_ids(state)
@@ -88,13 +124,21 @@ def generate_output(project: dict[str, Any]) -> dict[str, Any]:
         node_ids, edges
     )
     snippet_size, c_branches, l_inv_branches = compute_matrix_branches(node_ids, edges)
+    josephson_branches = compute_josephson_branches(node_ids, edges)
     return {
         "size": size,
         "c_entries": _entry_records(c_entries),
         "l_inv_entries": _entry_records(l_inv_entries),
         "c_parameters": matrix_parameter_names(c_entries),
         "l_inv_parameters": matrix_parameter_names(l_inv_entries),
-        "snippet": build_snippet(snippet_size, c_branches, l_inv_branches),
+        "josephson_parameters": josephson_parameter_names(josephson_branches),
+        "josephson_branches": _josephson_branch_records(josephson_branches),
+        "snippet": build_snippet(
+            snippet_size,
+            c_branches,
+            l_inv_branches,
+            josephson_branches,
+        ),
     }
 
 
@@ -127,6 +171,7 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
             continue
         cap_text = _expression_text(edge, "capacitance")
         ind_text = _expression_text(edge, "inductance")
+        josephson_ind_text = _expression_text(edge, "josephson_inductance")
         normalized_edges.append(
             {
                 "identifier": int(edge["identifier"]),
@@ -136,6 +181,11 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
                 "inductance_expr": ind_text,
                 "inductance_text": ind_text,
                 "l_inverse_expr": None,
+                "josephson_inductance_expr": josephson_ind_text,
+                "josephson_inductance_text": josephson_ind_text,
+                "josephson_phase_sign": _phase_sign(
+                    edge.get("josephson_phase_sign", 1)
+                ),
                 "is_ground": bool(edge.get("is_ground", nodes[1] == GROUND_NODE_ID)),
                 "ground_offset_x": float(edge.get("ground_offset_x", 0.0)),
                 "ground_offset_y": float(edge.get("ground_offset_y", 104.0)),
@@ -143,7 +193,7 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         )
 
     return {
-        "version": int(project.get("version", 1)),
+        "version": max(2, int(project.get("version", 2))),
         "state": {
             "node_counter": int(
                 state.get(

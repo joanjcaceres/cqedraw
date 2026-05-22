@@ -16,6 +16,7 @@ from .core import (
     MatrixEntries,
     accumulate_matrix_entry,
     build_snippet,
+    compute_josephson_branches,
     compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
@@ -80,6 +81,9 @@ class Edge:
     inductance_expr: Optional[sp.Expr]
     inductance_text: Optional[str]
     l_inverse_expr: Optional[sp.Expr]
+    josephson_inductance_expr: Optional[sp.Expr] = None
+    josephson_inductance_text: Optional[str] = None
+    josephson_phase_sign: int = 1
     is_ground: bool = False
     ground_marker_id: Optional[int] = None
     ground_offset_x: float = 0.0
@@ -92,6 +96,9 @@ class EdgeParameters:
     capacitance_text: Optional[str]
     inductance_expr: Optional[sp.Expr]
     inductance_text: Optional[str]
+    josephson_inductance_expr: Optional[sp.Expr] = None
+    josephson_inductance_text: Optional[str] = None
+    josephson_phase_sign: int = 1
 
 
 class EdgeDialog:
@@ -814,6 +821,7 @@ class CircuitGraphApp:
         if edge.is_ground and (
             dialog.value.capacitance_expr is None
             and dialog.value.inductance_expr is None
+            and edge.josephson_inductance_expr is None
         ):
             self._remove_edge(edge_id)
             self._set_focus_node(None)
@@ -822,7 +830,16 @@ class CircuitGraphApp:
             self._update_status(f"Ground connection removed from {first_name}.")
             return
 
-        self._apply_edge_parameters(edge, dialog.value)
+        params = EdgeParameters(
+            capacitance_expr=dialog.value.capacitance_expr,
+            capacitance_text=dialog.value.capacitance_text,
+            inductance_expr=dialog.value.inductance_expr,
+            inductance_text=dialog.value.inductance_text,
+            josephson_inductance_expr=edge.josephson_inductance_expr,
+            josephson_inductance_text=edge.josephson_inductance_text,
+            josephson_phase_sign=edge.josephson_phase_sign,
+        )
+        self._apply_edge_parameters(edge, params)
         self._update_status("Connection updated.")
         self._push_history()
 
@@ -1008,6 +1025,9 @@ class CircuitGraphApp:
                     capacitance_text=edge.capacitance_text,
                     inductance_expr=edge.inductance_expr,
                     inductance_text=edge.inductance_text,
+                    josephson_inductance_expr=edge.josephson_inductance_expr,
+                    josephson_inductance_text=edge.josephson_inductance_text,
+                    josephson_phase_sign=edge.josephson_phase_sign,
                 )
                 if edge.is_ground:
                     source_idx = left_index_map.get(edge.nodes[0])
@@ -1053,6 +1073,11 @@ class CircuitGraphApp:
             if edge.inductance_expr is not None
             else None
         )
+        edge.josephson_inductance_expr = params.josephson_inductance_expr
+        edge.josephson_inductance_text = params.josephson_inductance_text
+        edge.josephson_phase_sign = (
+            -1 if params.josephson_phase_sign == -1 else 1
+        )
         self.canvas.itemconfigure(
             edge.label_id,
             text=self._edge_label(
@@ -1060,6 +1085,8 @@ class CircuitGraphApp:
                 edge.capacitance_text,
                 edge.inductance_expr,
                 edge.inductance_text,
+                edge.josephson_inductance_expr,
+                edge.josephson_inductance_text,
             ),
         )
         self._update_edge_geometry(edge.identifier)
@@ -1094,6 +1121,9 @@ class CircuitGraphApp:
         capacitance_text = params.capacitance_text
         inductance_expr = params.inductance_expr
         inductance_text = params.inductance_text
+        josephson_inductance_expr = params.josephson_inductance_expr
+        josephson_inductance_text = params.josephson_inductance_text
+        josephson_phase_sign = -1 if params.josephson_phase_sign == -1 else 1
         l_inverse_expr: Optional[sp.Expr] = None
         if inductance_expr is not None:
             l_inverse_expr = sp.simplify(sp.Integer(1) / inductance_expr)
@@ -1143,6 +1173,9 @@ class CircuitGraphApp:
             inductance_expr=inductance_expr,
             inductance_text=inductance_text,
             l_inverse_expr=l_inverse_expr,
+            josephson_inductance_expr=josephson_inductance_expr,
+            josephson_inductance_text=josephson_inductance_text,
+            josephson_phase_sign=josephson_phase_sign,
         )
         self.canvas.tag_bind(
             tag,
@@ -1188,6 +1221,9 @@ class CircuitGraphApp:
         capacitance_text = params.capacitance_text
         inductance_expr = params.inductance_expr
         inductance_text = params.inductance_text
+        josephson_inductance_expr = params.josephson_inductance_expr
+        josephson_inductance_text = params.josephson_inductance_text
+        josephson_phase_sign = -1 if params.josephson_phase_sign == -1 else 1
         l_inverse_expr: Optional[sp.Expr] = None
         if inductance_expr is not None:
             l_inverse_expr = sp.simplify(sp.Integer(1) / inductance_expr)
@@ -1263,6 +1299,9 @@ class CircuitGraphApp:
             inductance_expr=inductance_expr,
             inductance_text=inductance_text,
             l_inverse_expr=l_inverse_expr,
+            josephson_inductance_expr=josephson_inductance_expr,
+            josephson_inductance_text=josephson_inductance_text,
+            josephson_phase_sign=josephson_phase_sign,
             is_ground=True,
             ground_marker_id=triangle,
             ground_offset_x=offset_x,
@@ -1336,13 +1375,30 @@ class CircuitGraphApp:
                 for edge in ground_edges
             ]
         )
+        josephson_l_inverse_expr = cls._sum_optional_expressions(
+            [
+                cls._inverse_inductance_expr(
+                    edge.get("josephson_inductance_expr")
+                )
+                for edge in ground_edges
+            ]
+        )
         inductance_expr = (
             sp.simplify(sp.Integer(1) / l_inverse_expr)
             if l_inverse_expr is not None
             else None
         )
+        josephson_inductance_expr = (
+            sp.simplify(sp.Integer(1) / josephson_l_inverse_expr)
+            if josephson_l_inverse_expr is not None
+            else None
+        )
 
-        if capacitance_expr is None and inductance_expr is None:
+        if (
+            capacitance_expr is None
+            and inductance_expr is None
+            and josephson_inductance_expr is None
+        ):
             return None
 
         combined["capacitance_expr"] = capacitance_expr
@@ -1350,6 +1406,8 @@ class CircuitGraphApp:
         combined["inductance_expr"] = inductance_expr
         combined["inductance_text"] = None
         combined["l_inverse_expr"] = l_inverse_expr
+        combined["josephson_inductance_expr"] = josephson_inductance_expr
+        combined["josephson_inductance_text"] = None
         return combined
 
     @classmethod
@@ -1468,6 +1526,9 @@ class CircuitGraphApp:
                 "inductance_expr": edge.inductance_expr,
                 "inductance_text": edge.inductance_text,
                 "l_inverse_expr": edge.l_inverse_expr,
+                "josephson_inductance_expr": edge.josephson_inductance_expr,
+                "josephson_inductance_text": edge.josephson_inductance_text,
+                "josephson_phase_sign": edge.josephson_phase_sign,
                 "is_ground": edge.is_ground,
                 "ground_offset_x": edge.ground_offset_x,
                 "ground_offset_y": edge.ground_offset_y,
@@ -1543,6 +1604,17 @@ class CircuitGraphApp:
                     capacitance_text=edge_data["capacitance_text"],
                     inductance_expr=edge_data["inductance_expr"],
                     inductance_text=edge_data["inductance_text"],
+                    josephson_inductance_expr=edge_data.get(
+                        "josephson_inductance_expr"
+                    ),
+                    josephson_inductance_text=edge_data.get(
+                        "josephson_inductance_text"
+                    ),
+                    josephson_phase_sign=(
+                        -1
+                        if edge_data.get("josephson_phase_sign", 1) == -1
+                        else 1
+                    ),
                 )
                 if edge_data.get("is_ground"):
                     self._instantiate_ground_edge(
@@ -1629,8 +1701,11 @@ class CircuitGraphApp:
             )
             edge["inductance_expr"] = self._expr_to_string(edge.get("inductance_expr"))
             edge["l_inverse_expr"] = self._expr_to_string(edge.get("l_inverse_expr"))
+            edge["josephson_inductance_expr"] = self._expr_to_string(
+                edge.get("josephson_inductance_expr")
+            )
 
-        data = {"version": 1, "state": snapshot}
+        data = {"version": 2, "state": snapshot}
         try:
             Path(filename).write_text(json.dumps(data, indent=2))
         except OSError as exc:
@@ -1671,6 +1746,15 @@ class CircuitGraphApp:
                 edge.get("inductance_expr")
             )
             edge["l_inverse_expr"] = self._expr_from_string(edge.get("l_inverse_expr"))
+            edge["josephson_inductance_expr"] = self._expr_from_string(
+                edge.get("josephson_inductance_expr")
+            )
+            edge["josephson_inductance_text"] = edge.get(
+                "josephson_inductance_text"
+            )
+            edge["josephson_phase_sign"] = (
+                -1 if edge.get("josephson_phase_sign", 1) == -1 else 1
+            )
 
         current_snapshot = copy.deepcopy(self._snapshot_state())
         self._restore_state(state)
@@ -1685,14 +1769,22 @@ class CircuitGraphApp:
         capacitance_text: Optional[str],
         inductance_expr: Optional[sp.Expr],
         inductance_text: Optional[str],
+        josephson_inductance_expr: Optional[sp.Expr] = None,
+        josephson_inductance_text: Optional[str] = None,
     ) -> str:
         parts: list[str] = []
         cap_display = self._expression_to_display(capacitance_expr, capacitance_text)
         ind_display = self._expression_to_display(inductance_expr, inductance_text)
+        josephson_display = self._expression_to_display(
+            josephson_inductance_expr,
+            josephson_inductance_text,
+        )
         if cap_display is not None:
             parts.append(f"C={cap_display}")
         if ind_display is not None:
             parts.append(f"L={ind_display}")
+        if josephson_display is not None:
+            parts.append(f"LJ={josephson_display}")
         if not parts:
             return ""
         if len(parts) == 1:
@@ -1792,6 +1884,11 @@ class CircuitGraphApp:
                                 edge.inductance_expr
                             ),
                             "inductance_text": edge.inductance_text,
+                            "josephson_inductance_expr": self._expr_to_string(
+                                edge.josephson_inductance_expr
+                            ),
+                            "josephson_inductance_text": edge.josephson_inductance_text,
+                            "josephson_phase_sign": edge.josephson_phase_sign,
                             "is_ground": True,
                             "ground_offset_x": edge.ground_offset_x,
                             "ground_offset_y": edge.ground_offset_y,
@@ -1813,6 +1910,11 @@ class CircuitGraphApp:
                                 edge.inductance_expr
                             ),
                             "inductance_text": edge.inductance_text,
+                            "josephson_inductance_expr": self._expr_to_string(
+                                edge.josephson_inductance_expr
+                            ),
+                            "josephson_inductance_text": edge.josephson_inductance_text,
+                            "josephson_phase_sign": edge.josephson_phase_sign,
                             "is_ground": False,
                         }
                     )
@@ -2108,6 +2210,13 @@ class CircuitGraphApp:
                 capacitance_text=edge.get("capacitance_text"),
                 inductance_expr=self._expr_from_string(edge.get("inductance_expr")),
                 inductance_text=edge.get("inductance_text"),
+                josephson_inductance_expr=self._expr_from_string(
+                    edge.get("josephson_inductance_expr")
+                ),
+                josephson_inductance_text=edge.get("josephson_inductance_text"),
+                josephson_phase_sign=(
+                    -1 if edge.get("josephson_phase_sign", 1) == -1 else 1
+                ),
             )
             if edge.get("is_ground"):
                 source_id = mapping.get(edge["nodes"][0])
@@ -2205,6 +2314,9 @@ class CircuitGraphApp:
                 nodes=edge.nodes,
                 capacitance_expr=edge.capacitance_expr,
                 l_inverse_expr=edge.l_inverse_expr,
+                identifier=edge.identifier,
+                josephson_inductance_expr=edge.josephson_inductance_expr,
+                josephson_phase_sign=edge.josephson_phase_sign,
             )
             for edge in self.edges.values()
         ]
@@ -2220,7 +2332,11 @@ class CircuitGraphApp:
 
     def _build_snippet(self) -> str:
         size, c_branches, l_inv_branches = self._compute_matrix_branches()
-        return build_snippet(size, c_branches, l_inv_branches)
+        josephson_branches = compute_josephson_branches(
+            self.nodes.keys(),
+            self._core_edges(),
+        )
+        return build_snippet(size, c_branches, l_inv_branches, josephson_branches)
 
     def _copy_snippet(self) -> None:
         if not self.nodes:

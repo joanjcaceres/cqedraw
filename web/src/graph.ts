@@ -68,7 +68,7 @@ interface ConcatenateBoundaryPair {
 
 export function emptyProject(): CircuitProject {
   return {
-    version: 1,
+    version: 2,
     state: {
       node_counter: 0,
       edge_counter: 0,
@@ -240,7 +240,12 @@ export function toggleGround(project: CircuitProject, nodeId: number): CircuitPr
 export function updateEdgeValues(
   project: CircuitProject,
   edgeId: number,
-  values: { capacitanceText?: string | null; inductanceText?: string | null },
+  values: {
+    capacitanceText?: string | null;
+    inductanceText?: string | null;
+    josephsonInductanceText?: string | null;
+    josephsonPhaseSign?: 1 | -1;
+  },
 ): CircuitProject {
   return {
     ...project,
@@ -252,6 +257,10 @@ export function updateEdgeValues(
         }
         const cap = normalizeText(values.capacitanceText, edge.capacitance_text);
         const ind = normalizeText(values.inductanceText, edge.inductance_text);
+        const josephsonInductance = normalizeText(
+          values.josephsonInductanceText,
+          edge.josephson_inductance_text,
+        );
         return {
           ...edge,
           capacitance_expr: cap,
@@ -259,6 +268,10 @@ export function updateEdgeValues(
           inductance_expr: ind,
           inductance_text: ind,
           l_inverse_expr: null,
+          josephson_inductance_expr: josephsonInductance,
+          josephson_inductance_text: josephsonInductance,
+          josephson_phase_sign:
+            values.josephsonPhaseSign ?? edge.josephson_phase_sign,
         };
       }),
     },
@@ -790,7 +803,7 @@ export function normalizeProject(input: unknown): CircuitProject {
     .filter((edge): edge is CircuitEdge => edge !== null);
 
   return {
-    version: Number(project.version ?? 1),
+    version: Math.max(2, Number(project.version ?? 2)),
     state: {
       node_counter: Number(
         state.node_counter ??
@@ -824,6 +837,9 @@ function createEdge(
     inductance_expr: null,
     inductance_text: null,
     l_inverse_expr: null,
+    josephson_inductance_expr: null,
+    josephson_inductance_text: null,
+    josephson_phase_sign: 1,
     is_ground: isGround,
     ground_offset_x: 0,
     ground_offset_y: GROUND_LINE_LENGTH,
@@ -849,6 +865,12 @@ function combineGroundEdges(edges: CircuitEdge[]): CircuitEdge {
   const inductanceText = parallelInductanceText(
     edges.map((edge) => edge.inductance_text ?? edge.inductance_expr),
   );
+  const josephsonInductanceText = parallelInductanceText(
+    edges.map(
+      (edge) =>
+        edge.josephson_inductance_text ?? edge.josephson_inductance_expr,
+    ),
+  );
 
   return {
     ...base,
@@ -858,6 +880,8 @@ function combineGroundEdges(edges: CircuitEdge[]): CircuitEdge {
     inductance_expr: inductanceText,
     inductance_text: inductanceText,
     l_inverse_expr: null,
+    josephson_inductance_expr: josephsonInductanceText,
+    josephson_inductance_text: josephsonInductanceText,
   };
 }
 
@@ -897,6 +921,12 @@ function combineRegularEdges(edges: CircuitEdge[]): CircuitEdge {
   const inductanceText = parallelInductanceText(
     edges.map((edge) => edge.inductance_text ?? edge.inductance_expr),
   );
+  const josephsonInductanceText = parallelInductanceText(
+    edges.map(
+      (edge) =>
+        edge.josephson_inductance_text ?? edge.josephson_inductance_expr,
+    ),
+  );
 
   return {
     ...base,
@@ -905,6 +935,8 @@ function combineRegularEdges(edges: CircuitEdge[]): CircuitEdge {
     inductance_expr: inductanceText,
     inductance_text: inductanceText,
     l_inverse_expr: null,
+    josephson_inductance_expr: josephsonInductanceText,
+    josephson_inductance_text: josephsonInductanceText,
   };
 }
 
@@ -932,6 +964,9 @@ function normalizeEdge(record: Record<string, unknown>, index: number): CircuitE
   }
   const cap = textValue(record.capacitance_text ?? record.capacitance_expr);
   const ind = textValue(record.inductance_text ?? record.inductance_expr);
+  const josephsonInductance = textValue(
+    record.josephson_inductance_text ?? record.josephson_inductance_expr,
+  );
   const first = Number(nodes[0]);
   const second = Number(nodes[1]);
   const isGround = Boolean(record.is_ground ?? second === GROUND_NODE_ID);
@@ -943,6 +978,9 @@ function normalizeEdge(record: Record<string, unknown>, index: number): CircuitE
     inductance_expr: ind,
     inductance_text: ind,
     l_inverse_expr: null,
+    josephson_inductance_expr: josephsonInductance,
+    josephson_inductance_text: josephsonInductance,
+    josephson_phase_sign: Number(record.josephson_phase_sign) === -1 ? -1 : 1,
     is_ground: isGround,
     ground_offset_x: Number(record.ground_offset_x ?? 0),
     ground_offset_y: Number(record.ground_offset_y ?? GROUND_LINE_LENGTH),

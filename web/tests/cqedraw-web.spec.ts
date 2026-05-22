@@ -369,6 +369,19 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
   await expect(inlineEditor).toHaveCount(0);
   await expect(page.getByTestId("edge-0")).toHaveCount(1);
 
+  await page.getByTestId("edge-0").click({ force: true });
+  await expect(inlineEditor).toBeVisible();
+  await expect(inlineCapInput).toBeFocused();
+  await expect(inlineCapInput).toHaveValue("Cinline");
+  await expect(inlineIndInput).toHaveValue("1/Linline_inv");
+  await inlineCapInput.fill("Cclicked");
+  await inlineIndInput.fill("1/Lclicked_inv");
+  await expect(page.getByTestId("cap-input")).toHaveValue("Cclicked");
+  await expect(page.getByTestId("ind-input")).toHaveValue("1/Lclicked_inv");
+
+  await page.keyboard.press("Enter");
+  await expect(inlineEditor).toHaveCount(0);
+
   await page.getByRole("button", { name: "Ground" }).click();
   await page.getByTestId("node-1").click();
   await expect(inlineEditor).toBeVisible();
@@ -385,15 +398,15 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
 
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cinline");
+  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cclicked");
   await expect(page.getByTestId("c-entries")).toContainText(
-    "(1, 1) = Cg + Cinline",
+    "(1, 1) = Cclicked + Cg",
   );
   await expect(page.getByTestId("l-entries")).toContainText(
-    "(0, 0) = Linline_inv",
+    "(0, 0) = Lclicked_inv",
   );
   await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = Lg_inv + Linline_inv",
+    "(1, 1) = Lclicked_inv + Lg_inv",
   );
 });
 

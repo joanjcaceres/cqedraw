@@ -2996,25 +2996,24 @@ function InductorSymbol({ halfLength }: { halfLength: number }) {
 }
 
 function JosephsonSymbol({ halfLength }: { halfLength: number }) {
-  const junctionHalf = compactSymbolHalfLength(halfLength, 16);
-  const armY = clamp(junctionHalf * 0.64, 5, 12);
+  const armHalf = Math.min(compactSymbolHalfLength(halfLength, 16), 12);
 
   return (
     <>
       <line x1={-halfLength} y1={0} x2={halfLength} y2={0} />
       <line
         className="component-josephson"
-        x1={-junctionHalf}
-        y1={-armY}
-        x2={junctionHalf}
-        y2={armY}
+        x1={-armHalf}
+        y1={-armHalf}
+        x2={armHalf}
+        y2={armHalf}
       />
       <line
         className="component-josephson"
-        x1={-junctionHalf}
-        y1={armY}
-        x2={junctionHalf}
-        y2={-armY}
+        x1={-armHalf}
+        y1={armHalf}
+        x2={armHalf}
+        y2={-armHalf}
       />
     </>
   );
@@ -3123,24 +3122,23 @@ function ParallelComponentBranch({
     );
   }
 
-  const junctionHalf = compactSymbolHalfLength(junctionX, 14);
-  const armY = clamp(junctionHalf * 0.6, 4, 10);
+  const armHalf = Math.min(compactSymbolHalfLength(junctionX, 14), 10);
   return (
     <>
       <line x1={-junctionX} y1={y} x2={junctionX} y2={y} />
       <line
         className="component-josephson"
-        x1={-junctionHalf}
-        y1={y - armY}
-        x2={junctionHalf}
-        y2={y + armY}
+        x1={-armHalf}
+        y1={y - armHalf}
+        x2={armHalf}
+        y2={y + armHalf}
       />
       <line
         className="component-josephson"
-        x1={-junctionHalf}
-        y1={y + armY}
-        x2={junctionHalf}
-        y2={y - armY}
+        x1={-armHalf}
+        y1={y + armHalf}
+        x2={armHalf}
+        y2={y - armHalf}
       />
     </>
   );

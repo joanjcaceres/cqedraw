@@ -1425,6 +1425,8 @@ test("concatenates selected graph blocks", async ({ page }) => {
 
   await page.keyboard.press("D");
   await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("concatenate-pair-row-0")).toContainText("Pair 1");
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
   await page.getByLabel("Connection ports").fill("");
   await dialog.getByRole("button", { name: "Concatenate" }).click();
   await expect(dialog.getByRole("alert")).toContainText(
@@ -1489,6 +1491,10 @@ test("concatenates selected graph blocks with multiple offset ports", async ({
 
   await page.getByRole("button", { name: "Concatenate" }).click();
   await expect(page.getByTestId("concatenate-port-input")).toHaveValue("2");
+  await expect(page.getByTestId("concatenate-pair-row-0")).toContainText("Pair 1");
+  await expect(page.getByTestId("concatenate-pair-row-1")).toContainText("Pair 2");
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
+  await expect(page.getByTestId("concatenate-preview-bridge-1")).toHaveCount(1);
   await page
     .getByRole("dialog", { name: "Concatenate selection" })
     .getByRole("button", { name: "Concatenate" })
@@ -1515,6 +1521,98 @@ test("concatenates selected graph blocks with multiple offset ports", async ({
   expect(Math.abs(bottomBridge.y1 - bottomTail.y)).toBeLessThan(1);
   expect(Math.abs(bottomBridge.x2 - bottomRepeat.x)).toBeLessThan(1);
   expect(Math.abs(bottomBridge.y2 - bottomRepeat.y)).toBeLessThan(1);
+});
+
+test("expands concatenate pairings for irregular selected blocks", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 180 } });
+  await canvas.click({ position: { x: 210, y: 300 } });
+  await canvas.click({ position: { x: 330, y: 300 } });
+  await canvas.click({ position: { x: 380, y: 180 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-3").click();
+  await page.getByTestId("cap-input").fill("Ct");
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("node-2").click();
+  await page.getByTestId("cap-input").fill("Cb");
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
+  await page.getByTestId("node-2").click({ modifiers: ["Shift"] });
+  await page.getByTestId("node-3").click({ modifiers: ["Shift"] });
+
+  await page.getByRole("button", { name: "Concatenate" }).click();
+  const dialog = page.getByRole("dialog", { name: "Concatenate selection" });
+  await expect(page.getByTestId("concatenate-port-input")).toHaveValue("1");
+  await expect(page.getByTestId("concatenate-pair-row-1")).toHaveCount(0);
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
+
+  await page.getByLabel("Connection ports").fill("2");
+  await expect(page.getByTestId("concatenate-pair-row-1")).toContainText("Pair 2");
+  await expect(page.getByTestId("concatenate-preview-bridge-1")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Concatenate" }).click();
+
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Concatenated 1 repeat; added 2 node(s).",
+  );
+  await expect(page.getByTestId("node-4")).toBeVisible();
+  await expect(page.getByTestId("node-5")).toBeVisible();
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 6 x 6");
+  await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = 2*Cb");
+  await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = 2*Ct");
+  await expect(page.getByTestId("c-entries")).toContainText("(4, 4) = Cb");
+  await expect(page.getByTestId("c-entries")).toContainText("(5, 5) = Ct");
+});
+
+test("disables concatenate pairings to duplicate the selected block", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 330, y: 220 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C12");
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click({ modifiers: ["Shift"] });
+
+  await page.getByRole("button", { name: "Concatenate" }).click();
+  const dialog = page.getByRole("dialog", { name: "Concatenate selection" });
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
+  await dialog.getByLabel("Use pair 1").uncheck();
+  await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Concatenate" }).click();
+
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Concatenated 1 repeat; added 2 node(s).",
+  );
+  await expect(page.getByTestId("node-2")).toBeVisible();
+  await expect(page.getByTestId("node-3")).toBeVisible();
+
+  const firstRepeatNode = await parseSvgCircleCenter(page.getByTestId("node-2"));
+  const secondRepeatNode = await parseSvgCircleCenter(page.getByTestId("node-3"));
+  const duplicatedEdge = await parseSvgLine(page.getByTestId("edge-1"));
+  expect(Math.abs(duplicatedEdge.x1 - firstRepeatNode.x)).toBeLessThan(1);
+  expect(Math.abs(duplicatedEdge.y1 - firstRepeatNode.y)).toBeLessThan(1);
+  expect(Math.abs(duplicatedEdge.x2 - secondRepeatNode.x)).toBeLessThan(1);
+  expect(Math.abs(duplicatedEdge.y2 - secondRepeatNode.y)).toBeLessThan(1);
 });
 
 test("creates a small circuit and generates matching C and L_inv entries", async ({

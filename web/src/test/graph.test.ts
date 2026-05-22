@@ -204,8 +204,12 @@ describe("graph state", () => {
     project = addEdge(project, 1, 3);
     project = updateEdgeValues(project, 1, { capacitanceText: "Cb" });
 
-    expect(analyzeConcatenateSelection(project, [0, 1, 2, 3])).toEqual({
+    expect(analyzeConcatenateSelection(project, [0, 1, 2, 3])).toMatchObject({
       autoPortCount: 2,
+      detectedPairs: [
+        { leftNodeId: 0, rightNodeId: 2 },
+        { leftNodeId: 1, rightNodeId: 3 },
+      ],
       maxPortCount: 2,
     });
 
@@ -247,8 +251,9 @@ describe("graph state", () => {
     project = addEdge(project, 1, 2);
     project = updateEdgeValues(project, 1, { capacitanceText: "Cb" });
 
-    expect(analyzeConcatenateSelection(project, [0, 1, 2, 3])).toEqual({
+    expect(analyzeConcatenateSelection(project, [0, 1, 2, 3])).toMatchObject({
       autoPortCount: 1,
+      detectedPairs: [{ leftNodeId: 0, rightNodeId: 3 }],
       maxPortCount: 2,
     });
 
@@ -264,6 +269,41 @@ describe("graph state", () => {
       [1, 2],
       [3, 5],
       [2, 4],
+    ]);
+    expect(next.state.edges.map((edge) => edge.capacitance_text)).toEqual([
+      "Ct",
+      "Cb",
+      "Ct",
+      "Cb",
+    ]);
+  });
+
+  it("uses explicit concatenate pair mappings independent of node ordering", () => {
+    let project = emptyProject();
+    project = addNode(project, 100, 120);
+    project = addNode(project, 140, 220);
+    project = addNode(project, 260, 220);
+    project = addNode(project, 300, 120);
+    project = addEdge(project, 0, 3);
+    project = updateEdgeValues(project, 0, { capacitanceText: "Ct" });
+    project = addEdge(project, 1, 2);
+    project = updateEdgeValues(project, 1, { capacitanceText: "Cb" });
+
+    const result = concatenateSelection(project, [0, 1, 2, 3], 1, {
+      portPairs: [
+        { leftNodeId: 1, rightNodeId: 3 },
+        { leftNodeId: 0, rightNodeId: 2 },
+      ],
+    });
+
+    expect(result).not.toBeNull();
+    const next = result!.project;
+    expect(result!.nodeIds).toEqual([4, 5]);
+    expect(next.state.edges.map((edge) => edge.nodes)).toEqual([
+      [0, 3],
+      [1, 2],
+      [2, 5],
+      [3, 4],
     ]);
     expect(next.state.edges.map((edge) => edge.capacitance_text)).toEqual([
       "Ct",

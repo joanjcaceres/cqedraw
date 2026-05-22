@@ -37,6 +37,8 @@ import {
   addEdge,
   addNode,
   analyzeConcatenateSelection,
+  concatenatePortPairsForNodes,
+  concatenatePreviewBridgesForSelection,
   concatenateSelection,
   emptyProject,
   mergeNodes,
@@ -47,6 +49,9 @@ import {
   renameNode,
   toggleGround,
   updateEdgeValues,
+  type ConcatenatePortPair,
+  type ConcatenatePreviewBridge,
+  type ConcatenateSelectionAnalysis,
 } from "./graph";
 import { PyodideBridgeClient } from "./pyodideClient";
 import {
@@ -211,6 +216,9 @@ export function App() {
     useState<number | null>(null);
   const [inlineValueEditorPosition, setInlineValueEditorPosition] =
     useState<InlineEdgeEditorPosition | null>(null);
+  const [concatenatePreviewPairs, setConcatenatePreviewPairs] = useState<
+    ConcatenatePortPair[]
+  >([]);
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1077,17 +1085,22 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setPastePreview(null);
+    setConcatenatePreviewPairs(concatenateAnalysis.detectedPairs);
     setConcatenateDialogOpen(true);
   }
 
   function closeConcatenateDialog() {
+    setConcatenatePreviewPairs([]);
     setConcatenateDialogOpen(false);
     window.requestAnimationFrame(() => concatenateButtonRef.current?.focus());
   }
 
-  function concatenateSelectedGraphElements(repeats: number, portCount: number) {
+  function concatenateSelectedGraphElements(
+    repeats: number,
+    portPairs: ConcatenatePortPair[],
+  ) {
     const result = concatenateSelection(projectRef.current, selectedNodeIds, repeats, {
-      portCount,
+      portPairs,
     });
     closeConcatenateDialog();
     if (!result) {
@@ -1494,6 +1507,13 @@ export function App() {
     : null;
   const activePasteClipboard = pastePreview ? selectionClipboard : null;
   const concatenateAnalysis = analyzeConcatenateSelection(project, selectedNodeIds);
+  const concatenatePreviewBridges = concatenateDialogOpen
+    ? concatenatePreviewBridgesForSelection(
+        project,
+        selectedNodeIds,
+        concatenatePreviewPairs,
+      )
+    : [];
 
   return (
     <main className="app-shell">
@@ -1738,6 +1758,9 @@ export function App() {
                   onGroundPointerDown={handleGroundPointerDown}
                 />
               ))}
+              {concatenatePreviewBridges.length > 0 ? (
+                <ConcatenatePreview bridges={concatenatePreviewBridges} />
+              ) : null}
               {project.state.nodes.map((node) => (
                 <g key={node.identifier}>
                   <circle
@@ -1903,11 +1926,10 @@ export function App() {
       ) : null}
       {concatenateDialogOpen ? (
         <ConcatenateDialog
-          defaultPortCount={concatenateAnalysis.autoPortCount}
-          maxPortCount={concatenateAnalysis.maxPortCount}
-          selectedCount={selectedNodeIds.length}
+          analysis={concatenateAnalysis}
           onCancel={closeConcatenateDialog}
           onConfirm={concatenateSelectedGraphElements}
+          onPreviewChange={setConcatenatePreviewPairs}
         />
       ) : null}
       {helpOpen ? <HelpDialog onClose={closeHelp} onStartTutorial={requestTutorialStart} /> : null}
@@ -2009,29 +2031,76 @@ function TutorialCallout({
   );
 }
 
+interface ConcatenatePairRow {
+  enabled: boolean;
+  leftNodeId: number;
+  rightNodeId: number;
+}
+
 function ConcatenateDialog({
-  defaultPortCount,
-  maxPortCount,
-  selectedCount,
+  analysis,
   onCancel,
   onConfirm,
+  onPreviewChange,
 }: {
-  defaultPortCount: number;
-  maxPortCount: number;
-  selectedCount: number;
+  analysis: ConcatenateSelectionAnalysis;
   onCancel: () => void;
-  onConfirm: (repeats: number, portCount: number) => void;
+  onConfirm: (repeats: number, portPairs: ConcatenatePortPair[]) => void;
+  onPreviewChange: (portPairs: ConcatenatePortPair[]) => void;
 }) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [repeatText, setRepeatText] = useState("1");
-  const [portText, setPortText] = useState(String(defaultPortCount));
+  const [portText, setPortText] = useState(String(analysis.autoPortCount));
+  const [pairRows, setPairRows] = useState<ConcatenatePairRow[]>(
+    pairRowsFromPortPairs(analysis.detectedPairs),
+  );
   const [error, setError] = useState("");
+  const nodeOptions = analysis.selectedNodes.map((node) => ({
+    id: node.identifier,
+    name: node.name,
+  }));
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
+
+  useEffect(() => {
+    onPreviewChange(activeConcatenatePortPairs(pairRows));
+  }, [onPreviewChange, pairRows]);
+
+  useEffect(() => () => onPreviewChange([]), [onPreviewChange]);
+
+  function updatePortText(nextText: string) {
+    setPortText(nextText);
+    setError("");
+
+    const portCount = Number(nextText.trim());
+    if (
+      nextText.trim() === "" ||
+      !Number.isInteger(portCount) ||
+      portCount < 0 ||
+      portCount > analysis.maxPortCount
+    ) {
+      return;
+    }
+
+    setPairRows(
+      pairRowsFromPortPairs(
+        concatenatePortPairsForNodes(analysis.selectedNodes, portCount),
+      ),
+    );
+  }
+
+  function updatePairRow(index: number, updates: Partial<ConcatenatePairRow>) {
+    setPairRows((currentRows) =>
+      currentRows.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, ...updates } : row,
+      ),
+    );
+    setError("");
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2047,12 +2116,25 @@ function ConcatenateDialog({
       trimmedPorts === "" ||
       !Number.isInteger(portCount) ||
       portCount < 0 ||
-      portCount > maxPortCount
+      portCount > analysis.maxPortCount
     ) {
-      setError(`Enter a port count from 0 to ${maxPortCount}.`);
+      setError(`Enter a port count from 0 to ${analysis.maxPortCount}.`);
       return;
     }
-    onConfirm(repeats, portCount);
+    const activePairs = activeConcatenatePortPairs(pairRows);
+    if (activePairs.some((pair) => pair.leftNodeId === pair.rightNodeId)) {
+      setError("Each enabled pair must use two different nodes.");
+      return;
+    }
+    if (hasDuplicatePairNode(activePairs, "leftNodeId")) {
+      setError("Each enabled pair needs a unique left port.");
+      return;
+    }
+    if (hasDuplicatePairNode(activePairs, "rightNodeId")) {
+      setError("Each enabled pair needs a unique right port.");
+      return;
+    }
+    onConfirm(repeats, activePairs);
   }
 
   return (
@@ -2069,7 +2151,10 @@ function ConcatenateDialog({
           <header>
             <h2 id="concatenate-dialog-title">Concatenate selection</h2>
           </header>
-          <p>{selectedCount} node{selectedCount === 1 ? "" : "s"} selected.</p>
+          <p>
+            {analysis.selectedNodes.length} node
+            {analysis.selectedNodes.length === 1 ? "" : "s"} selected.
+          </p>
           <label className="dialog-field">
             <span>Number of repeats</span>
             <input
@@ -2093,17 +2178,84 @@ function ConcatenateDialog({
               aria-describedby={error ? "concatenate-dialog-error" : undefined}
               aria-label="Connection ports"
               data-testid="concatenate-port-input"
-              max={maxPortCount}
+              max={analysis.maxPortCount}
               min="0"
               step="1"
               type="number"
               value={portText}
-              onChange={(event) => {
-                setPortText(event.target.value);
-                setError("");
-              }}
+              onChange={(event) => updatePortText(event.target.value)}
             />
           </label>
+          <fieldset className="port-pairings">
+            <legend>Port pairings</legend>
+            {pairRows.length === 0 ? (
+              <p data-testid="concatenate-no-pairs">No shared port pairings.</p>
+            ) : (
+              <div className="port-pair-list">
+                {pairRows.map((row, index) => (
+                  <div
+                    className={[
+                      "port-pair-row",
+                      row.enabled ? "" : "disabled",
+                    ].join(" ")}
+                    data-testid={`concatenate-pair-row-${index}`}
+                    key={index}
+                  >
+                    <label className="port-pair-toggle">
+                      <input
+                        aria-label={`Use pair ${index + 1}`}
+                        checked={row.enabled}
+                        type="checkbox"
+                        onChange={(event) =>
+                          updatePairRow(index, { enabled: event.target.checked })
+                        }
+                      />
+                      <span>Pair {index + 1}</span>
+                    </label>
+                    <label>
+                      <span>Left port</span>
+                      <select
+                        aria-label={`Pair ${index + 1} left port`}
+                        disabled={!row.enabled}
+                        value={row.leftNodeId}
+                        onChange={(event) =>
+                          updatePairRow(index, {
+                            leftNodeId: Number(event.target.value),
+                          })
+                        }
+                      >
+                        {nodeOptions.map((node) => (
+                          <option key={node.id} value={node.id}>
+                            {node.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="port-pair-to">with</span>
+                    <label>
+                      <span>Right port</span>
+                      <select
+                        aria-label={`Pair ${index + 1} right port`}
+                        disabled={!row.enabled}
+                        value={row.rightNodeId}
+                        onChange={(event) =>
+                          updatePairRow(index, {
+                            rightNodeId: Number(event.target.value),
+                          })
+                        }
+                      >
+                        {nodeOptions.map((node) => (
+                          <option key={node.id} value={node.id}>
+                            {node.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </fieldset>
           {error ? (
             <p className="dialog-error" id="concatenate-dialog-error" role="alert">
               {error}
@@ -2119,6 +2271,39 @@ function ConcatenateDialog({
       </section>
     </div>
   );
+}
+
+function pairRowsFromPortPairs(portPairs: ConcatenatePortPair[]): ConcatenatePairRow[] {
+  return portPairs.map((pair) => ({
+    enabled: true,
+    leftNodeId: pair.leftNodeId,
+    rightNodeId: pair.rightNodeId,
+  }));
+}
+
+function activeConcatenatePortPairs(
+  pairRows: ConcatenatePairRow[],
+): ConcatenatePortPair[] {
+  return pairRows
+    .filter((row) => row.enabled)
+    .map((row) => ({
+      leftNodeId: row.leftNodeId,
+      rightNodeId: row.rightNodeId,
+    }));
+}
+
+function hasDuplicatePairNode(
+  portPairs: ConcatenatePortPair[],
+  key: keyof ConcatenatePortPair,
+): boolean {
+  const seenNodeIds = new Set<number>();
+  for (const pair of portPairs) {
+    if (seenNodeIds.has(pair[key])) {
+      return true;
+    }
+    seenNodeIds.add(pair[key]);
+  }
+  return false;
 }
 
 function NewProjectDialog({
@@ -2864,6 +3049,39 @@ function PastePreview({
           <text className="paste-preview-label" x={node.x + 16} y={node.y + 5}>
             {node.name}
           </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+function ConcatenatePreview({
+  bridges,
+}: {
+  bridges: ConcatenatePreviewBridge[];
+}) {
+  return (
+    <g className="concatenate-preview" data-testid="concatenate-preview">
+      {bridges.map((bridge, index) => (
+        <g
+          data-left-node-id={bridge.leftNodeId}
+          data-right-node-id={bridge.rightNodeId}
+          data-testid={`concatenate-preview-bridge-${index}`}
+          key={`${bridge.leftNodeId}-${bridge.rightNodeId}-${index}`}
+        >
+          <line
+            className="concatenate-preview-line"
+            x1={bridge.x1}
+            y1={bridge.y1}
+            x2={bridge.x2}
+            y2={bridge.y2}
+          />
+          <circle
+            className="concatenate-preview-port"
+            cx={bridge.x2}
+            cy={bridge.y2}
+            r={NODE_RADIUS}
+          />
         </g>
       ))}
     </g>

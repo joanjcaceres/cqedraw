@@ -30,13 +30,30 @@ export interface ConcatenateSelectionResult {
   nodeIds: number[];
 }
 
+export interface ConcatenatePortPair {
+  leftNodeId: number;
+  rightNodeId: number;
+}
+
 export interface ConcatenateSelectionOptions {
   portCount?: number;
+  portPairs?: ConcatenatePortPair[];
 }
 
 export interface ConcatenateSelectionAnalysis {
   autoPortCount: number;
+  detectedPairs: ConcatenatePortPair[];
   maxPortCount: number;
+  selectedNodes: CircuitNode[];
+}
+
+export interface ConcatenatePreviewBridge {
+  leftNodeId: number;
+  rightNodeId: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 interface ConcatenateBoundaryPair {
@@ -283,12 +300,7 @@ export function concatenateSelection(
   }
 
   const selectedIdSet = new Set(selectedNodes.map((node) => node.identifier));
-  const minX = Math.min(...selectedNodes.map((node) => node.x));
-  const maxX = Math.max(...selectedNodes.map((node) => node.x));
-  const blockWidth = maxX - minX;
-  const dx =
-    (blockWidth > COORDINATE_EPSILON ? blockWidth : CONCATENATE_ZERO_WIDTH) +
-    CONCATENATE_MIN_SPACING;
+  const dx = concatenateRepeatOffset(selectedNodes);
 
   const originalEdges = project.state.edges.filter((edge) =>
     edge.is_ground
@@ -296,7 +308,10 @@ export function concatenateSelection(
       : selectedIdSet.has(edge.nodes[0]) && selectedIdSet.has(edge.nodes[1]),
   );
 
-  const boundaryPairs = concatenateBoundaryPairs(selectedNodes, options.portCount);
+  const boundaryPairs =
+    options.portPairs !== undefined
+      ? explicitConcatenateBoundaryPairs(selectedNodes, options.portPairs)
+      : concatenateBoundaryPairs(selectedNodes, options.portCount);
   const leftIndexMap = new Map(
     boundaryPairs.map((pair, index) => [pair.left.identifier, index]),
   );
@@ -411,12 +426,54 @@ export function analyzeConcatenateSelection(
 ): ConcatenateSelectionAnalysis {
   const selectedNodes = selectedNodesForConcatenate(project, selectedNodeIds);
   if (selectedNodes.length === 0) {
-    return { autoPortCount: 0, maxPortCount: 0 };
+    return {
+      autoPortCount: 0,
+      detectedPairs: [],
+      maxPortCount: 0,
+      selectedNodes: [],
+    };
   }
+  const detectedPairs = concatenatePortPairsForNodes(selectedNodes);
   return {
-    autoPortCount: concatenateBoundaryPairs(selectedNodes).length,
+    autoPortCount: detectedPairs.length,
+    detectedPairs,
     maxPortCount: maxConcatenatePortCount(selectedNodes),
+    selectedNodes,
   };
+}
+
+export function concatenatePortPairsForNodes(
+  selectedNodes: CircuitNode[],
+  requestedPortCount?: number,
+): ConcatenatePortPair[] {
+  return concatenateBoundaryPairs(selectedNodes, requestedPortCount).map((pair) => ({
+    leftNodeId: pair.left.identifier,
+    rightNodeId: pair.right.identifier,
+  }));
+}
+
+export function concatenatePreviewBridgesForSelection(
+  project: CircuitProject,
+  selectedNodeIds: Iterable<number>,
+  portPairs: ConcatenatePortPair[],
+): ConcatenatePreviewBridge[] {
+  const selectedNodes = selectedNodesForConcatenate(project, selectedNodeIds);
+  if (selectedNodes.length === 0) {
+    return [];
+  }
+
+  const nodeById = new Map(
+    selectedNodes.map((node) => [node.identifier, node]),
+  );
+  const dx = concatenateRepeatOffset(selectedNodes);
+  return explicitConcatenateBoundaryPairs(selectedNodes, portPairs).map((pair) => ({
+    leftNodeId: pair.left.identifier,
+    rightNodeId: pair.right.identifier,
+    x1: pair.right.x,
+    y1: pair.right.y,
+    x2: (nodeById.get(pair.left.identifier)?.x ?? pair.left.x) + dx,
+    y2: pair.left.y,
+  }));
 }
 
 function selectedNodesForConcatenate(
@@ -492,6 +549,38 @@ function requestedConcatenateBoundaryPairs(
   return pairBoundaryNodes(leftNodes, rightNodes);
 }
 
+function explicitConcatenateBoundaryPairs(
+  selectedNodes: CircuitNode[],
+  requestedPairs: ConcatenatePortPair[],
+): ConcatenateBoundaryPair[] {
+  const nodeById = new Map(
+    selectedNodes.map((node) => [node.identifier, node]),
+  );
+  const usedLeftNodeIds = new Set<number>();
+  const usedRightNodeIds = new Set<number>();
+  const boundaryPairs: ConcatenateBoundaryPair[] = [];
+
+  for (const requestedPair of requestedPairs) {
+    if (
+      requestedPair.leftNodeId === requestedPair.rightNodeId ||
+      usedLeftNodeIds.has(requestedPair.leftNodeId) ||
+      usedRightNodeIds.has(requestedPair.rightNodeId)
+    ) {
+      continue;
+    }
+    const left = nodeById.get(requestedPair.leftNodeId);
+    const right = nodeById.get(requestedPair.rightNodeId);
+    if (!left || !right) {
+      continue;
+    }
+    boundaryPairs.push({ left, right });
+    usedLeftNodeIds.add(left.identifier);
+    usedRightNodeIds.add(right.identifier);
+  }
+
+  return boundaryPairs;
+}
+
 function pairBoundaryNodes(
   leftNodes: CircuitNode[],
   rightNodes: CircuitNode[],
@@ -513,6 +602,16 @@ function maxConcatenatePortCount(selectedNodes: CircuitNode[]): number {
     return 0;
   }
   return Math.floor(selectedNodes.length / 2);
+}
+
+function concatenateRepeatOffset(selectedNodes: CircuitNode[]): number {
+  const minX = Math.min(...selectedNodes.map((node) => node.x));
+  const maxX = Math.max(...selectedNodes.map((node) => node.x));
+  const blockWidth = maxX - minX;
+  return (
+    (blockWidth > COORDINATE_EPSILON ? blockWidth : CONCATENATE_ZERO_WIDTH) +
+    CONCATENATE_MIN_SPACING
+  );
 }
 
 function clampNumber(value: number, min: number, max: number): number {

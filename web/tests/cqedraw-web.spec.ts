@@ -1701,8 +1701,13 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
   await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
-  await expect(page.getByTestId("snippet-output")).toContainText("def C_matrix_func");
-  await expect(page.getByTestId("snippet-output")).toContainText("def L_inv_matrix_func");
+  await expect(page.getByTestId("snippet-output")).toContainText("def circuit_matrices");
+  await expect(page.getByTestId("snippet-output")).toContainText("def C_matrix");
+  await expect(page.getByTestId("snippet-output")).toContainText("def L_inv_matrix");
+  await expect(page.getByTestId("snippet-output")).not.toContainText("def C_matrix_func");
+  await expect(page.getByTestId("snippet-output")).not.toContainText(
+    "def L_inv_matrix_func",
+  );
 });
 
 test("does not create duplicate edges between the same two nodes", async ({ page }) => {

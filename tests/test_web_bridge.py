@@ -82,8 +82,11 @@ def test_generate_output_returns_json_safe_core_results():
         "L_beta_inv",
         "L_ground_inv",
     ]
-    assert "def C_matrix_func" in result["snippet"]
-    assert "def L_inv_matrix_func" in result["snippet"]
+    assert "def circuit_matrices" in result["snippet"]
+    assert "def C_matrix" in result["snippet"]
+    assert "def L_inv_matrix" in result["snippet"]
+    assert "def C_matrix_func" not in result["snippet"]
+    assert "def L_inv_matrix_func" not in result["snippet"]
 
 
 def test_generate_output_json_reports_parse_errors():

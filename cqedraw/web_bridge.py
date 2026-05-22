@@ -17,8 +17,9 @@ from .core import (
     CircuitEdgeData,
     MatrixEntries,
     build_snippet,
+    compute_matrix_branches,
     compute_matrix_entries,
-    matrix_function_snippet,
+    matrix_parameter_names,
 )
 
 
@@ -79,30 +80,21 @@ def _entry_records(entries: MatrixEntries) -> list[dict[str, Any]]:
     ]
 
 
-def _parameter_names(size: int, entries: MatrixEntries, prefix: str) -> list[str]:
-    _, params = matrix_function_snippet(
-        f"{prefix}_entries",
-        f"{prefix}_triplets",
-        f"{prefix}_sparse",
-        f"{prefix}_func",
-        size,
-        entries,
-    )
-    return params
-
-
 def generate_output(project: dict[str, Any]) -> dict[str, Any]:
     state = _project_state(project)
+    node_ids = _node_ids(state)
+    edges = _edge_data(state)
     size, c_entries, l_inv_entries = compute_matrix_entries(
-        _node_ids(state), _edge_data(state)
+        node_ids, edges
     )
+    snippet_size, c_branches, l_inv_branches = compute_matrix_branches(node_ids, edges)
     return {
         "size": size,
         "c_entries": _entry_records(c_entries),
         "l_inv_entries": _entry_records(l_inv_entries),
-        "c_parameters": _parameter_names(size, c_entries, "C_matrix"),
-        "l_inv_parameters": _parameter_names(size, l_inv_entries, "L_inv_matrix"),
-        "snippet": build_snippet(size, c_entries, l_inv_entries),
+        "c_parameters": matrix_parameter_names(c_entries),
+        "l_inv_parameters": matrix_parameter_names(l_inv_entries),
+        "snippet": build_snippet(snippet_size, c_branches, l_inv_branches),
     }
 
 

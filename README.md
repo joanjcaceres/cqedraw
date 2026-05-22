@@ -1,7 +1,7 @@
 # cQEDraw
 
 cQEDraw is an application for drawing superconducting circuit graphs and
-generating sparse/dense capacitance and inverse-inductance matrix snippets for
+generating sparse capacitance and inverse-inductance matrix snippets for
 Black Box Quantization workflows. It is available as a browser app and as a
 standalone Tkinter desktop app.
 
@@ -108,27 +108,43 @@ expressions for capacitance and inductance.
 
 Projects can be saved and loaded as JSON files from the GUI. Use the `Snippet`
 button to copy generated Python code for the current capacitance matrix and
-inverse-inductance matrix. The generated snippet includes helpers for dense
-NumPy arrays, sparse SciPy matrices, and raw matrix triplets.
+inverse-inductance matrix. The generated snippet returns sparse SciPy CSR
+matrices so large circuits do not allocate dense zero-filled arrays.
 
 ## Using With SCCircuits
 
-The copied snippet defines functions such as `C_matrix_func` and
-`L_inv_matrix_func`. Paste that snippet into your analysis script or notebook,
-then pass the generated matrices into `sccircuits.BBQ`:
+The copied snippet defines `circuit_matrices`, `C_matrix`, and `L_inv_matrix`.
+Paste that snippet into your analysis script or notebook, then pass the
+parameter values as a mapping:
 
 ```python
 from sccircuits import BBQ
 
 # Paste the snippet copied from cQEDraw above this line.
-# Replace these keyword names and values with the symbols used in your drawing.
-C_matrix = C_matrix_func(Cj=40e-15, Cg=2e-15)
-L_inv_matrix = L_inv_matrix_func(Lj=1.23e-9)
+# Replace these names and values with the symbols used in your drawing.
+C_matrix, L_inv_matrix = circuit_matrices(
+    {"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9}
+)
 
 bbq = BBQ(C_matrix, L_inv_matrix, non_linear_nodes=(-1, 0))
 
 print("Linear mode frequencies (GHz):", bbq.linear_modes_GHz)
 print("Phase ZPF:", bbq.phase_zpf_list)
+```
+
+For direct generalized eigenvalue analysis, keep the matrices sparse:
+
+```python
+import numpy as np
+from scipy.sparse.linalg import eigsh
+
+# Paste the snippet copied from cQEDraw above this line.
+C_matrix, L_inv_matrix = circuit_matrices(
+    {"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9}
+)
+
+omega_squared, modes = eigsh(L_inv_matrix, k=4, M=C_matrix, sigma=0.0, which="LM")
+frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not

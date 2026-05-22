@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
 import sympy as sp
-from sympy.printing.pycode import pycode
+from sympy.printing.pycode import PythonCodePrinter
 
 
 GROUND_NODE_ID = -1
 MatrixEntries = Dict[Tuple[int, int], sp.Expr]
+BranchKey = Tuple[int, Optional[int]]
+MatrixBranches = list[Tuple[int, Optional[int], sp.Expr]]
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,27 @@ def finalize_matrix_entries(entries: MatrixEntries) -> MatrixEntries:
         simplified = sp.simplify(value)
         if simplified != 0:
             finalized[key] = simplified
+    return finalized
+
+
+def accumulate_matrix_branch(
+    branches: Dict[BranchKey, sp.Expr], first: int, second: Optional[int], value: sp.Expr
+) -> None:
+    key = (first, second) if second is None or first <= second else (second, first)
+    existing = branches.get(key)
+    branches[key] = value if existing is None else existing + value
+
+
+def finalize_matrix_branches(branches: Dict[BranchKey, sp.Expr]) -> MatrixBranches:
+    finalized: MatrixBranches = []
+    def sort_key(item: Tuple[BranchKey, sp.Expr]) -> Tuple[int, int]:
+        first, second = item[0]
+        return first, -1 if second is None else second
+
+    for (first, second), value in sorted(branches.items(), key=sort_key):
+        simplified = sp.simplify(value)
+        if simplified != 0:
+            finalized.append((first, second, simplified))
     return finalized
 
 
@@ -80,6 +104,39 @@ def compute_matrix_entries(
     )
 
 
+def compute_matrix_branches(
+    node_ids: Iterable[int], edges: Iterable[CircuitEdgeData]
+) -> Tuple[int, MatrixBranches, MatrixBranches]:
+    sorted_node_ids = sorted(node_ids)
+    index_map = {node_id: idx for idx, node_id in enumerate(sorted_node_ids)}
+    size = len(sorted_node_ids)
+    c_branches: Dict[BranchKey, sp.Expr] = {}
+    l_inv_branches: Dict[BranchKey, sp.Expr] = {}
+    for edge in edges:
+        first_node, second_node = edge.nodes
+        if first_node not in index_map:
+            continue
+        i = index_map[first_node]
+
+        if second_node == GROUND_NODE_ID:
+            j: Optional[int] = None
+        else:
+            if second_node not in index_map:
+                continue
+            j = index_map[second_node]
+
+        if edge.capacitance_expr is not None:
+            accumulate_matrix_branch(c_branches, i, j, edge.capacitance_expr)
+        if edge.l_inverse_expr is not None:
+            accumulate_matrix_branch(l_inv_branches, i, j, edge.l_inverse_expr)
+
+    return (
+        size,
+        finalize_matrix_branches(c_branches),
+        finalize_matrix_branches(l_inv_branches),
+    )
+
+
 def compute_matrices(
     node_ids: Iterable[int], edges: Iterable[CircuitEdgeData]
 ) -> Tuple[sp.Matrix, sp.Matrix]:
@@ -90,150 +147,150 @@ def compute_matrices(
     )
 
 
-def matrix_snippet_support_functions() -> list[str]:
-    indent = " " * 4
-    return [
-        "def _matrix_triplets_from_entries(entries):",
-        f"{indent}if not entries:",
-        f"{indent*2}return (",
-        f"{indent*3}np.array([], dtype=int),",
-        f"{indent*3}np.array([], dtype=int),",
-        f"{indent*3}np.array([], dtype=float),",
-        f"{indent*2})",
-        f"{indent}rows, cols, data = zip(*entries)",
-        f"{indent}return (",
-        f"{indent*2}np.array(rows, dtype=int),",
-        f"{indent*2}np.array(cols, dtype=int),",
-        f"{indent*2}np.array(data, dtype=float),",
-        f"{indent})",
-        "",
-        "def _sparse_matrix_from_entries(entries, shape):",
-        f"{indent}matrix = sparse.csr_matrix(shape, dtype=float)",
-        f"{indent}if not entries:",
-        f"{indent*2}return matrix",
-        f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)",
-        f"{indent}return matrix + sparse.coo_matrix(",
-        f"{indent*2}(data, (rows, cols)),",
-        f"{indent*2}shape=shape,",
-        f"{indent}).tocsr()",
-        "",
-        "def _dense_matrix_from_entries(entries, shape):",
-        f"{indent}matrix = np.zeros(shape, dtype=float)",
-        f"{indent}if not entries:",
-        f"{indent*2}return matrix",
-        f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)",
-        f"{indent}np.add.at(matrix, (rows, cols), data)",
-        f"{indent}return matrix",
-    ]
+class _ParamMappingCodePrinter(PythonCodePrinter):
+    def _print_Symbol(self, expr: sp.Symbol) -> str:
+        return f"params[{json.dumps(expr.name)}]"
 
 
-def matrix_function_snippet(
-    entries_func_name: str,
-    triplet_func_name: str,
-    sparse_func_name: str,
-    dense_func_name: str,
-    size: int,
-    entries: MatrixEntries,
-) -> Tuple[list[str], list[str]]:
+_PARAM_MAPPING_CODE_PRINTER = _ParamMappingCodePrinter()
+
+
+def matrix_parameter_names(entries: MatrixEntries) -> list[str]:
     sorted_entries = sorted(entries.items())
     symbols = sorted(
         {symbol for _, expr in sorted_entries for symbol in expr.free_symbols},
         key=lambda sym: sym.name,
     )
-    param_names = [symbol.name for symbol in symbols]
-    args = ", ".join(param_names)
+    return [symbol.name for symbol in symbols]
+
+
+def matrix_branch_parameter_names(branches: MatrixBranches) -> list[str]:
+    symbols = sorted(
+        {symbol for _, _, expr in branches for symbol in expr.free_symbols},
+        key=lambda sym: sym.name,
+    )
+    return [symbol.name for symbol in symbols]
+
+
+def _tuple_literal(values: Iterable[str]) -> str:
+    items = tuple(values)
+    if not items:
+        return "()"
+
+    one_line = "(" + ", ".join(json.dumps(item) for item in items)
+    one_line += "," if len(items) == 1 else ""
+    one_line += ")"
+    if len(one_line) <= 88:
+        return one_line
+
+    lines = ["("]
+    lines.extend(f"    {json.dumps(item)}," for item in items)
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def _param_expr_code(expr: sp.Expr) -> str:
+    return _PARAM_MAPPING_CODE_PRINTER.doprint(expr)
+
+
+def _branch_pairs_literal(branches: list[Tuple[int, Optional[int]]], level: int) -> list[str]:
     indent = " " * 4
-    shape_literal = f"({size}, {size})"
-    entries_signature = (
-        f"def {entries_func_name}({args}):"
-        if args
-        else f"def {entries_func_name}():"
-    )
-    triplet_signature = (
-        f"def {triplet_func_name}({args}):"
-        if args
-        else f"def {triplet_func_name}():"
-    )
-    sparse_signature = (
-        f"def {sparse_func_name}({args}):" if args else f"def {sparse_func_name}():"
-    )
-    dense_signature = (
-        f"def {dense_func_name}({args}):" if args else f"def {dense_func_name}():"
-    )
-    call_suffix = f"({args})" if args else "()"
-    lines: list[str] = [entries_signature]
+    lines = [f"{indent*level}["]
+    for first, second in branches:
+        lines.append(f"{indent*(level + 1)}({first}, {second}),")
+    lines.append(f"{indent*level}]")
+    return lines
 
-    if not sorted_entries:
-        lines.append(f"{indent}return []")
-    else:
-        lines.append(f"{indent}return [")
-        for (row, col), expr in sorted_entries:
-            lines.append(f"{indent*2}({row}, {col}, {pycode(expr)}),")
-        lines.append(f"{indent}]")
 
-    lines.append("")
-    lines.append(triplet_signature)
-    lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-    lines.append(f"{indent}rows, cols, data = _matrix_triplets_from_entries(entries)")
-    lines.append(f"{indent}return rows, cols, data, {shape_literal}")
-    lines.append("")
-    lines.append(sparse_signature)
-    lines.append(f"{indent}matrix = sparse.csr_matrix({shape_literal}, dtype=float)")
-    lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-    lines.append(f"{indent}if not entries:")
-    lines.append(f"{indent*2}return matrix")
-    lines.append(f"{indent}return _sparse_matrix_from_entries(entries, {shape_literal})")
-    lines.append("")
-    lines.append(dense_signature)
-    lines.append(f"{indent}matrix = np.zeros({shape_literal}, dtype=float)")
-    lines.append(f"{indent}entries = {entries_func_name}{call_suffix}")
-    lines.append(f"{indent}if not entries:")
-    lines.append(f"{indent*2}return matrix")
-    lines.append(f"{indent}return _dense_matrix_from_entries(entries, {shape_literal})")
-    return lines, param_names
+def _matrix_branch_groups_literal(branches: MatrixBranches) -> list[str]:
+    indent = " " * 4
+    if not branches:
+        return [f"{indent}return _branch_matrix([])"]
+
+    grouped: dict[str, list[Tuple[int, Optional[int]]]] = {}
+    for first, second, expr in branches:
+        grouped.setdefault(_param_expr_code(expr), []).append((first, second))
+
+    lines = [f"{indent}return _branch_matrix(["]
+    for expr_code, branch_pairs in sorted(grouped.items()):
+        if len(branch_pairs) == 1:
+            first, second = branch_pairs[0]
+            lines.append(f"{indent*2}({expr_code}, [({first}, {second})]),")
+            continue
+        lines.append(f"{indent*2}(")
+        lines.append(f"{indent*3}{expr_code},")
+        lines.extend(_branch_pairs_literal(branch_pairs, 3))
+        lines.append(f"{indent*2}),")
+    lines.append(f"{indent}])")
+    return lines
 
 
 def build_snippet(
-    size: int, c_entries: MatrixEntries, l_inv_entries: MatrixEntries
+    size: int, c_branches: MatrixBranches, l_inv_branches: MatrixBranches
 ) -> str:
+    c_params = matrix_branch_parameter_names(c_branches)
+    l_params = matrix_branch_parameter_names(l_inv_branches)
+    all_params = sorted(set(c_params) | set(l_params))
+    indent = " " * 4
     snippet_lines = [
         "import math",
-        "import numpy as np",
         "from scipy import sparse",
         "",
-        f"# Matrix size: {size} x {size}",
-        "# Nonzero-entry helpers keep the representation sparse until you call",
-        "# the dense wrappers below.",
+        f"MATRIX_SHAPE = ({size}, {size})",
+        f"PARAMETER_NAMES = {_tuple_literal(all_params)}",
+        f"C_PARAMETER_NAMES = {_tuple_literal(c_params)}",
+        f"L_INV_PARAMETER_NAMES = {_tuple_literal(l_params)}",
         "",
+        "def _validate_params(params, parameter_names):",
+        f"{indent}missing = [name for name in parameter_names if name not in params]",
+        f"{indent}if missing:",
+        f"{indent*2}raise KeyError(",
+        f"{indent*3}\"Missing parameter values: \" + \", \".join(missing)",
+        f"{indent*2})",
+        "",
+        "def _branch_matrix(branch_groups):",
+        f"{indent}if not branch_groups:",
+        f"{indent*2}return sparse.csr_matrix(MATRIX_SHAPE, dtype=float)",
+        f"{indent}rows = []",
+        f"{indent}cols = []",
+        f"{indent}data = []",
+        f"{indent}for value, branches in branch_groups:",
+        f"{indent*2}for first, second in branches:",
+        f"{indent*3}rows.append(first)",
+        f"{indent*3}cols.append(first)",
+        f"{indent*3}data.append(value)",
+        f"{indent*3}if second is not None:",
+        f"{indent*4}rows.extend((second, first, second))",
+        f"{indent*4}cols.extend((second, second, first))",
+        f"{indent*4}data.extend((value, -value, -value))",
+        f"{indent}matrix = sparse.coo_matrix(",
+        f"{indent*2}(data, (rows, cols)),",
+        f"{indent*2}shape=MATRIX_SHAPE,",
+        f"{indent*2}dtype=float,",
+        f"{indent}).tocsr()",
+        f"{indent}matrix.eliminate_zeros()",
+        f"{indent}return matrix",
+        "",
+        "def _C_matrix_unchecked(params):",
     ]
-    snippet_lines.extend(matrix_snippet_support_functions())
+    snippet_lines.extend(_matrix_branch_groups_literal(c_branches))
     snippet_lines.append("")
-
-    c_func_lines, c_params = matrix_function_snippet(
-        "C_matrix_entries",
-        "C_matrix_triplets",
-        "C_matrix_sparse",
-        "C_matrix_func",
-        size,
-        c_entries,
-    )
-    l_func_lines, l_params = matrix_function_snippet(
-        "L_inv_matrix_entries",
-        "L_inv_matrix_triplets",
-        "L_inv_matrix_sparse",
-        "L_inv_matrix_func",
-        size,
-        l_inv_entries,
-    )
-
-    if c_params:
-        snippet_lines.append(f"# C_matrix_func parameters: {', '.join(c_params)}")
-    if l_params:
-        snippet_lines.append(f"# L_inv_matrix_func parameters: {', '.join(l_params)}")
-    if c_params or l_params:
-        snippet_lines.append("")
-
-    snippet_lines.extend(c_func_lines)
+    snippet_lines.append("def _L_inv_matrix_unchecked(params):")
+    snippet_lines.extend(_matrix_branch_groups_literal(l_inv_branches))
     snippet_lines.append("")
-    snippet_lines.extend(l_func_lines)
+    snippet_lines.extend(
+        [
+            "def C_matrix(params):",
+            f"{indent}_validate_params(params, C_PARAMETER_NAMES)",
+            f"{indent}return _C_matrix_unchecked(params)",
+            "",
+            "def L_inv_matrix(params):",
+            f"{indent}_validate_params(params, L_INV_PARAMETER_NAMES)",
+            f"{indent}return _L_inv_matrix_unchecked(params)",
+            "",
+            "def circuit_matrices(params):",
+            f"{indent}_validate_params(params, PARAMETER_NAMES)",
+            f"{indent}return _C_matrix_unchecked(params), _L_inv_matrix_unchecked(params)",
+        ]
+    )
     return "\n".join(snippet_lines)

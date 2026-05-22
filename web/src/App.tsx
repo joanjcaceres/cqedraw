@@ -8,6 +8,7 @@ import {
   Download,
   SquarePlus,
   GitBranch,
+  GripHorizontal,
   Maximize2,
   Merge,
   MousePointer2,
@@ -2037,6 +2038,18 @@ interface ConcatenatePairRow {
   rightNodeId: number;
 }
 
+interface DialogDragState {
+  maxX: number;
+  maxY: number;
+  minX: number;
+  minY: number;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startX: number;
+  startY: number;
+}
+
 function ConcatenateDialog({
   analysis,
   onCancel,
@@ -2056,6 +2069,9 @@ function ConcatenateDialog({
     pairRowsFromPortPairs(analysis.detectedPairs),
   );
   const [error, setError] = useState("");
+  const [dialogOffset, setDialogOffset] = useState({ x: 0, y: 0 });
+  const [dialogDragState, setDialogDragState] =
+    useState<DialogDragState | null>(null);
   const nodeOptions = analysis.selectedNodes.map((node) => ({
     id: node.identifier,
     name: node.name,
@@ -2102,6 +2118,57 @@ function ConcatenateDialog({
     setError("");
   }
 
+  function startDialogDrag(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    const dialogRect = dialogRef.current?.getBoundingClientRect();
+    if (!dialogRect) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDialogDragState({
+      maxX: dialogOffset.x + window.innerWidth - 12 - dialogRect.right,
+      maxY: dialogOffset.y + window.innerHeight - 12 - dialogRect.bottom,
+      minX: dialogOffset.x + 12 - dialogRect.left,
+      minY: dialogOffset.y + 12 - dialogRect.top,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: dialogOffset.x,
+      startY: dialogOffset.y,
+    });
+    event.preventDefault();
+  }
+
+  function moveDialog(event: PointerEvent<HTMLElement>) {
+    if (!dialogDragState || event.pointerId !== dialogDragState.pointerId) {
+      return;
+    }
+    setDialogOffset({
+      x: clamp(
+        dialogDragState.startX + event.clientX - dialogDragState.startClientX,
+        dialogDragState.minX,
+        dialogDragState.maxX,
+      ),
+      y: clamp(
+        dialogDragState.startY + event.clientY - dialogDragState.startClientY,
+        dialogDragState.minY,
+        dialogDragState.maxY,
+      ),
+    });
+  }
+
+  function stopDialogDrag(event: PointerEvent<HTMLElement>) {
+    if (dialogDragState && event.pointerId === dialogDragState.pointerId) {
+      setDialogDragState(null);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedRepeats = repeatText.trim();
@@ -2142,14 +2209,30 @@ function ConcatenateDialog({
       <section
         aria-labelledby="concatenate-dialog-title"
         aria-modal="true"
-        className="help-dialog"
+        className={[
+          "help-dialog",
+          "draggable-dialog",
+          dialogDragState ? "dragging" : "",
+        ].join(" ")}
         onKeyDown={(event) => handleDialogKeyDown(event, dialogRef.current, onCancel)}
         ref={dialogRef}
         role="dialog"
+        style={{
+          transform: `translate(${dialogOffset.x}px, ${dialogOffset.y}px)`,
+        }}
       >
         <form onSubmit={handleSubmit}>
-          <header>
+          <header
+            className="dialog-drag-header"
+            onPointerCancel={stopDialogDrag}
+            onPointerDown={startDialogDrag}
+            onPointerMove={moveDialog}
+            onPointerUp={stopDialogDrag}
+          >
             <h2 id="concatenate-dialog-title">Concatenate selection</h2>
+            <span aria-hidden="true" className="dialog-drag-handle">
+              <GripHorizontal size={18} />
+            </span>
           </header>
           <p>
             {analysis.selectedNodes.length} node

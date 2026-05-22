@@ -1427,6 +1427,28 @@ test("concatenates selected graph blocks", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(page.getByTestId("concatenate-pair-row-0")).toContainText("Pair 1");
   await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
+  const dialogBoxBeforeDrag = await dialog.boundingBox();
+  const dialogHeadingBox = await dialog
+    .getByRole("heading", { name: "Concatenate selection" })
+    .boundingBox();
+  if (!dialogBoxBeforeDrag || !dialogHeadingBox) {
+    throw new Error("Concatenate dialog boxes are unavailable.");
+  }
+  await page.mouse.move(
+    dialogHeadingBox.x + dialogHeadingBox.width / 2,
+    dialogHeadingBox.y + dialogHeadingBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    dialogHeadingBox.x + dialogHeadingBox.width / 2 - 120,
+    dialogHeadingBox.y + dialogHeadingBox.height / 2,
+  );
+  await page.mouse.up();
+  const dialogBoxAfterDrag = await dialog.boundingBox();
+  if (!dialogBoxAfterDrag) {
+    throw new Error("Concatenate dialog box after drag is unavailable.");
+  }
+  expect(dialogBoxAfterDrag.x).toBeLessThan(dialogBoxBeforeDrag.x - 80);
   await page.getByLabel("Connection ports").fill("");
   await dialog.getByRole("button", { name: "Concatenate" }).click();
   await expect(dialog.getByRole("alert")).toContainText(

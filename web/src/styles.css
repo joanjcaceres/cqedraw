@@ -399,6 +399,24 @@ textarea {
   pointer-events: none;
 }
 
+.concatenate-preview {
+  pointer-events: none;
+}
+
+.concatenate-preview-line {
+  stroke: #14746f;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
+.concatenate-preview-port {
+  fill: rgba(20, 116, 111, 0.12);
+  stroke: #14746f;
+  stroke-dasharray: 5 4;
+  stroke-width: 3;
+}
+
 .paste-preview-line {
   stroke: #d97706;
   stroke-dasharray: 7 5;
@@ -701,6 +719,23 @@ textarea {
   margin: 0;
 }
 
+.dialog-drag-header {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.draggable-dialog.dragging .dialog-drag-header {
+  cursor: grabbing;
+}
+
+.dialog-drag-handle {
+  align-items: center;
+  color: #66778c;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .dialog-field {
   display: grid;
   gap: 6px;
@@ -713,19 +748,85 @@ textarea {
   font-weight: 700;
 }
 
-.dialog-field input {
+.dialog-field input,
+.port-pair-row select {
   border: 1px solid #bdcbd8;
   border-radius: 7px;
   color: #172033;
   font: inherit;
   min-height: 38px;
   padding: 0 10px;
+  width: 100%;
 }
 
-.dialog-field input:focus {
+.dialog-field input:focus,
+.port-pair-row select:focus {
   border-color: #1fbad6;
   box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
   outline: none;
+}
+
+.port-pairings {
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  margin: 16px 0 0;
+  padding: 12px;
+}
+
+.port-pairings legend {
+  color: #40536b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 5px;
+}
+
+.port-pairings p {
+  margin: 0;
+}
+
+.port-pair-list {
+  display: grid;
+  gap: 10px;
+}
+
+.port-pair-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.port-pair-row.disabled {
+  opacity: 0.62;
+}
+
+.port-pair-row label {
+  display: grid;
+  gap: 5px;
+}
+
+.port-pair-row span {
+  color: #40536b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.port-pair-row .port-pair-toggle {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-height: 38px;
+}
+
+.port-pair-toggle input {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.port-pair-to {
+  align-self: center;
+  padding-top: 17px;
 }
 
 .dialog-error {
@@ -781,6 +882,15 @@ textarea {
 
   .circuit-canvas {
     max-height: none;
+  }
+
+  .port-pair-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .port-pair-to {
+    display: none;
   }
 
   .tutorial-prompt,

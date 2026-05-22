@@ -6,9 +6,11 @@ from cqedraw.core import (
     GROUND_NODE_ID,
     CircuitEdgeData,
     build_snippet,
+    compute_josephson_branches,
     compute_matrix_branches,
     compute_matrices,
     compute_matrix_entries,
+    josephson_parameter_names,
     matrix_branch_parameter_names,
     matrix_parameter_names,
 )
@@ -278,3 +280,109 @@ def test_build_snippet_groups_repeated_branch_expressions():
     assert snippet.count('params["C"]') == 1
     assert snippet.count('1/params["L"]') == 1
     assert len(snippet.splitlines()) < expanded_entry_lines
+
+
+def test_josephson_inductance_contributes_to_inverse_inductance_matrix():
+    l_geom = sp.Symbol("Lgeom")
+    l_j = sp.Symbol("Lj")
+    edges = [
+        CircuitEdgeData(
+            (10, 11),
+            None,
+            1 / l_geom,
+            identifier=3,
+            josephson_inductance_expr=l_j,
+        )
+    ]
+
+    size, _, l_inv_entries = compute_matrix_entries([10, 11], edges)
+    _, _, l_inv_branches = compute_matrix_branches([10, 11], edges)
+
+    expected = sp.simplify(1 / l_geom + 1 / l_j)
+    assert size == 2
+    assert sp.simplify(l_inv_entries[(0, 0)] - expected) == 0
+    assert sp.simplify(l_inv_entries[(0, 1)] + expected) == 0
+    assert sp.simplify(l_inv_entries[(1, 0)] + expected) == 0
+    assert sp.simplify(l_inv_entries[(1, 1)] - expected) == 0
+    assert len(l_inv_branches) == 1
+    assert l_inv_branches[0][0:2] == (0, 1)
+    assert sp.simplify(l_inv_branches[0][2] - expected) == 0
+    assert matrix_branch_parameter_names(l_inv_branches) == ["Lgeom", "Lj"]
+
+
+def test_josephson_branch_metadata_preserves_phase_direction_and_ground():
+    l_j = sp.Symbol("Lj")
+    l_ground_j = sp.Symbol("Lgj")
+    edges = [
+        CircuitEdgeData(
+            (10, 11),
+            None,
+            None,
+            identifier=3,
+            josephson_inductance_expr=l_j,
+        ),
+        CircuitEdgeData(
+            (11, GROUND_NODE_ID),
+            None,
+            None,
+            identifier=4,
+            josephson_inductance_expr=l_ground_j,
+            josephson_phase_sign=-1,
+        ),
+    ]
+
+    branches = compute_josephson_branches([10, 11], edges)
+
+    assert branches[0].edge_identifier == 3
+    assert branches[0].project_nodes == (10, 11)
+    assert branches[0].matrix_nodes == (0, 1)
+    assert branches[0].phase_positive_index == 1
+    assert branches[0].phase_negative_index == 0
+    assert branches[0].phase_sign == 1
+    assert branches[1].edge_identifier == 4
+    assert branches[1].project_nodes == (11, GROUND_NODE_ID)
+    assert branches[1].matrix_nodes == (1, None)
+    assert branches[1].phase_positive_index is None
+    assert branches[1].phase_negative_index == 1
+    assert branches[1].phase_sign == -1
+    assert josephson_parameter_names(branches) == ["Lgj", "Lj"]
+
+
+def test_build_snippet_exports_josephson_branch_helpers():
+    l_geom = sp.Symbol("Lgeom")
+    l_j = sp.Symbol("Lj")
+    edges = [
+        CircuitEdgeData(
+            (10, 11),
+            None,
+            1 / l_geom,
+            identifier=3,
+            josephson_inductance_expr=l_j,
+        )
+    ]
+    size, c_branches, l_inv_branches = compute_matrix_branches([10, 11], edges)
+    josephson_branches = compute_josephson_branches([10, 11], edges)
+    snippet = build_snippet(size, c_branches, l_inv_branches, josephson_branches)
+    namespace: dict[str, object] = {}
+
+    exec(snippet, namespace)
+
+    assert namespace["JOSEPHSON_PARAMETER_NAMES"] == ("Lj",)
+    assert namespace["JOSEPHSON_BRANCHES"][0]["edge_id"] == 3
+    assert namespace["JOSEPHSON_BRANCHES"][0]["phase_positive_index"] == 1
+    assert namespace["JOSEPHSON_BRANCHES"][0]["phase_negative_index"] == 0
+
+    params = {"Lgeom": 2.0, "Lj": 4.0}
+    _, l_inv_matrix = namespace["circuit_matrices"](params)
+    assert np.allclose(
+        l_inv_matrix.toarray(),
+        np.array([[0.75, -0.75], [-0.75, 0.75]]),
+    )
+
+    branch_records = namespace["josephson_branches"](params)
+    assert branch_records[0]["L_j"] == 4.0
+    expected_ej_ghz = (
+        namespace["REDUCED_FLUX_QUANTUM"] ** 2
+        / (4.0 * namespace["PLANCK_CONSTANT"] * 1e9)
+    )
+    assert np.isclose(branch_records[0]["E_j_GHz"], expected_ej_ghz)

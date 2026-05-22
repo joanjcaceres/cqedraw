@@ -17,6 +17,9 @@ export interface CircuitEdge {
   inductance_expr: string | null;
   inductance_text: string | null;
   l_inverse_expr: string | null;
+  josephson_inductance_expr: string | null;
+  josephson_inductance_text: string | null;
+  josephson_phase_sign: 1 | -1;
   is_ground: boolean;
   ground_offset_x: number;
   ground_offset_y: number;
@@ -51,8 +54,20 @@ export interface OutputResult {
   l_inv_entries: MatrixEntryRecord[];
   c_parameters: string[];
   l_inv_parameters: string[];
+  josephson_parameters: string[];
+  josephson_branches: JosephsonBranchRecord[];
   snippet: string;
   error?: string;
+}
+
+export interface JosephsonBranchRecord {
+  edge_id: number | null;
+  project_nodes: [number, number];
+  matrix_nodes: [number, number | null];
+  phase_positive_index: number | null;
+  phase_negative_index: number | null;
+  phase_sign: 1 | -1;
+  inductance_expr: string;
 }
 
 export interface SelectionState {

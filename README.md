@@ -104,7 +104,7 @@ npm run dev
 
 Use the toolbar or keyboard shortcuts to create nodes, edges, and ground
 connections. Edge dialogs accept numeric values or SymPy-compatible symbolic
-expressions for capacitance and inductance.
+expressions for capacitance, linear inductance, and Josephson inductance.
 
 Projects can be saved and loaded as JSON files from the GUI. Use the `Snippet`
 button to copy generated Python code for the current capacitance matrix and
@@ -113,7 +113,8 @@ matrices so large circuits do not allocate dense zero-filled arrays.
 
 ## Using With SCCircuits
 
-The copied snippet defines `circuit_matrices`, `C_matrix`, and `L_inv_matrix`.
+The copied snippet defines `circuit_matrices`, `C_matrix`, `L_inv_matrix`, and
+`josephson_branches`.
 Paste that snippet into your analysis script or notebook, then pass the
 parameter values as a mapping:
 
@@ -125,8 +126,15 @@ from sccircuits import BBQ
 C_matrix, L_inv_matrix = circuit_matrices(
     {"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9}
 )
+junctions = josephson_branches({"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9})
+branch = junctions[0]
+non_linear_nodes = (
+    (branch["phase_positive_index"],)
+    if branch["phase_negative_index"] is None
+    else (branch["phase_negative_index"], branch["phase_positive_index"])
+)
 
-bbq = BBQ(C_matrix, L_inv_matrix, non_linear_nodes=(-1, 0))
+bbq = BBQ(C_matrix, L_inv_matrix, non_linear_nodes=non_linear_nodes)
 
 print("Linear mode frequencies (GHz):", bbq.linear_modes_GHz)
 print("Phase ZPF:", bbq.phase_zpf_list)

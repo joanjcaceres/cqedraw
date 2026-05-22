@@ -165,7 +165,16 @@ interface ProjectHistory {
   future: CircuitProject[];
 }
 
-type EdgeComponentKind = "none" | "capacitor" | "inductor" | "parallel-lc";
+type EdgeComponentKind =
+  | "none"
+  | "capacitor"
+  | "inductor"
+  | "josephson"
+  | "parallel-lc"
+  | "parallel-cj"
+  | "parallel-lj"
+  | "parallel-lcj";
+type ParallelComponent = "capacitor" | "inductor" | "josephson";
 type InlineEdgeEditorPlacement = "above" | "below";
 
 interface InlineEdgeEditorPosition {
@@ -494,7 +503,12 @@ export function App() {
 
   function updateEdgeValueText(
     edgeId: number,
-    values: { capacitanceText?: string | null; inductanceText?: string | null },
+    values: {
+      capacitanceText?: string | null;
+      inductanceText?: string | null;
+      josephsonInductanceText?: string | null;
+      josephsonPhaseSign?: 1 | -1;
+    },
   ) {
     commitProjectChange((current) => updateEdgeValues(current, edgeId, values));
     setOutput(null);
@@ -681,7 +695,7 @@ export function App() {
             setSelectedEdgeId(before);
             setInlineValueEditorEdgeId(before);
             clearNodeSelection();
-            setEngineStatus("Added connection. Enter C/L values.");
+            setEngineStatus("Added connection. Enter C/L/LJ values.");
           } else {
             setSelectedEdgeId(null);
             setInlineValueEditorEdgeId(null);
@@ -708,7 +722,7 @@ export function App() {
         setPanState(null);
         setMarqueeState(null);
         setGroundDragState(null);
-        setEngineStatus("Selected existing ground connection. Enter C/L values.");
+        setEngineStatus("Selected existing ground connection. Enter C/L/LJ values.");
         return;
       }
 
@@ -947,8 +961,8 @@ export function App() {
     setPastePreview(null);
     setEngineStatus(
       edge?.is_ground
-        ? "Selected ground connection. Enter C/L values."
-        : "Selected connection. Enter C/L values.",
+        ? "Selected ground connection. Enter C/L/LJ values."
+        : "Selected connection. Enter C/L/LJ values.",
     );
   }
 
@@ -1859,7 +1873,7 @@ export function App() {
                   />
                 </label>
                 <label>
-                  <span>Inductance</span>
+                  <span>Linear inductance</span>
                   <input
                     className={
                       tutorialStep === "edge-values"
@@ -1876,6 +1890,37 @@ export function App() {
                     }}
                   />
                 </label>
+                <label>
+                  <span>Josephson inductance</span>
+                  <input
+                    data-testid="jj-ind-input"
+                    value={selectedEdge.josephson_inductance_text ?? ""}
+                    onFocus={() => setInlineValueEditorEdgeId(null)}
+                    onChange={(event) => {
+                      updateEdgeValueText(selectedEdge.identifier, {
+                        josephsonInductanceText: event.target.value,
+                      });
+                    }}
+                  />
+                </label>
+                {selectedEdge.josephson_inductance_text?.trim() ? (
+                  <div className="phase-control" data-testid="jj-phase-control">
+                    <span data-testid="jj-phase-label">
+                      {josephsonPhaseLabel(selectedEdge, project.state.nodes)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateEdgeValueText(selectedEdge.identifier, {
+                          josephsonPhaseSign:
+                            selectedEdge.josephson_phase_sign === -1 ? 1 : -1,
+                        })
+                      }
+                    >
+                      Reverse
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : selectedNode ? (
               <div className="form-grid">
@@ -1914,6 +1959,7 @@ export function App() {
               testId="l-entries"
               entries={output?.l_inv_entries ?? []}
             />
+            <JosephsonBranchList branches={output?.josephson_branches ?? []} />
           </section>
         </aside>
       </section>
@@ -1968,7 +2014,7 @@ function CanvasHint() {
           Use Edge to connect nodes, Ground to add a reference,
         </tspan>
         <tspan x={CANVAS_WIDTH / 2} dy="24">
-          then select an edge to enter C/L.
+          then select an edge to enter C/L/LJ.
         </tspan>
         <tspan x={CANVAS_WIDTH / 2} dy="28">
           Generate builds matrices; Copy matrices appears when ready.
@@ -2541,8 +2587,8 @@ function HelpDialog({
           <li>Use Node and click the canvas to place circuit nodes.</li>
           <li>Use Edge, then click two nodes to connect them.</li>
           <li>Use Ground, then click a node to add its ground reference; select and delete a ground connection to remove it.</li>
-          <li>Select an edge and enter capacitance and inductance in the Inspector.</li>
-          <li>Inputs accept SymPy-style values such as Cj, 40e-15, and 1/Lj_inv.</li>
+          <li>Select an edge and enter capacitance, linear inductance, and Josephson inductance in the Inspector.</li>
+          <li>Inputs accept SymPy-style values such as Cj, 40e-15, Lgeom, and Lj.</li>
           <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
           <li>Use the canvas buttons, +/=, -, 0, wheel, or trackpad to adjust the view; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
           <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
@@ -2659,7 +2705,11 @@ function InlineEdgeValueEditor({
   onClose: () => void;
   onValueChange: (
     edgeId: number,
-    values: { capacitanceText?: string | null; inductanceText?: string | null },
+    values: {
+      capacitanceText?: string | null;
+      inductanceText?: string | null;
+      josephsonInductanceText?: string | null;
+    },
   ) => void;
 }) {
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -2711,6 +2761,19 @@ function InlineEdgeValueEditor({
           onChange={(event) =>
             onValueChange(edge.identifier, {
               inductanceText: event.target.value,
+            })
+          }
+        />
+      </label>
+      <label>
+        <span>LJ</span>
+        <input
+          aria-label="Inline Josephson inductance"
+          data-testid="inline-jj-ind-input"
+          value={edge.josephson_inductance_text ?? ""}
+          onChange={(event) =>
+            onValueChange(edge.identifier, {
+              josephsonInductanceText: event.target.value,
             })
           }
         />
@@ -2883,8 +2946,19 @@ function EdgeComponentSymbol({
       {kind === "inductor" ? (
         <InductorSymbol halfLength={geometry.length / 2} />
       ) : null}
+      {kind === "josephson" ? (
+        <JosephsonSymbol halfLength={geometry.length / 2} />
+      ) : null}
       {kind === "parallel-lc" ? (
         <ParallelLcSymbol halfLength={geometry.length / 2} />
+      ) : null}
+      {kind === "parallel-cj" ||
+      kind === "parallel-lj" ||
+      kind === "parallel-lcj" ? (
+        <ParallelComponentSymbol
+          components={parallelComponentsForKind(kind)}
+          halfLength={geometry.length / 2}
+        />
       ) : null}
     </g>
   );
@@ -2921,6 +2995,32 @@ function InductorSymbol({ halfLength }: { halfLength: number }) {
   );
 }
 
+function JosephsonSymbol({ halfLength }: { halfLength: number }) {
+  const junctionHalf = compactSymbolHalfLength(halfLength, 16);
+  const armY = clamp(junctionHalf * 0.64, 5, 12);
+
+  return (
+    <>
+      <line x1={-halfLength} y1={0} x2={-junctionHalf} y2={0} />
+      <line x1={junctionHalf} y1={0} x2={halfLength} y2={0} />
+      <line
+        className="component-josephson"
+        x1={-junctionHalf}
+        y1={-armY}
+        x2={junctionHalf}
+        y2={armY}
+      />
+      <line
+        className="component-josephson"
+        x1={-junctionHalf}
+        y1={armY}
+        x2={junctionHalf}
+        y2={-armY}
+      />
+    </>
+  );
+}
+
 function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
   const junctionX = compactSymbolHalfLength(
     halfLength,
@@ -2952,6 +3052,100 @@ function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
         d={inductorPath(-coil.half, coil.half, branchY, coil.radius)}
       />
       <line x1={coil.half} y1={branchY} x2={junctionX} y2={branchY} />
+    </>
+  );
+}
+
+function ParallelComponentSymbol({
+  components,
+  halfLength,
+}: {
+  components: ParallelComponent[];
+  halfLength: number;
+}) {
+  const junctionX = compactSymbolHalfLength(
+    halfLength,
+    PARALLEL_LC_SYMBOL_HALF_LENGTH,
+  );
+  const branchY = parallelComponentBranchOffset(halfLength, components.length);
+  const branchYs = branchOffsets(components.length, branchY);
+  const firstY = branchYs[0] ?? 0;
+  const lastY = branchYs[branchYs.length - 1] ?? 0;
+
+  return (
+    <>
+      <line x1={-halfLength} y1={0} x2={-junctionX} y2={0} />
+      <line x1={junctionX} y1={0} x2={halfLength} y2={0} />
+      <line x1={-junctionX} y1={firstY} x2={-junctionX} y2={lastY} />
+      <line x1={junctionX} y1={firstY} x2={junctionX} y2={lastY} />
+      {components.map((component, index) => (
+        <ParallelComponentBranch
+          component={component}
+          key={component}
+          junctionX={junctionX}
+          y={branchYs[index] ?? 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function ParallelComponentBranch({
+  component,
+  junctionX,
+  y,
+}: {
+  component: ParallelComponent;
+  junctionX: number;
+  y: number;
+}) {
+  if (component === "capacitor") {
+    const capacitor = capacitorGeometry(
+      Math.min(junctionX, compactSymbolHalfLength(junctionX, CAPACITOR_SYMBOL_HALF_LENGTH)),
+    );
+    return (
+      <>
+        <line x1={-junctionX} y1={y} x2={-capacitor.plateX} y2={y} />
+        <line x1={capacitor.plateX} y1={y} x2={junctionX} y2={y} />
+        <CapacitorPlates centerY={y} geometry={capacitor} />
+      </>
+    );
+  }
+
+  if (component === "inductor") {
+    const coil = inductorGeometry(junctionX, junctionX * 0.72, 10);
+    return (
+      <>
+        <line x1={-junctionX} y1={y} x2={-coil.half} y2={y} />
+        <path
+          data-component-part="inductor-coil"
+          d={inductorPath(-coil.half, coil.half, y, coil.radius)}
+        />
+        <line x1={coil.half} y1={y} x2={junctionX} y2={y} />
+      </>
+    );
+  }
+
+  const junctionHalf = compactSymbolHalfLength(junctionX, 14);
+  const armY = clamp(junctionHalf * 0.6, 4, 10);
+  return (
+    <>
+      <line x1={-junctionX} y1={y} x2={-junctionHalf} y2={y} />
+      <line x1={junctionHalf} y1={y} x2={junctionX} y2={y} />
+      <line
+        className="component-josephson"
+        x1={-junctionHalf}
+        y1={y - armY}
+        x2={junctionHalf}
+        y2={y + armY}
+      />
+      <line
+        className="component-josephson"
+        x1={-junctionHalf}
+        y1={y + armY}
+        x2={junctionHalf}
+        y2={y - armY}
+      />
     </>
   );
 }
@@ -3029,6 +3223,38 @@ function parallelBranchOffset(
     Math.min(4, maxBranchY),
     maxBranchY,
   );
+}
+
+function parallelComponentBranchOffset(
+  halfLength: number,
+  componentCount: number,
+): number {
+  const maxBranchY = Math.max(1, halfLength - 12);
+  const preferredBranchY = componentCount > 2 ? 18 : 16;
+  return clamp(preferredBranchY, Math.min(4, maxBranchY), maxBranchY);
+}
+
+function branchOffsets(componentCount: number, branchY: number): number[] {
+  if (componentCount <= 1) {
+    return [0];
+  }
+  if (componentCount === 2) {
+    return [-branchY, branchY];
+  }
+  return [-branchY, 0, branchY];
+}
+
+function parallelComponentsForKind(kind: EdgeComponentKind): ParallelComponent[] {
+  if (kind === "parallel-cj") {
+    return ["capacitor", "josephson"];
+  }
+  if (kind === "parallel-lj") {
+    return ["inductor", "josephson"];
+  }
+  if (kind === "parallel-lcj") {
+    return ["capacitor", "inductor", "josephson"];
+  }
+  return [];
 }
 
 function compactSymbolHalfLength(halfLength: number, preferred: number): number {
@@ -3224,6 +3450,26 @@ function EntryList({
   );
 }
 
+function JosephsonBranchList({
+  branches,
+}: {
+  branches: OutputResult["josephson_branches"];
+}) {
+  return (
+    <div className="entries">
+      <h3>Josephson branches</h3>
+      <ol data-testid="jj-branches">
+        {branches.map((branch) => (
+          <li key={branch.edge_id ?? `${branch.project_nodes[0]}-${branch.project_nodes[1]}`}>
+            edge {branch.edge_id}: phase index {branch.phase_positive_index ?? "GND"} -{" "}
+            {branch.phase_negative_index ?? "GND"}, LJ = {branch.inductance_expr}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function svgPoint(event: PointerEvent<SVGSVGElement>) {
   return svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
 }
@@ -3265,6 +3511,35 @@ function edgeEndpoints(edge: CircuitEdge, nodes: CircuitNode[]) {
     },
     start: { x: first.x, y: first.y },
   };
+}
+
+function josephsonPhaseLabel(edge: CircuitEdge, nodes: CircuitNode[]): string {
+  const first = nodeDisplayName(edge.nodes[0], nodes);
+  const second =
+    edge.nodes[1] === GROUND_NODE_ID
+      ? "GND"
+      : nodeDisplayName(edge.nodes[1], nodes);
+  const positive =
+    edge.josephson_phase_sign === -1
+      ? edge.is_ground
+        ? "GND"
+        : first
+      : edge.is_ground
+        ? first
+        : second;
+  const negative =
+    edge.josephson_phase_sign === -1
+      ? edge.is_ground
+        ? first
+        : second
+      : edge.is_ground
+        ? "GND"
+        : first;
+  return `Phase: ${positive} - ${negative}`;
+}
+
+function nodeDisplayName(nodeId: number, nodes: CircuitNode[]): string {
+  return nodes.find((node) => node.identifier === nodeId)?.name ?? `N${nodeId}`;
 }
 
 function inlineEdgeEditorPosition(
@@ -3312,14 +3587,27 @@ function inlineEdgeEditorPosition(
 function edgeComponentKind(edge: CircuitEdge): EdgeComponentKind {
   const hasCapacitance = Boolean(edge.capacitance_text?.trim());
   const hasInductance = Boolean(edge.inductance_text?.trim());
+  const hasJosephson = Boolean(edge.josephson_inductance_text?.trim());
+  if (hasCapacitance && hasInductance && hasJosephson) {
+    return "parallel-lcj";
+  }
   if (hasCapacitance && hasInductance) {
     return "parallel-lc";
+  }
+  if (hasCapacitance && hasJosephson) {
+    return "parallel-cj";
+  }
+  if (hasInductance && hasJosephson) {
+    return "parallel-lj";
   }
   if (hasCapacitance) {
     return "capacitor";
   }
   if (hasInductance) {
     return "inductor";
+  }
+  if (hasJosephson) {
+    return "josephson";
   }
   return "none";
 }
@@ -3351,6 +3639,7 @@ function edgeValueLabels(
 ) {
   const capacitanceText = edge.capacitance_text?.trim();
   const inductanceText = edge.inductance_text?.trim();
+  const josephsonInductanceText = edge.josephson_inductance_text?.trim();
   if (componentKind === "none") {
     return [];
   }
@@ -3383,8 +3672,42 @@ function edgeValueLabels(
     ];
   }
 
+  if (
+    componentKind === "parallel-cj" ||
+    componentKind === "parallel-lj" ||
+    componentKind === "parallel-lcj"
+  ) {
+    const labels = [];
+    if (capacitanceText) {
+      labels.push({
+        point: localEdgePoint(geometry, { x: 0, y: -76 }),
+        testId: `edge-value-cap-${edge.identifier}`,
+        text: `C=${capacitanceText}`,
+      });
+    }
+    if (inductanceText) {
+      labels.push({
+        point: localEdgePoint(geometry, { x: 0, y: 78 }),
+        testId: `edge-value-ind-${edge.identifier}`,
+        text: `L=${inductanceText}`,
+      });
+    }
+    if (josephsonInductanceText) {
+      labels.push({
+        point: localEdgePoint(geometry, { x: 58, y: 0 }),
+        testId: `edge-value-jj-${edge.identifier}`,
+        text: `LJ=${josephsonInductanceText}`,
+      });
+    }
+    return labels;
+  }
+
   const valueText =
-    componentKind === "capacitor" ? capacitanceText : inductanceText;
+    componentKind === "capacitor"
+      ? capacitanceText
+      : componentKind === "josephson"
+        ? josephsonInductanceText
+        : inductanceText;
   if (!valueText) {
     return [];
   }
@@ -3395,8 +3718,16 @@ function edgeValueLabels(
       testId:
         componentKind === "capacitor"
           ? `edge-value-cap-${edge.identifier}`
-          : `edge-value-ind-${edge.identifier}`,
-      text: `${componentKind === "capacitor" ? "C" : "L"}=${valueText}`,
+          : componentKind === "josephson"
+            ? `edge-value-jj-${edge.identifier}`
+            : `edge-value-ind-${edge.identifier}`,
+      text: `${
+        componentKind === "capacitor"
+          ? "C"
+          : componentKind === "josephson"
+            ? "LJ"
+            : "L"
+      }=${valueText}`,
     },
   ];
 }
@@ -3579,6 +3910,9 @@ function clipboardFromSelection(
       inductance_expr: edge.inductance_expr,
       inductance_text: edge.inductance_text,
       l_inverse_expr: edge.l_inverse_expr,
+      josephson_inductance_expr: edge.josephson_inductance_expr,
+      josephson_inductance_text: edge.josephson_inductance_text,
+      josephson_phase_sign: edge.josephson_phase_sign,
       is_ground: edge.is_ground,
       ground_offset_x: edge.ground_offset_x,
       ground_offset_y: edge.ground_offset_y,
@@ -3788,7 +4122,7 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
   "edge-values": {
     progress: "Step 5 of 11",
     title: "Enter edge values",
-    body: "With the edge selected, enter C for Capacitance and L for Inductance.",
+    body: "With the edge selected, enter C for Capacitance and L for Linear inductance.",
   },
   "ground-mode": {
     progress: "Step 6 of 11",
@@ -3803,7 +4137,7 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
   "ground-values": {
     progress: "Step 8 of 11",
     title: "Enter ground capacitance",
-    body: "For this tutorial, enter Cg for Capacitance and leave Inductance empty.",
+    body: "For this tutorial, enter Cg for Capacitance and leave Linear inductance empty.",
   },
   "edit-edge": {
     progress: "Step 9 of 11",

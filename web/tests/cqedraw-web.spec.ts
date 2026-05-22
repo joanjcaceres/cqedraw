@@ -1449,12 +1449,12 @@ test("concatenates selected graph blocks", async ({ page }) => {
     throw new Error("Concatenate dialog box after drag is unavailable.");
   }
   expect(dialogBoxAfterDrag.x).toBeLessThan(dialogBoxBeforeDrag.x - 80);
-  await page.getByLabel("Connection ports").fill("");
+  await page.getByLabel("Pairing rows").fill("");
   await dialog.getByRole("button", { name: "Concatenate" }).click();
   await expect(dialog.getByRole("alert")).toContainText(
-    "Enter a port count from 0 to 1.",
+    "Enter a pairing row count from 0 to 1.",
   );
-  await page.getByLabel("Connection ports").fill("1");
+  await page.getByLabel("Pairing rows").fill("1");
   await page.getByLabel("Number of repeats").fill("2");
   await dialog.getByRole("button", { name: "Concatenate" }).click();
 
@@ -1577,7 +1577,7 @@ test("expands concatenate pairings for irregular selected blocks", async ({
   await expect(page.getByTestId("concatenate-pair-row-1")).toHaveCount(0);
   await expect(page.getByTestId("concatenate-preview-bridge-0")).toHaveCount(1);
 
-  await page.getByLabel("Connection ports").fill("2");
+  await page.getByLabel("Pairing rows").fill("2");
   await expect(page.getByTestId("concatenate-pair-row-1")).toContainText("Pair 2");
   await expect(page.getByTestId("concatenate-preview-bridge-1")).toHaveCount(1);
   await dialog.getByRole("button", { name: "Concatenate" }).click();

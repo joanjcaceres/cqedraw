@@ -35,6 +35,11 @@ export interface ConcatenatePortPair {
   rightNodeId: number;
 }
 
+export interface ConcatenateNodeOption {
+  id: number;
+  name: string;
+}
+
 export interface ConcatenateSelectionOptions {
   portCount?: number;
   portPairs?: ConcatenatePortPair[];
@@ -44,7 +49,7 @@ export interface ConcatenateSelectionAnalysis {
   autoPortCount: number;
   detectedPairs: ConcatenatePortPair[];
   maxPortCount: number;
-  selectedNodes: CircuitNode[];
+  selectedNodes: ConcatenateNodeOption[];
 }
 
 export interface ConcatenatePreviewBridge {
@@ -438,8 +443,22 @@ export function analyzeConcatenateSelection(
     autoPortCount: detectedPairs.length,
     detectedPairs,
     maxPortCount: maxConcatenatePortCount(selectedNodes),
-    selectedNodes,
+    selectedNodes: selectedNodes.map((node) => ({
+      id: node.identifier,
+      name: node.name,
+    })),
   };
+}
+
+export function concatenatePortPairsForSelection(
+  project: CircuitProject,
+  selectedNodeIds: Iterable<number>,
+  requestedPortCount?: number,
+): ConcatenatePortPair[] {
+  return concatenatePortPairsForNodes(
+    selectedNodesForConcatenate(project, selectedNodeIds),
+    requestedPortCount,
+  );
 }
 
 export function concatenatePortPairsForNodes(
@@ -462,16 +481,13 @@ export function concatenatePreviewBridgesForSelection(
     return [];
   }
 
-  const nodeById = new Map(
-    selectedNodes.map((node) => [node.identifier, node]),
-  );
   const dx = concatenateRepeatOffset(selectedNodes);
   return explicitConcatenateBoundaryPairs(selectedNodes, portPairs).map((pair) => ({
     leftNodeId: pair.left.identifier,
     rightNodeId: pair.right.identifier,
     x1: pair.right.x,
     y1: pair.right.y,
-    x2: (nodeById.get(pair.left.identifier)?.x ?? pair.left.x) + dx,
+    x2: pair.left.x + dx,
     y2: pair.left.y,
   }));
 }

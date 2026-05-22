@@ -38,7 +38,7 @@ import {
   addEdge,
   addNode,
   analyzeConcatenateSelection,
-  concatenatePortPairsForNodes,
+  concatenatePortPairsForSelection,
   concatenatePreviewBridgesForSelection,
   concatenateSelection,
   emptyProject,
@@ -1930,6 +1930,9 @@ export function App() {
           analysis={concatenateAnalysis}
           onCancel={closeConcatenateDialog}
           onConfirm={concatenateSelectedGraphElements}
+          onPortCountChange={(portCount) =>
+            concatenatePortPairsForSelection(projectRef.current, selectedNodeIds, portCount)
+          }
           onPreviewChange={setConcatenatePreviewPairs}
         />
       ) : null}
@@ -2054,11 +2057,13 @@ function ConcatenateDialog({
   analysis,
   onCancel,
   onConfirm,
+  onPortCountChange,
   onPreviewChange,
 }: {
   analysis: ConcatenateSelectionAnalysis;
   onCancel: () => void;
   onConfirm: (repeats: number, portPairs: ConcatenatePortPair[]) => void;
+  onPortCountChange: (portCount: number) => ConcatenatePortPair[];
   onPreviewChange: (portPairs: ConcatenatePortPair[]) => void;
 }) {
   const dialogRef = useRef<HTMLElement | null>(null);
@@ -2072,10 +2077,7 @@ function ConcatenateDialog({
   const [dialogOffset, setDialogOffset] = useState({ x: 0, y: 0 });
   const [dialogDragState, setDialogDragState] =
     useState<DialogDragState | null>(null);
-  const nodeOptions = analysis.selectedNodes.map((node) => ({
-    id: node.identifier,
-    name: node.name,
-  }));
+  const nodeOptions = analysis.selectedNodes;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -2104,7 +2106,7 @@ function ConcatenateDialog({
 
     setPairRows(
       pairRowsFromPortPairs(
-        concatenatePortPairsForNodes(analysis.selectedNodes, portCount),
+        onPortCountChange(portCount),
       ),
     );
   }
@@ -2185,7 +2187,7 @@ function ConcatenateDialog({
       portCount < 0 ||
       portCount > analysis.maxPortCount
     ) {
-      setError(`Enter a port count from 0 to ${analysis.maxPortCount}.`);
+      setError(`Enter a pairing row count from 0 to ${analysis.maxPortCount}.`);
       return;
     }
     const activePairs = activeConcatenatePortPairs(pairRows);
@@ -2256,10 +2258,10 @@ function ConcatenateDialog({
             />
           </label>
           <label className="dialog-field">
-            <span>Connection ports</span>
+            <span>Pairing rows</span>
             <input
               aria-describedby={error ? "concatenate-dialog-error" : undefined}
-              aria-label="Connection ports"
+              aria-label="Pairing rows"
               data-testid="concatenate-port-input"
               max={analysis.maxPortCount}
               min="0"

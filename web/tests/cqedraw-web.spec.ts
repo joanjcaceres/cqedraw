@@ -594,6 +594,41 @@ test("renders component symbols for regular and ground edge values", async ({
   );
 });
 
+test("keeps parallel component lanes stable while dragging near vertical", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 160, y: 180 } });
+  await canvas.click({ position: { x: 130, y: 380 } });
+
+  await page.getByRole("button", { name: "Edge" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("node-1").click();
+  await page.getByTestId("cap-input").fill("C");
+  await page.getByTestId("ind-input").fill("L");
+
+  const symbol = page.getByTestId("edge-symbol-0");
+  await expect(symbol).toHaveAttribute("data-component-kind", "parallel-lc");
+  await expectCapacitorLeftOfInductor(symbol);
+
+  await page.getByRole("button", { exact: true, name: "Select" }).click();
+  const canvasBox = await canvas.boundingBox();
+  const nodeBox = await page.getByTestId("node-1").boundingBox();
+  if (!canvasBox || !nodeBox) {
+    throw new Error("Expected canvas and node boxes to be available.");
+  }
+
+  await page.mouse.move(nodeBox.x + nodeBox.width / 2, nodeBox.y + nodeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 190, canvasBox.y + 380);
+  await page.mouse.up();
+
+  await expectCapacitorLeftOfInductor(symbol);
+});
+
 test("exports Josephson junction branch metadata and phase direction", async ({
   context,
   page,
@@ -1864,6 +1899,31 @@ async function symbolCoordinatesStayWithinHalfLength(
       (coordinate) => Math.abs(coordinate) <= maxAbsCoordinate + 0.1,
     );
   }, halfLength);
+}
+
+async function expectCapacitorLeftOfInductor(symbol: Locator) {
+  const centers = await symbol.evaluate((element) => {
+    const plates = Array.from(
+      element.querySelectorAll('[data-component-part="capacitor-plate"]'),
+    );
+    const coil = element.querySelector('[data-component-part="inductor-coil"]');
+    if (plates.length !== 2 || !coil) {
+      throw new Error("Expected capacitor plates and inductor coil.");
+    }
+    const capacitorX =
+      plates
+        .map((plate) => {
+          const box = plate.getBoundingClientRect();
+          return box.left + box.width / 2;
+        })
+        .reduce((sum, centerX) => sum + centerX, 0) / plates.length;
+    const coilBox = coil.getBoundingClientRect();
+    return {
+      capacitorX,
+      inductorX: coilBox.left + coilBox.width / 2,
+    };
+  });
+  expect(centers.capacitorX).toBeLessThan(centers.inductorX);
 }
 
 async function capacitorPlateHeight(symbol: Locator) {

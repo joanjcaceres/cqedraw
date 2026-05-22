@@ -2950,7 +2950,10 @@ function EdgeComponentSymbol({
         <JosephsonSymbol halfLength={geometry.length / 2} />
       ) : null}
       {kind === "parallel-lc" ? (
-        <ParallelLcSymbol halfLength={geometry.length / 2} />
+        <ParallelLcSymbol
+          halfLength={geometry.length / 2}
+          laneDirection={parallelLaneDirection(geometry.angle)}
+        />
       ) : null}
       {kind === "parallel-cj" ||
       kind === "parallel-lj" ||
@@ -2958,6 +2961,7 @@ function EdgeComponentSymbol({
         <ParallelComponentSymbol
           components={parallelComponentsForKind(kind)}
           halfLength={geometry.length / 2}
+          laneDirection={parallelLaneDirection(geometry.angle)}
         />
       ) : null}
     </g>
@@ -3019,7 +3023,13 @@ function JosephsonSymbol({ halfLength }: { halfLength: number }) {
   );
 }
 
-function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
+function ParallelLcSymbol({
+  halfLength,
+  laneDirection,
+}: {
+  halfLength: number;
+  laneDirection: number;
+}) {
   const junctionX = compactSymbolHalfLength(
     halfLength,
     PARALLEL_LC_SYMBOL_HALF_LENGTH,
@@ -3032,24 +3042,28 @@ function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
   );
   const coil = inductorGeometry(junctionX, junctionX * 0.72, 10);
   const branchY = parallelBranchOffset(halfLength, capacitor, coil.radius);
+  const capacitorY = -branchY * laneDirection;
+  const inductorY = branchY * laneDirection;
+  const firstY = Math.min(capacitorY, inductorY);
+  const lastY = Math.max(capacitorY, inductorY);
 
   return (
     <>
       <line x1={-halfLength} y1={0} x2={-junctionX} y2={0} />
       <line x1={junctionX} y1={0} x2={halfLength} y2={0} />
-      <line x1={-junctionX} y1={-branchY} x2={-junctionX} y2={branchY} />
-      <line x1={junctionX} y1={-branchY} x2={junctionX} y2={branchY} />
+      <line x1={-junctionX} y1={firstY} x2={-junctionX} y2={lastY} />
+      <line x1={junctionX} y1={firstY} x2={junctionX} y2={lastY} />
 
-      <line x1={-junctionX} y1={-branchY} x2={-capacitor.plateX} y2={-branchY} />
-      <line x1={capacitor.plateX} y1={-branchY} x2={junctionX} y2={-branchY} />
-      <CapacitorPlates centerY={-branchY} geometry={capacitor} />
+      <line x1={-junctionX} y1={capacitorY} x2={-capacitor.plateX} y2={capacitorY} />
+      <line x1={capacitor.plateX} y1={capacitorY} x2={junctionX} y2={capacitorY} />
+      <CapacitorPlates centerY={capacitorY} geometry={capacitor} />
 
-      <line x1={-junctionX} y1={branchY} x2={-coil.half} y2={branchY} />
+      <line x1={-junctionX} y1={inductorY} x2={-coil.half} y2={inductorY} />
       <path
         data-component-part="inductor-coil"
-        d={inductorPath(-coil.half, coil.half, branchY, coil.radius)}
+        d={inductorPath(-coil.half, coil.half, inductorY, coil.radius)}
       />
-      <line x1={coil.half} y1={branchY} x2={junctionX} y2={branchY} />
+      <line x1={coil.half} y1={inductorY} x2={junctionX} y2={inductorY} />
     </>
   );
 }
@@ -3057,16 +3071,20 @@ function ParallelLcSymbol({ halfLength }: { halfLength: number }) {
 function ParallelComponentSymbol({
   components,
   halfLength,
+  laneDirection,
 }: {
   components: ParallelComponent[];
   halfLength: number;
+  laneDirection: number;
 }) {
   const junctionX = compactSymbolHalfLength(
     halfLength,
     PARALLEL_LC_SYMBOL_HALF_LENGTH,
   );
   const branchY = parallelComponentBranchOffset(halfLength, components.length);
-  const branchYs = branchOffsets(components.length, branchY);
+  const branchYs = branchOffsets(components.length, branchY).map(
+    (offset) => offset * laneDirection,
+  );
   const firstY = branchYs[0] ?? 0;
   const lastY = branchYs[branchYs.length - 1] ?? 0;
 
@@ -3236,6 +3254,15 @@ function parallelComponentBranchOffset(
   const maxBranchY = Math.max(1, halfLength - 12);
   const preferredBranchY = componentCount > 2 ? 30 : 24;
   return clamp(preferredBranchY, Math.min(6, maxBranchY), maxBranchY);
+}
+
+function parallelLaneDirection(angle: number): number {
+  const radians = (angle * Math.PI) / 180;
+  const sin = Math.sin(radians);
+  if (Math.abs(sin) > 0.001) {
+    return sin < 0 ? 1 : -1;
+  }
+  return Math.cos(radians) >= 0 ? 1 : -1;
 }
 
 function branchOffsets(componentCount: number, branchY: number): number[] {
@@ -3654,11 +3681,14 @@ function edgeValueLabels(
   }
 
   if (componentKind === "parallel-lc") {
+    const laneDirection = parallelLaneDirection(geometry.angle);
+    const capacitorY = -54 * laneDirection;
+    const inductorY = 62 * laneDirection;
     return [
       ...(capacitanceText
         ? [
             {
-              point: localEdgePoint(geometry, { x: 0, y: -54 }),
+              point: localEdgePoint(geometry, { x: 0, y: capacitorY }),
               testId: `edge-value-cap-${edge.identifier}`,
               text: `C=${capacitanceText}`,
             },
@@ -3667,7 +3697,7 @@ function edgeValueLabels(
       ...(inductanceText
         ? [
             {
-              point: localEdgePoint(geometry, { x: 0, y: 62 }),
+              point: localEdgePoint(geometry, { x: 0, y: inductorY }),
               testId: `edge-value-ind-${edge.identifier}`,
               text: `L=${inductanceText}`,
             },
@@ -3683,7 +3713,9 @@ function edgeValueLabels(
   ) {
     const components = parallelComponentsForKind(componentKind);
     const branchY = parallelComponentBranchOffset(geometry.length / 2, components.length);
-    const branchYs = branchOffsets(components.length, branchY);
+    const branchYs = branchOffsets(components.length, branchY).map(
+      (offset) => offset * parallelLaneDirection(geometry.angle),
+    );
     const componentYs = new Map(
       components.map((component, index) => [component, branchYs[index] ?? 0]),
     );

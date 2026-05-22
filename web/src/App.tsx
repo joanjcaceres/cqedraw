@@ -372,10 +372,33 @@ export function App() {
       return;
     }
 
+    setInlineValueEditorPosition(
+      inlineEdgeEditorPosition(
+        inlineValueEditorEdge,
+        projectRef.current.state.nodes,
+        canvasRef.current,
+        canvasStageRef.current,
+      ),
+    );
+  }, [inlineValueEditorEdge, viewBox]);
+
+  useEffect(() => {
+    if (inlineValueEditorEdgeId === null) {
+      return;
+    }
+
     function updateInlineEditorPosition() {
+      const currentEdge = projectRef.current.state.edges.find(
+        (edge) => edge.identifier === inlineValueEditorEdgeId,
+      );
+      if (!currentEdge) {
+        setInlineValueEditorPosition(null);
+        return;
+      }
+
       setInlineValueEditorPosition(
         inlineEdgeEditorPosition(
-          inlineValueEditorEdge!,
+          currentEdge,
           projectRef.current.state.nodes,
           canvasRef.current,
           canvasStageRef.current,
@@ -383,10 +406,9 @@ export function App() {
       );
     }
 
-    updateInlineEditorPosition();
     window.addEventListener("resize", updateInlineEditorPosition);
     return () => window.removeEventListener("resize", updateInlineEditorPosition);
-  }, [inlineValueEditorEdge, viewBox]);
+  }, [inlineValueEditorEdgeId]);
 
   useEffect(() => {
     if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {

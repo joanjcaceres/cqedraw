@@ -725,6 +725,53 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: 0 - 1");
 });
 
+test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 240, y: 220 } });
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("cap-input").fill("Cj");
+  await page.getByTestId("jj-ind-input").fill("Lj");
+
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
+  await page.getByLabel("Value for Cj").fill("80e-15");
+  await page.getByLabel("Value for Lj").fill("8e-9");
+
+  await page.getByRole("button", { name: "Analyze modes" }).click();
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+
+  await page.getByLabel("Sweep parameter").selectOption("Lj");
+  await page.getByLabel("Sweep min").fill("6e-9");
+  await page.getByLabel("Sweep max").fill("1e-8");
+  await page.getByLabel("Sweep step").fill("2e-9");
+  await page.getByRole("button", { name: "Run sweep" }).click();
+  await expect(page.getByTestId("sweep-frequency-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("sweep-zpf-plot")).toBeVisible();
+
+  const sweepExportPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export sweep CSV" }).click();
+  const sweepExported = await sweepExportPromise;
+  expect(sweepExported.suggestedFilename()).toBe("cqedraw-sweep-table.csv");
+  const sweepExportedPath = await sweepExported.path();
+  if (!sweepExportedPath) {
+    throw new Error("Sweep CSV download path is unavailable.");
+  }
+  const sweepCsv = await readFile(sweepExportedPath, "utf8");
+  const sweepRows = sweepCsv.trim().split(/\r?\n/);
+  expect(sweepRows).toHaveLength(4);
+  expect(sweepRows[0]).toContain("Lj,frequency_mode_0,phase_zpf_edge_0_mode_0");
+});
+
 test("moves ground branches without changing generated output", async ({ page }) => {
   await page.goto("/");
 
@@ -1855,6 +1902,8 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   );
   await expect(page.getByRole("button", { name: "Analyze modes" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run sweep" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeDisabled();
 
   await page.getByLabel("Value for C12").fill("2e-15");
   await page.getByLabel("Value for Cg").fill("5e-15");
@@ -1863,6 +1912,34 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("parameter-required-message")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Analyze modes" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Run sweep" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Analyze modes" }).click();
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+
+  await page.getByLabel("Sweep parameter").selectOption("C12");
+  await page.getByLabel("Sweep min").fill("1e-15");
+  await page.getByLabel("Sweep max").fill("3e-15");
+  await page.getByLabel("Sweep step").fill("1e-15");
+  await expect(page.getByRole("button", { name: "Run sweep" })).toBeEnabled();
+  await page.getByRole("button", { name: "Run sweep" }).click();
+  await expect(page.getByTestId("sweep-frequency-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeEnabled();
+  const sweepExportPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export sweep CSV" }).click();
+  const sweepExported = await sweepExportPromise;
+  expect(sweepExported.suggestedFilename()).toBe("cqedraw-sweep-table.csv");
+  const sweepExportedPath = await sweepExported.path();
+  if (!sweepExportedPath) {
+    throw new Error("Sweep CSV download path is unavailable.");
+  }
+  const sweepCsv = await readFile(sweepExportedPath, "utf8");
+  const sweepRows = sweepCsv.trim().split(/\r?\n/);
+  expect(sweepRows).toHaveLength(4);
+  expect(sweepRows[0]).toContain("C12,frequency_mode_0");
+
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const exported = await exportPromise;

@@ -55,6 +55,18 @@ import {
   type ConcatenatePreviewBridge,
   type ConcatenateSelectionAnalysis,
 } from "./graph";
+import {
+  buildCurrentFrequencySeries,
+  buildCurrentZpfSeries,
+  buildSweepCsvTable,
+  buildSweepFrequencySeries,
+  buildSweepValues,
+  buildSweepZpfSeries,
+  MAX_SWEEP_POINTS,
+  type ChartPoint,
+  type ChartSeries,
+  type SweepSample,
+} from "./analysis";
 import { PyodideBridgeClient } from "./pyodideClient";
 import {
   CircuitEdge,
@@ -207,10 +219,24 @@ interface EngineWarmupState {
   error: string | null;
 }
 
+interface SweepConfig {
+  max: string;
+  min: string;
+  parameter: string;
+  step: string;
+}
+
 const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
   base: "idle",
   analysis: "idle",
   error: null,
+};
+
+const INITIAL_SWEEP_CONFIG: SweepConfig = {
+  max: "",
+  min: "",
+  parameter: "",
+  step: "",
 };
 
 export function App() {
@@ -242,6 +268,13 @@ export function App() {
   const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
     null,
   );
+  const [sweepConfig, setSweepConfig] = useState<SweepConfig>(
+    INITIAL_SWEEP_CONFIG,
+  );
+  const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
+  const [sweepModeIndex, setSweepModeIndex] = useState(0);
+  const [sweepRunning, setSweepRunning] = useState(false);
+  const [sweepError, setSweepError] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [engineWarmup, setEngineWarmup] = useState<EngineWarmupState>(
     INITIAL_ENGINE_WARMUP,
@@ -375,11 +408,31 @@ export function App() {
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
   const missingParameterValues = useMemo(
+    () => missingParameterNames(outputParameters, parameterValues),
+    [outputParameters, parameterValues],
+  );
+  const selectedSweepParameter =
+    sweepConfig.parameter && outputParameters.includes(sweepConfig.parameter)
+      ? sweepConfig.parameter
+      : outputParameters[0] ?? "";
+  const sweepValidation = useMemo(
+    () =>
+      buildSweepValues(
+        sweepConfig.min,
+        sweepConfig.max,
+        sweepConfig.step,
+        MAX_SWEEP_POINTS,
+      ),
+    [sweepConfig.max, sweepConfig.min, sweepConfig.step],
+  );
+  const missingSweepFixedValues = useMemo(
     () =>
       outputParameters.filter(
-        (name) => (parameterValues[name] ?? "").trim() === "",
+        (name) =>
+          name !== selectedSweepParameter &&
+          (parameterValues[name] ?? "").trim() === "",
       ),
-    [outputParameters, parameterValues],
+    [outputParameters, parameterValues, selectedSweepParameter],
   );
 
   useEffect(() => {
@@ -399,6 +452,8 @@ export function App() {
   useEffect(() => {
     if (!output) {
       setModalAnalysis(null);
+      setSweepSamples([]);
+      setSweepError(null);
       return;
     }
     setParameterValues((current) => {
@@ -407,6 +462,13 @@ export function App() {
         next[name] = current[name] ?? "";
       }
       return next;
+    });
+    setSweepConfig((current) => {
+      const parameter =
+        current.parameter && outputParameters.includes(current.parameter)
+          ? current.parameter
+          : outputParameters[0] ?? "";
+      return current.parameter === parameter ? current : { ...current, parameter };
     });
   }, [output, outputParameters]);
 
@@ -587,6 +649,12 @@ export function App() {
     });
   }
 
+  function clearSweepResults() {
+    setSweepSamples([]);
+    setSweepModeIndex(0);
+    setSweepError(null);
+  }
+
   function commitProjectChange(
     updateProject: (current: CircuitProject) => CircuitProject,
   ) {
@@ -610,6 +678,7 @@ export function App() {
   ) {
     commitProjectChange((current) => updateEdgeValues(current, edgeId, values));
     setOutput(null);
+    clearSweepResults();
   }
 
   function resetProjectInteractionState() {
@@ -1311,6 +1380,7 @@ export function App() {
     );
     setSnippetCopied(false);
     setModalAnalysis(null);
+    clearSweepResults();
     try {
       const result = await clientRef.current!.generate(project);
       setEngineWarmup((current) => ({
@@ -1338,6 +1408,7 @@ export function App() {
   function updateParameterValue(name: string, value: string) {
     setParameterValues((current) => ({ ...current, [name]: value }));
     setModalAnalysis(null);
+    clearSweepResults();
   }
 
   async function runModalAnalysis(): Promise<ModalAnalysisResult | null> {
@@ -1345,9 +1416,7 @@ export function App() {
     if (!result) {
       return null;
     }
-    const missing = missingParameterValues.filter((name) =>
-      result.parameters.includes(name),
-    );
+    const missing = missingParameterNames(result.parameters, parameterValues);
     if (missing.length > 0) {
       setEngineStatus(
         `Enter parameter values before analysis: ${missing.join(", ")}`,
@@ -1434,6 +1503,106 @@ export function App() {
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function updateSweepConfig(updates: Partial<SweepConfig>) {
+    setSweepConfig((current) => ({ ...current, ...updates }));
+    clearSweepResults();
+  }
+
+  async function runParameterSweep() {
+    const result = output ?? (await runGenerateOutput());
+    if (!result) {
+      return;
+    }
+    const parameter = selectedSweepParameter || (result.parameters[0] ?? "");
+    if (!parameter) {
+      const message = "Generate matrices with at least one parameter to sweep.";
+      setSweepError(message);
+      setEngineStatus(message);
+      return;
+    }
+    const validation = buildSweepValues(
+      sweepConfig.min,
+      sweepConfig.max,
+      sweepConfig.step,
+      MAX_SWEEP_POINTS,
+    );
+    if (validation.error) {
+      setSweepError(validation.error);
+      setEngineStatus(validation.error);
+      return;
+    }
+    const missingFixedValues = result.parameters.filter(
+      (name) => name !== parameter && (parameterValues[name] ?? "").trim() === "",
+    );
+    if (missingFixedValues.length > 0) {
+      const message = `Enter fixed values for: ${missingFixedValues.join(", ")}`;
+      setSweepError(message);
+      setEngineStatus(message);
+      return;
+    }
+    if (validation.values.length === 0) {
+      const message = "Sweep produced no parameter values.";
+      setSweepError(message);
+      setEngineStatus(message);
+      return;
+    }
+
+    const sweepProject = projectRef.current;
+    setSweepRunning(true);
+    setSweepSamples([]);
+    setSweepModeIndex(0);
+    setSweepError(null);
+    setEngineWarmup((current) => ({
+      base: "ready",
+      analysis: current.analysis === "ready" ? "ready" : "warming",
+      error: null,
+    }));
+
+    try {
+      const samples: SweepSample[] = [];
+      for (let index = 0; index < validation.values.length; index += 1) {
+        const value = validation.values[index];
+        setEngineStatus(`Running sweep ${index + 1} / ${validation.values.length}...`);
+        const analysis = await clientRef.current!.analyze(sweepProject, {
+          ...parameterValues,
+          [parameter]: String(value),
+        });
+        if (!analysis.available || analysis.error) {
+          throw new Error(
+            analysis.error ?? `BBQ modal analysis failed at ${parameter} = ${value}.`,
+          );
+        }
+        samples.push({ analysis, value });
+      }
+      setSweepSamples(samples);
+      setEngineWarmup({ base: "ready", analysis: "ready", error: null });
+      setEngineStatus(
+        `Computed ${samples.length} sweep point${samples.length === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSweepSamples([]);
+      setSweepError(message);
+      setEngineWarmup((current) => ({
+        ...current,
+        analysis: current.analysis === "ready" ? "ready" : "error",
+        error: message,
+      }));
+      setEngineStatus(message);
+    } finally {
+      setSweepRunning(false);
+    }
+  }
+
+  function exportSweepCsv() {
+    if (sweepSamples.length === 0 || !selectedSweepParameter) {
+      return;
+    }
+    const table = buildSweepCsvTable(selectedSweepParameter, sweepSamples);
+    downloadCsv("cqedraw-sweep-table.csv", table.columns, table.rows);
+    setEngineStatus("Exported sweep table CSV.");
   }
 
   function saveProject() {
@@ -2192,6 +2361,27 @@ export function App() {
               values={parameterValues}
             />
             <ModalAnalysisTable result={modalAnalysis} />
+            <ModalAnalysisPlots result={modalAnalysis} />
+            <ParameterSweepPanel
+              disabled={!output}
+              fixedMissingParameters={missingSweepFixedValues}
+              onChange={updateSweepConfig}
+              onExport={exportSweepCsv}
+              onRun={runParameterSweep}
+              parameters={outputParameters}
+              running={sweepRunning}
+              samples={sweepSamples}
+              selectedParameter={selectedSweepParameter}
+              sweepError={sweepError}
+              validation={sweepValidation}
+              values={sweepConfig}
+            />
+            <SweepAnalysisPlots
+              modeIndex={sweepModeIndex}
+              onModeIndexChange={setSweepModeIndex}
+              parameterName={selectedSweepParameter}
+              samples={sweepSamples}
+            />
           </section>
         </aside>
       </section>
@@ -3942,6 +4132,547 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
       </div>
     </div>
   );
+}
+
+function ModalAnalysisPlots({ result }: { result: ModalAnalysisResult | null }) {
+  if (!result?.available) {
+    return null;
+  }
+
+  const frequencySeries = buildCurrentFrequencySeries(result);
+  const zpfSeries = buildCurrentZpfSeries(result);
+  if (frequencySeries.length === 0 && zpfSeries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="analysis-plots" data-testid="modal-analysis-plots">
+      <AnalysisLineChart
+        series={frequencySeries}
+        testId="frequency-mode-plot"
+        title="Mode frequencies"
+        xLabel="mode index"
+        yLabel="frequency GHz"
+      />
+      <AnalysisLineChart
+        series={zpfSeries}
+        testId="zpf-mode-plot"
+        title="JJ phase ZPF"
+        xLabel="mode index"
+        yLabel="phase ZPF"
+      />
+    </div>
+  );
+}
+
+function ParameterSweepPanel({
+  disabled,
+  fixedMissingParameters,
+  onChange,
+  onExport,
+  onRun,
+  parameters,
+  running,
+  samples,
+  selectedParameter,
+  sweepError,
+  validation,
+  values,
+}: {
+  disabled: boolean;
+  fixedMissingParameters: string[];
+  onChange: (updates: Partial<SweepConfig>) => void;
+  onExport: () => void;
+  onRun: () => void;
+  parameters: string[];
+  running: boolean;
+  samples: SweepSample[];
+  selectedParameter: string;
+  sweepError: string | null;
+  validation: { error: string | null; values: number[] };
+  values: SweepConfig;
+}) {
+  const fixedMissingMessage =
+    fixedMissingParameters.length > 0
+      ? `Enter fixed values for: ${fixedMissingParameters.join(", ")}`
+      : "";
+  const validationMessage =
+    disabled
+      ? ""
+      : parameters.length === 0
+        ? "Generate matrices with at least one parameter to sweep."
+        : fixedMissingMessage || validation.error || sweepError || "";
+  const runDisabled =
+    disabled ||
+    running ||
+    parameters.length === 0 ||
+    fixedMissingParameters.length > 0 ||
+    Boolean(validation.error) ||
+    validation.values.length === 0;
+  const exportDisabled = disabled || running || samples.length === 0;
+
+  return (
+    <div className="parameter-panel parameter-sweep" data-testid="parameter-sweep">
+      <div className="parameter-panel-heading">
+        <h3>Parameter sweep</h3>
+        <div className="parameter-panel-actions">
+          <button
+            disabled={runDisabled}
+            onClick={onRun}
+            title={validationMessage}
+            type="button"
+          >
+            <Play size={14} />
+            {running ? "Running..." : "Run sweep"}
+          </button>
+          <button
+            disabled={exportDisabled}
+            onClick={onExport}
+            title={samples.length === 0 ? "Run a sweep before exporting." : ""}
+            type="button"
+          >
+            <Download size={14} />
+            Export sweep CSV
+          </button>
+        </div>
+      </div>
+      <div className="sweep-grid">
+        <label>
+          <span>Sweep parameter</span>
+          <select
+            aria-label="Sweep parameter"
+            disabled={disabled || running || parameters.length === 0}
+            onChange={(event) => onChange({ parameter: event.target.value })}
+            value={selectedParameter}
+          >
+            {parameters.length === 0 ? <option value="">No parameters</option> : null}
+            {parameters.map((parameter) => (
+              <option key={parameter} value={parameter}>
+                {parameter}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Min</span>
+          <input
+            aria-label="Sweep min"
+            disabled={disabled || running}
+            inputMode="decimal"
+            onChange={(event) => onChange({ min: event.target.value })}
+            placeholder="min"
+            value={values.min}
+          />
+        </label>
+        <label>
+          <span>Max</span>
+          <input
+            aria-label="Sweep max"
+            disabled={disabled || running}
+            inputMode="decimal"
+            onChange={(event) => onChange({ max: event.target.value })}
+            placeholder="max"
+            value={values.max}
+          />
+        </label>
+        <label>
+          <span>Step</span>
+          <input
+            aria-label="Sweep step"
+            disabled={disabled || running}
+            inputMode="decimal"
+            onChange={(event) => onChange({ step: event.target.value })}
+            placeholder="step"
+            value={values.step}
+          />
+        </label>
+      </div>
+      {validationMessage ? (
+        <p className="parameter-panel-warning" data-testid="sweep-validation-message">
+          {validationMessage}
+        </p>
+      ) : validation.values.length > 0 ? (
+        <p className="sweep-summary" data-testid="sweep-point-count">
+          {validation.values.length} point{validation.values.length === 1 ? "" : "s"}{" "}
+          ready, maximum {MAX_SWEEP_POINTS}.
+        </p>
+      ) : null}
+      {samples.length > 0 ? (
+        <p className="sweep-summary" data-testid="sweep-result-summary">
+          Last sweep: {samples.length} point{samples.length === 1 ? "" : "s"}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SweepAnalysisPlots({
+  modeIndex,
+  onModeIndexChange,
+  parameterName,
+  samples,
+}: {
+  modeIndex: number;
+  onModeIndexChange: (modeIndex: number) => void;
+  parameterName: string;
+  samples: SweepSample[];
+}) {
+  const modeCount = maxSweepModeCount(samples);
+  const selectedMode = modeCount > 0 ? clamp(modeIndex, 0, modeCount - 1) : 0;
+
+  useEffect(() => {
+    if (selectedMode !== modeIndex) {
+      onModeIndexChange(selectedMode);
+    }
+  }, [modeIndex, onModeIndexChange, selectedMode]);
+
+  if (samples.length === 0) {
+    return null;
+  }
+
+  const xLabel = parameterName || "swept parameter";
+  const frequencySeries = buildSweepFrequencySeries(samples);
+  const zpfSeries = buildSweepZpfSeries(samples, selectedMode);
+
+  return (
+    <div className="analysis-plots" data-testid="sweep-analysis-plots">
+      <AnalysisLineChart
+        series={frequencySeries}
+        testId="sweep-frequency-plot"
+        title="Sweep frequencies"
+        xLabel={xLabel}
+        yLabel="frequency GHz"
+      />
+      {zpfSeries.length > 0 ? (
+        <>
+          <label className="mode-select">
+            <span>ZPF mode</span>
+            <select
+              aria-label="Sweep ZPF mode"
+              onChange={(event) => onModeIndexChange(Number(event.target.value))}
+              value={selectedMode}
+            >
+              {Array.from({ length: modeCount }, (_, index) => (
+                <option key={index} value={index}>
+                  mode {index}
+                </option>
+              ))}
+            </select>
+          </label>
+          <AnalysisLineChart
+            series={zpfSeries}
+            testId="sweep-zpf-plot"
+            title="Sweep JJ phase ZPF"
+            xLabel={xLabel}
+            yLabel="phase ZPF"
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function AnalysisLineChart({
+  series,
+  testId,
+  title,
+  xLabel,
+  yLabel,
+}: {
+  series: ChartSeries[];
+  testId: string;
+  title: string;
+  xLabel: string;
+  yLabel: string;
+}) {
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    color: string;
+    point: ChartPoint;
+    seriesLabel: string;
+  } | null>(null);
+  const populatedSeries = series.filter((entry) => entry.points.length > 0);
+  if (populatedSeries.length === 0) {
+    return null;
+  }
+
+  const visibleSeries = populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
+  const bounds = chartBounds(visibleSeries.length > 0 ? visibleSeries : populatedSeries);
+  const xTicks = chartTicks(bounds.minX, bounds.maxX);
+  const yTicks = chartTicks(bounds.minY, bounds.maxY);
+  const viewWidth = 520;
+  const viewHeight = 250;
+  const plot = {
+    bottom: 208,
+    left: 58,
+    right: 504,
+    top: 18,
+  };
+  const plotWidth = plot.right - plot.left;
+  const plotHeight = plot.bottom - plot.top;
+  const xScale = (value: number) =>
+    plot.left + ((value - bounds.minX) / (bounds.maxX - bounds.minX)) * plotWidth;
+  const yScale = (value: number) =>
+    plot.bottom - ((value - bounds.minY) / (bounds.maxY - bounds.minY)) * plotHeight;
+
+  function toggleSeries(key: string) {
+    setHiddenKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div className="analysis-chart" data-testid={testId}>
+      <div className="analysis-chart-heading">
+        <h3>{title}</h3>
+      </div>
+      <svg
+        aria-label={title}
+        role="img"
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        onPointerLeave={() => setHoveredPoint(null)}
+      >
+        <rect
+          className="analysis-chart-plot-bg"
+          x={plot.left}
+          y={plot.top}
+          width={plotWidth}
+          height={plotHeight}
+        />
+        {yTicks.map((tick) => {
+          const y = yScale(tick);
+          return (
+            <g key={`y-${tick}`}>
+              <line
+                className="analysis-chart-grid"
+                x1={plot.left}
+                x2={plot.right}
+                y1={y}
+                y2={y}
+              />
+              <text
+                className="analysis-chart-tick"
+                textAnchor="end"
+                x={plot.left - 8}
+                y={y + 4}
+              >
+                {formatChartTick(tick)}
+              </text>
+            </g>
+          );
+        })}
+        {xTicks.map((tick) => {
+          const x = xScale(tick);
+          return (
+            <g key={`x-${tick}`}>
+              <line
+                className="analysis-chart-grid"
+                x1={x}
+                x2={x}
+                y1={plot.top}
+                y2={plot.bottom}
+              />
+              <text
+                className="analysis-chart-tick"
+                textAnchor="middle"
+                x={x}
+                y={plot.bottom + 18}
+              >
+                {formatChartTick(tick)}
+              </text>
+            </g>
+          );
+        })}
+        <line
+          className="analysis-chart-axis"
+          x1={plot.left}
+          x2={plot.left}
+          y1={plot.top}
+          y2={plot.bottom}
+        />
+        <line
+          className="analysis-chart-axis"
+          x1={plot.left}
+          x2={plot.right}
+          y1={plot.bottom}
+          y2={plot.bottom}
+        />
+        <text
+          className="analysis-chart-axis-label"
+          textAnchor="middle"
+          x={(plot.left + plot.right) / 2}
+          y={viewHeight - 6}
+        >
+          {xLabel}
+        </text>
+        <text
+          className="analysis-chart-axis-label"
+          textAnchor="middle"
+          transform={`translate(14 ${(plot.top + plot.bottom) / 2}) rotate(-90)`}
+        >
+          {yLabel}
+        </text>
+        {visibleSeries.map((entry, seriesIndex) => {
+          const color = chartColor(seriesIndex);
+          const scaledPoints = entry.points.map((point) => ({
+            point,
+            x: xScale(point.x),
+            y: yScale(point.y),
+          }));
+          return (
+            <g key={entry.key}>
+              {scaledPoints.length > 1 ? (
+                <path
+                  className="analysis-chart-line"
+                  d={pointsToPath(scaledPoints)}
+                  stroke={color}
+                />
+              ) : null}
+              {scaledPoints.map(({ point, x, y }, pointIndex) => (
+                <circle
+                  key={`${entry.key}-${pointIndex}`}
+                  className="analysis-chart-point"
+                  cx={x}
+                  cy={y}
+                  fill={color}
+                  onPointerEnter={() =>
+                    setHoveredPoint({
+                      color,
+                      point,
+                      seriesLabel: entry.label,
+                    })
+                  }
+                  r="4"
+                />
+              ))}
+            </g>
+          );
+        })}
+        {hoveredPoint ? (
+          <g className="analysis-chart-tooltip" transform="translate(338 28)">
+            <rect width="158" height="58" rx="6" />
+            <circle cx="12" cy="16" fill={hoveredPoint.color} r="4" />
+            <text x="22" y="20">
+              {hoveredPoint.seriesLabel}
+            </text>
+            <text x="10" y="38">
+              {xLabel}: {formatChartTick(hoveredPoint.point.x)}
+            </text>
+            <text x="10" y="52">
+              {yLabel}: {formatModalNumber(hoveredPoint.point.y)}
+            </text>
+          </g>
+        ) : null}
+      </svg>
+      {populatedSeries.length > 1 ? (
+        <div className="analysis-chart-legend">
+          {populatedSeries.map((entry, index) => {
+            const hidden = hiddenKeys.has(entry.key);
+            return (
+              <button
+                key={entry.key}
+                aria-pressed={!hidden}
+                className={hidden ? "muted" : ""}
+                onClick={() => toggleSeries(entry.key)}
+                type="button"
+              >
+                <span
+                  className="analysis-chart-swatch"
+                  style={{ backgroundColor: chartColor(index) }}
+                />
+                {entry.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function chartBounds(series: ChartSeries[]) {
+  const points = series.flatMap((entry) => entry.points);
+  const xValues = points.map((point) => point.x);
+  const yValues = points.map((point) => point.y);
+  let minX = Math.min(...xValues);
+  let maxX = Math.max(...xValues);
+  let minY = Math.min(...yValues);
+  let maxY = Math.max(...yValues);
+  if (minX === maxX) {
+    const pad = Math.max(1, Math.abs(minX) * 0.1);
+    minX -= pad;
+    maxX += pad;
+  }
+  if (minY === maxY) {
+    const pad = Math.max(1, Math.abs(minY) * 0.1);
+    minY -= pad;
+    maxY += pad;
+  } else {
+    const pad = (maxY - minY) * 0.08;
+    minY -= pad;
+    maxY += pad;
+  }
+  return { maxX, maxY, minX, minY };
+}
+
+function chartTicks(min: number, max: number, count = 5): number[] {
+  if (count <= 1 || min === max) {
+    return [min];
+  }
+  const step = (max - min) / (count - 1);
+  return Array.from({ length: count }, (_, index) =>
+    Number((min + step * index).toPrecision(12)),
+  );
+}
+
+function chartColor(index: number): string {
+  const colors = [
+    "#1167c9",
+    "#14746f",
+    "#b42318",
+    "#9a6700",
+    "#7c3aed",
+    "#c2410c",
+    "#0f766e",
+    "#be185d",
+  ];
+  return colors[index % colors.length];
+}
+
+function pointsToPath(points: { x: number; y: number }[]): string {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
+}
+
+function formatChartTick(value: number): string {
+  if (Number.isInteger(value) && Math.abs(value) < 1e6) {
+    return String(value);
+  }
+  return formatModalNumber(value);
+}
+
+function maxSweepModeCount(samples: SweepSample[]): number {
+  return Math.max(
+    0,
+    ...samples.map((sample) => sample.analysis.frequencies_ghz?.length ?? 0),
+    ...samples.flatMap((sample) =>
+      (sample.analysis.branches ?? []).map((branch) => branch.phase_zpf.length),
+    ),
+  );
+}
+
+function missingParameterNames(
+  parameters: string[],
+  values: Record<string, string>,
+): string[] {
+  return parameters.filter((name) => (values[name] ?? "").trim() === "");
 }
 
 function formatModalNumber(value: number): string {

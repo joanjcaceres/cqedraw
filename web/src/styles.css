@@ -548,6 +548,39 @@ textarea {
   margin: 0;
 }
 
+.output-panel-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.output-build-button {
+  align-items: center;
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.output-build-button:hover {
+  background: #1a3150;
+}
+
+.output-build-button.tutorial-highlight-control {
+  border-color: #c28a00;
+  box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+}
+
 .engine-warmup-badge {
   border: 1px solid #bdcbd8;
   border-radius: 999px;

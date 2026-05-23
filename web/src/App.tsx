@@ -1,4 +1,5 @@
 import {
+  Calculator,
   Check,
   ClipboardCopy,
   ClipboardPaste,
@@ -1517,7 +1518,7 @@ export function App() {
     }
     const parameter = selectedSweepParameter || (result.parameters[0] ?? "");
     if (!parameter) {
-      const message = "Generate matrices with at least one parameter to sweep.";
+      const message = "Build matrices with at least one parameter to sweep.";
       setSweepError(message);
       setEngineStatus(message);
       return;
@@ -2020,13 +2021,6 @@ export function App() {
             label="New project"
             onClick={requestNewProject}
           />
-          <ToolButton
-            highlight={tutorialStep === "generate"}
-            icon={<Play size={17} />}
-            label="Generate"
-            shortcut="Ctrl/Cmd+Enter"
-            onClick={generateOutput}
-          />
           {hasGeneratedSnippet ? (
             <ToolButton
               confirmation={snippetCopied ? "Copied" : undefined}
@@ -2341,7 +2335,21 @@ export function App() {
           <section className="panel output-panel">
             <div className="output-panel-heading">
               <h2>Output</h2>
-              <EngineWarmupBadge warmup={engineWarmup} />
+              <div className="output-panel-actions">
+                <button
+                  className={[
+                    "output-build-button",
+                    tutorialStep === "generate" ? "tutorial-highlight-control" : "",
+                  ].join(" ")}
+                  onClick={generateOutput}
+                  title="Build matrices (Ctrl/Cmd+Enter)"
+                  type="button"
+                >
+                  <Calculator size={14} />
+                  Build matrices
+                </button>
+                <EngineWarmupBadge warmup={engineWarmup} />
+              </div>
             </div>
             <EntryList title="C entries" testId="c-entries" entries={output?.c_entries ?? []} />
             <EntryList
@@ -2439,7 +2447,7 @@ function CanvasHint() {
           then select an edge to enter C/L/LJ.
         </tspan>
         <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Generate builds matrices; Copy matrices appears when ready.
+          Build matrices creates C and L_inv; Copy matrices appears when ready.
         </tspan>
       </text>
     </g>
@@ -3018,8 +3026,8 @@ function HelpDialog({
           <li>Use New project to clear the drawing and start from a default canvas.</li>
           <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
           <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
-          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to generate.</li>
-          <li>Generate builds C and L_inv; Copy copies the Python snippet.</li>
+          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to build matrices.</li>
+          <li>Build matrices creates C and L_inv; Copy copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
       </section>
@@ -3905,7 +3913,7 @@ function engineWarmupBadgeState(warmup: EngineWarmupState) {
     return {
       className: "engine-warmup-badge-error",
       label: "Python on demand",
-      title: `Background Python preload failed. Generate will retry. ${warmup.error ?? ""}`,
+      title: `Background Python preload failed. Build matrices will retry. ${warmup.error ?? ""}`,
     };
   }
   if (warmup.analysis === "warming") {
@@ -4200,7 +4208,7 @@ function ParameterSweepPanel({
     disabled
       ? ""
       : parameters.length === 0
-        ? "Generate matrices with at least one parameter to sweep."
+        ? "Build matrices with at least one parameter to sweep."
         : fixedMissingMessage || validation.error || sweepError || "";
   const runDisabled =
     disabled ||
@@ -5421,9 +5429,9 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
   },
   generate: {
     progress: "Step 10 of 11",
-    title: "Generate matrices",
+    title: "Build matrices",
     body:
-      "Click Generate to build the C and L_inv entries with the same engine used " +
+      "Click Build matrices to create the C and L_inv entries with the same engine used " +
       "by the desktop app.",
   },
   copy: {
@@ -5496,10 +5504,10 @@ function tutorialPlacement(step: TutorialStep): TutorialPlacement {
   if (step === "edge-mode" || step === "ground-mode") {
     return "tools";
   }
-  if (step === "generate" || step === "copy") {
+  if (step === "copy") {
     return "actions";
   }
-  if (step === "edge-values" || step === "ground-values") {
+  if (step === "edge-values" || step === "ground-values" || step === "generate") {
     return "inspector";
   }
   return "canvas";

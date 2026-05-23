@@ -716,16 +716,13 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("jj-branches")).toContainText(
     "edge 1: phase index 1 - GND, LJ = Lground_j",
   );
-  await expect(page.getByTestId("matrix-nodes")).toContainText(
-    "0: N1 (project node 0)",
-  );
-  await expect(page.getByTestId("matrix-nodes")).toContainText(
-    "1: N2 (project node 1)",
-  );
+  await expect(page.getByTestId("matrix-nodes")).toHaveCount(0);
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
   const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
   expect(copiedSnippet).toContain("NODE_INDEX_MAP");
+  expect(copiedSnippet).toContain('"matrix_index": 0');
+  expect(copiedSnippet).toContain('"project_node_id": 0');
   expect(copiedSnippet).toContain("JOSEPHSON_BRANCHES");
   expect(copiedSnippet).toContain("def josephson_branches");
   expect(copiedSnippet).toContain('"phase_positive_index": 0');

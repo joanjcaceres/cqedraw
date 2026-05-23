@@ -2457,7 +2457,6 @@ export function App() {
                 testId="l-entries"
                 entries={output?.l_inv_entries ?? []}
               />
-              <MatrixNodeList nodes={output?.matrix_nodes ?? []} />
               <JosephsonBranchList branches={output?.josephson_branches ?? []} />
             </div>
             <div className="output-section output-section-analysis">
@@ -4109,22 +4108,6 @@ function EntryList({
         {entries.map((entry) => (
           <li key={`${entry.row}-${entry.col}`}>
             ({entry.row}, {entry.col}) = {entry.expr}
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-function MatrixNodeList({ nodes }: { nodes: OutputResult["matrix_nodes"] }) {
-  return (
-    <div className="entries">
-      <h3>Matrix nodes</h3>
-      <ol data-testid="matrix-nodes">
-        {nodes.map((node) => (
-          <li key={node.project_node_id}>
-            {node.matrix_index}: {node.name ?? `node ${node.project_node_id}`}{" "}
-            (project node {node.project_node_id})
           </li>
         ))}
       </ol>

@@ -1406,7 +1406,7 @@ export function App() {
       return;
     }
 
-    setEngineStatus("Exporting analysis JSON...");
+    setEngineStatus("Exporting analysis table JSON...");
     try {
       const exportResult = await clientRef.current!.exportAnalysisJson(
         project,
@@ -1416,8 +1416,8 @@ export function App() {
       if (exportResult.error) {
         throw new Error(exportResult.error);
       }
-      downloadJson("cqedraw-analysis-results.json", exportResult);
-      setEngineStatus("Exported analysis JSON.");
+      downloadJson("cqedraw-analysis-table.json", exportResult);
+      setEngineStatus("Exported analysis table JSON.");
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
@@ -3832,7 +3832,7 @@ function ParameterValuePanel({
             type="button"
           >
             <Download size={14} />
-            Export analysis JSON
+            Export table JSON
           </button>
         </div>
       </div>

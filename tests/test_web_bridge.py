@@ -123,7 +123,7 @@ def test_generate_output_json_reports_parse_errors():
     assert "error" in result
 
 
-def test_export_analysis_results_returns_compact_frequency_json():
+def test_export_analysis_results_returns_frequency_table():
     project = {
         "version": 2,
         "state": {
@@ -164,14 +164,11 @@ def test_export_analysis_results_returns_compact_frequency_json():
 
     json.loads(json.dumps(result))
     assert result == {
-        "format": "cqedraw.analysis_results",
+        "format": "cqedraw.analysis_table",
         "schema_version": 1,
-        "units": {
-            "frequencies_ghz": "GHz",
-            "phase_zpf": "dimensionless",
-        },
-        "frequencies_ghz": [5.1, 7.2],
-        "phase_zpf": [],
+        "columns": ["frequency_ghz"],
+        "units": {"frequency_ghz": "GHz"},
+        "rows": [[5.1], [7.2]],
         "junctions": [],
     }
     assert "C_matrix" not in result
@@ -179,7 +176,7 @@ def test_export_analysis_results_returns_compact_frequency_json():
     assert "project" not in result
 
 
-def test_export_analysis_results_includes_jj_phase_zpf_rows():
+def test_export_analysis_results_includes_jj_phase_zpf_columns():
     project = {
         "version": 2,
         "state": {
@@ -228,17 +225,21 @@ def test_export_analysis_results_includes_jj_phase_zpf_rows():
         modal_analysis,
     )
 
-    assert result["format"] == "cqedraw.analysis_results"
+    assert result["format"] == "cqedraw.analysis_table"
     assert result["schema_version"] == 1
-    assert result["frequencies_ghz"] == [5.1, 7.2]
-    assert result["phase_zpf"] == [[0.01, -0.02]]
+    assert result["columns"] == ["frequency_ghz", "phase_zpf_edge_7"]
+    assert result["units"] == {
+        "frequency_ghz": "GHz",
+        "phase_zpf_edge_7": "dimensionless",
+    }
+    assert result["rows"] == [[5.1, 0.01], [7.2, -0.02]]
     assert result["junctions"] == [
         {
+            "column": "phase_zpf_edge_7",
             "edge_id": 7,
             "project_nodes": [0, 1],
             "phase_nodes": [0, 1],
             "phase_sign": -1,
-            "phase_zpf": [0.01, -0.02],
         }
     ]
 

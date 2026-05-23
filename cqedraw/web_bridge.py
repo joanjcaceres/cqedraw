@@ -277,34 +277,65 @@ def _float_rows(values: Any) -> list[list[float]]:
     return [[float(value) for value in row] for row in values]
 
 
+def _phase_zpf_column_name(branch: dict[str, Any], index: int) -> str:
+    edge_id = branch.get("edge_id")
+    if edge_id is None:
+        return f"phase_zpf_junction_{index}"
+    return f"phase_zpf_edge_{edge_id}"
+
+
 def _analysis_results_export(modal_analysis: Any) -> dict[str, Any]:
     if not isinstance(modal_analysis, dict) or not modal_analysis.get("available"):
         raise ValueError("Run Analyze modes before exporting analysis JSON.")
 
-    result: dict[str, Any] = {
-        "format": "cqedraw.analysis_results",
-        "schema_version": 1,
-        "units": {
-            "frequencies_ghz": "GHz",
-            "phase_zpf": "dimensionless",
-        },
-        "frequencies_ghz": _float_list(modal_analysis.get("frequencies_ghz", [])),
-        "phase_zpf": _float_rows(modal_analysis.get("branch_phase_zpfs", [])),
-        "junctions": [],
-    }
+    frequencies = _float_list(modal_analysis.get("frequencies_ghz", []))
+    zpf_rows_by_junction = _float_rows(modal_analysis.get("branch_phase_zpfs", []))
+    zpf_columns: list[list[float]] = []
+    columns = ["frequency_ghz"]
+    units = {"frequency_ghz": "GHz"}
+    junctions = []
 
-    for branch in modal_analysis.get("branches", []):
+    for index, branch in enumerate(modal_analysis.get("branches", [])):
         if not isinstance(branch, dict):
             continue
-        result["junctions"].append(
+        column_name = _phase_zpf_column_name(branch, index)
+        phase_zpf = (
+            _float_list(branch["phase_zpf"])
+            if "phase_zpf" in branch
+            else zpf_rows_by_junction[index]
+        )
+        if len(phase_zpf) != len(frequencies):
+            raise ValueError(
+                "Analysis result shape mismatch: every junction ZPF row must "
+                "match the number of mode frequencies."
+            )
+
+        columns.append(column_name)
+        units[column_name] = "dimensionless"
+        zpf_columns.append(phase_zpf)
+        junctions.append(
             {
+                "column": column_name,
                 "edge_id": branch.get("edge_id"),
                 "project_nodes": list(branch.get("project_nodes", [])),
                 "phase_nodes": list(branch.get("phase_nodes", [])),
                 "phase_sign": int(branch.get("phase_sign", 1)),
-                "phase_zpf": _float_list(branch.get("phase_zpf", [])),
             }
         )
+
+    rows = [
+        [frequency, *[zpf_column[mode_index] for zpf_column in zpf_columns]]
+        for mode_index, frequency in enumerate(frequencies)
+    ]
+
+    result: dict[str, Any] = {
+        "format": "cqedraw.analysis_table",
+        "schema_version": 1,
+        "columns": columns,
+        "units": units,
+        "rows": rows,
+        "junctions": junctions,
+    }
 
     return result
 

@@ -1856,23 +1856,23 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await page.getByLabel("Value for L12_inv").fill("1e9");
   await page.getByLabel("Value for Lg_inv").fill("2e9");
   const exportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export analysis JSON" }).click();
+  await page.getByRole("button", { name: "Export table JSON" }).click();
   const exported = await exportPromise;
-  expect(exported.suggestedFilename()).toBe("cqedraw-analysis-results.json");
+  expect(exported.suggestedFilename()).toBe("cqedraw-analysis-table.json");
   const exportedPath = await exported.path();
   if (!exportedPath) {
     throw new Error("Exported JSON download path is unavailable.");
   }
   const exportedAnalysis = JSON.parse(await readFile(exportedPath, "utf8"));
-  expect(exportedAnalysis.format).toBe("cqedraw.analysis_results");
-  expect(exportedAnalysis.frequencies_ghz).toHaveLength(2);
-  expect(exportedAnalysis.frequencies_ghz[0]).toBeGreaterThan(0);
-  expect(exportedAnalysis.phase_zpf).toEqual([]);
+  expect(exportedAnalysis.format).toBe("cqedraw.analysis_table");
+  expect(exportedAnalysis.columns).toEqual(["frequency_ghz"]);
+  expect(exportedAnalysis.rows).toHaveLength(2);
+  expect(exportedAnalysis.rows[0][0]).toBeGreaterThan(0);
   expect(exportedAnalysis.junctions).toEqual([]);
   expect(exportedAnalysis.C_matrix).toBeUndefined();
   expect(exportedAnalysis.L_inv_matrix).toBeUndefined();
   await expect(page.getByTestId("output-status")).toContainText(
-    "Exported analysis JSON.",
+    "Exported analysis table JSON.",
   );
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();

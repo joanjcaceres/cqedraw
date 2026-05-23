@@ -177,25 +177,26 @@ phase-ZPF row per junction. In the browser build, the BBQ class is loaded on
 demand from the `sccircuits` repository; in Python environments, install cQEDraw
 with the `sccircuits` extra to use the same analysis path locally.
 
-Click **Export analysis JSON** to download the frequency and Josephson-junction
+Click **Export table JSON** to download the frequency and Josephson-junction
 zero-point fluctuation results for use in a separate Python script:
 
 ```python
 import json
+import pandas as pd
 
-with open("cqedraw-analysis-results.json", "r", encoding="utf-8") as handle:
+with open("cqedraw-analysis-table.json", "r", encoding="utf-8") as handle:
     data = json.load(handle)
 
-frequencies = data["frequencies_ghz"]
-phase_zpf = data["phase_zpf"]
+table = pd.DataFrame(data["rows"], columns=data["columns"])
 junctions = data["junctions"]
 ```
 
-The JSON document is intentionally compact. It contains the mode-frequency
-vector, a phase-ZPF matrix with one row per Josephson junction, units metadata,
-and junction labels so each ZPF row can be mapped back to the branch and phase
-orientation. It leaves the project, symbolic matrices, and dense matrices in the
-regular project file and copied Python snippet.
+The JSON document is intentionally compact and table-shaped. The first column is
+`frequency_ghz`; each additional column is the phase ZPF for one Josephson
+junction, such as `phase_zpf_edge_7`. The `junctions` list labels those ZPF
+columns with the branch and phase orientation. It leaves the project, symbolic
+matrices, and dense matrices in the regular project file and copied Python
+snippet.
 
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not
 required. Install the optional `sccircuits` extra when you want the analysis

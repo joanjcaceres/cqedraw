@@ -99,19 +99,19 @@ export interface ModalAnalysisResult {
 }
 
 export interface AnalysisExportJunction {
+  column: string;
   edge_id: number | null;
   project_nodes: number[];
   phase_nodes: Array<number | null>;
   phase_sign: 1 | -1;
-  phase_zpf: number[];
 }
 
 export interface AnalysisExportResult {
   format: string;
   schema_version: number;
+  columns: string[];
   units: Record<string, string>;
-  frequencies_ghz: number[];
-  phase_zpf: number[][];
+  rows: number[][];
   junctions: AnalysisExportJunction[];
   error?: string;
 }

@@ -130,10 +130,10 @@ describe("PyodideBridgeClient prewarm", () => {
     });
     worker.respond(1, {
       ok: true,
-      result: { format: "cqedraw.analysis_results", schema_version: 1 },
+      result: { format: "cqedraw.analysis_table", schema_version: 1 },
     });
     await expect(exportRequest).resolves.toMatchObject({
-      format: "cqedraw.analysis_results",
+      format: "cqedraw.analysis_table",
     });
 
     client.dispose();

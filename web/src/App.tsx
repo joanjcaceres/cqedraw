@@ -2389,8 +2389,14 @@ export function App() {
                 </button>
               </div>
             </div>
-            <EntryList title="C entries" testId="c-entries" entries={output?.c_entries ?? []} />
             <EntryList
+              collapsed
+              title="C entries"
+              testId="c-entries"
+              entries={output?.c_entries ?? []}
+            />
+            <EntryList
+              collapsed
               title="L_inv entries"
               testId="l-entries"
               entries={output?.l_inv_entries ?? []}
@@ -3993,11 +3999,34 @@ function EntryList({
   title,
   testId,
   entries,
+  collapsed = false,
 }: {
+  collapsed?: boolean;
   title: string;
   testId: string;
   entries: { row: number; col: number; expr: string }[];
 }) {
+  const entryCount = entries.length;
+  if (collapsed) {
+    return (
+      <details className="entries entries-collapsible">
+        <summary>
+          <span>{title}</span>
+          <span className="entry-count">
+            {entryCount} entr{entryCount === 1 ? "y" : "ies"}
+          </span>
+        </summary>
+        <ol data-testid={testId}>
+          {entries.map((entry) => (
+            <li key={`${entry.row}-${entry.col}`}>
+              ({entry.row}, {entry.col}) = {entry.expr}
+            </li>
+          ))}
+        </ol>
+      </details>
+    );
+  }
+
   return (
     <div className="entries">
       <h3>{title}</h3>

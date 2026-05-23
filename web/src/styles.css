@@ -736,6 +736,56 @@ textarea {
   overflow: hidden;
 }
 
+.entries-collapsible {
+  background: #ffffff;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  display: block;
+  overflow: hidden;
+}
+
+.entries-collapsible summary {
+  align-items: center;
+  color: #516277;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 8px 10px;
+}
+
+.entries-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.entries-collapsible summary::before {
+  color: #66778c;
+  content: "Show";
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 34px;
+}
+
+.entries-collapsible[open] summary::before {
+  content: "Hide";
+}
+
+.entries-collapsible summary:hover {
+  background: #eef4fa;
+}
+
+.entry-count {
+  background: #e6eef6;
+  border-radius: 999px;
+  color: #40536b;
+  font-size: 11px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
 .entries h3 {
   color: #516277;
   font-size: 12px;
@@ -747,6 +797,13 @@ textarea {
   min-height: 0;
   overflow: auto;
   padding-left: 20px;
+}
+
+.entries-collapsible ol {
+  border-top: 1px solid #dbe5ef;
+  max-height: 220px;
+  padding-bottom: 8px;
+  padding-top: 8px;
 }
 
 .entries li {

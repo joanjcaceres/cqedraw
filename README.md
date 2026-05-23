@@ -116,8 +116,9 @@ node maps.
 
 ## Using With SCCircuits
 
-The copied snippet defines `circuit_matrices`, `C_matrix`, `L_inv_matrix`,
-`josephson_branches`, `MATRIX_NODES`, and `NODE_INDEX_MAP`.
+The copied snippet defines `circuit_matrices`, `capacitance_matrix`,
+`inverse_inductance_matrix`, `josephson_branches`, `MATRIX_NODES`,
+and `NODE_INDEX_MAP`.
 Paste that snippet into your analysis script or notebook, then pass the
 parameter values as a mapping:
 
@@ -126,22 +127,26 @@ from sccircuits import BBQ
 
 # Paste the snippet copied from cQEDraw above this line.
 # Replace these names and values with the symbols used in your drawing.
-C_matrix, L_inv_matrix = circuit_matrices(
+capacitance_matrix, inverse_inductance_matrix = circuit_matrices(
     {"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9}
 )
 junctions = josephson_branches({"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9})
 branch = junctions[0]
-non_linear_nodes = (
+nonlinear_branches = (
     (branch["phase_positive_index"],)
     if branch["phase_negative_index"] is None
     else (branch["phase_negative_index"], branch["phase_positive_index"])
 )
 
-bbq = BBQ(C_matrix, L_inv_matrix, non_linear_nodes=non_linear_nodes)
+bbq = BBQ(
+    capacitance_matrix,
+    inverse_inductance_matrix,
+    nonlinear_branches=nonlinear_branches,
+)
 
 print("Project node to matrix index:", NODE_INDEX_MAP)
-print("Linear mode frequencies (GHz):", bbq.linear_modes_GHz)
-print("Phase ZPF:", bbq.phase_zpf_list)
+print("Linear mode frequencies (GHz):", bbq.frequencies_ghz)
+print("Phase ZPF:", bbq.branch_phase_zpfs)
 ```
 
 For direct generalized eigenvalue analysis, keep the matrices sparse:
@@ -151,11 +156,17 @@ import numpy as np
 from scipy.sparse.linalg import eigsh
 
 # Paste the snippet copied from cQEDraw above this line.
-C_matrix, L_inv_matrix = circuit_matrices(
+capacitance_matrix, inverse_inductance_matrix = circuit_matrices(
     {"Cj": 40e-15, "Cg": 2e-15, "Lj": 1.23e-9}
 )
 
-omega_squared, modes = eigsh(L_inv_matrix, k=4, M=C_matrix, sigma=0.0, which="LM")
+omega_squared, modes = eigsh(
+    inverse_inductance_matrix,
+    k=4,
+    M=capacitance_matrix,
+    sigma=0.0,
+    which="LM",
+)
 frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 

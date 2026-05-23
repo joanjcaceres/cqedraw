@@ -15,7 +15,6 @@ import {
   Merge,
   Menu,
   MousePointer2,
-  Play,
   Redo2,
   Repeat2,
   Trash2,
@@ -110,6 +109,7 @@ const INLINE_EDGE_EDITOR_OFFSET = 62;
 const INLINE_GROUND_EDITOR_OFFSET = 126;
 const INLINE_EDITOR_ABOVE_THRESHOLD_PX = 96;
 const MAX_SWEEP_CACHE_ENTRIES = 160;
+const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
 
 interface ViewBox {
@@ -293,6 +293,7 @@ export function App() {
   const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
     null,
   );
+  const [analysisRunning, setAnalysisRunning] = useState(false);
   const [sweepConfig, setSweepConfig] = useState<ParameterSweepConfigs>({});
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
   const [sweepSliderValues, setSweepSliderValues] = useState<Record<string, number>>({});
@@ -329,6 +330,7 @@ export function App() {
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const outputPanelRef = useRef<HTMLElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
+  const analysisRequestIdRef = useRef(0);
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepRequestIdRef = useRef(0);
   const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
@@ -529,7 +531,9 @@ export function App() {
 
   useEffect(() => {
     if (!output) {
+      analysisRequestIdRef.current += 1;
       setModalAnalysis(null);
+      setAnalysisRunning(false);
       setSweepSamples([]);
       setSweepError(null);
       return;
@@ -549,6 +553,31 @@ export function App() {
       return next;
     });
   }, [output, outputParameters]);
+
+  useEffect(() => {
+    if (
+      !output ||
+      outputParameters.length === 0 ||
+      activeSweepParameters.length > 0 ||
+      missingParameterValues.length > 0
+    ) {
+      analysisRequestIdRef.current += 1;
+      setAnalysisRunning(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void runModalAnalysis({ preserveScroll: true });
+    }, MODAL_ANALYSIS_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeSweepParameters.length,
+    missingParameterValues,
+    output,
+    outputParameters.length,
+    parameterValues,
+  ]);
 
   useEffect(() => {
     setSweepSliderValues((current) => {
@@ -1598,6 +1627,8 @@ export function App() {
         : "Python engine is warming; generating when ready...",
     );
     setSnippetCopied(false);
+    analysisRequestIdRef.current += 1;
+    setAnalysisRunning(false);
     setModalAnalysis(null);
     clearSweepResults();
     try {
@@ -1625,18 +1656,27 @@ export function App() {
   }
 
   function updateParameterValue(name: string, value: string) {
+    analysisRequestIdRef.current += 1;
+    setAnalysisRunning(false);
     setParameterValues((current) => ({ ...current, [name]: value }));
     setModalAnalysis(null);
     clearSweepResults();
   }
 
-  async function runModalAnalysis(): Promise<ModalAnalysisResult | null> {
+  async function runModalAnalysis(
+    options: { preserveScroll?: boolean } = {},
+  ): Promise<ModalAnalysisResult | null> {
     setOutputDrawerOpen(true);
+    if (options.preserveScroll) {
+      preserveOutputPanelScroll();
+    }
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return null;
     }
-    const missing = missingParameterNames(result.parameters, parameterValues);
+    const analysisProject = projectRef.current;
+    const analysisParameterValues = { ...parameterValues };
+    const missing = missingParameterNames(result.parameters, analysisParameterValues);
     if (missing.length > 0) {
       setEngineStatus(
         `Enter parameter values before analysis: ${missing.join(", ")}`,
@@ -1655,8 +1695,17 @@ export function App() {
         ? "Running BBQ modal analysis..."
         : "Analysis engine is warming; running when ready...",
     );
+    const requestId = analysisRequestIdRef.current + 1;
+    analysisRequestIdRef.current = requestId;
+    setAnalysisRunning(true);
     try {
-      const analysis = await clientRef.current!.analyze(project, parameterValues);
+      const analysis = await clientRef.current!.analyze(
+        analysisProject,
+        analysisParameterValues,
+      );
+      if (requestId !== analysisRequestIdRef.current) {
+        return null;
+      }
       setEngineWarmup({ base: "ready", analysis: "ready", error: null });
       if (!analysis.available || analysis.error) {
         throw new Error(analysis.error ?? "BBQ modal analysis is unavailable.");
@@ -1671,6 +1720,9 @@ export function App() {
       );
       return analysis;
     } catch (error) {
+      if (requestId !== analysisRequestIdRef.current) {
+        return null;
+      }
       setModalAnalysis(null);
       setEngineWarmup((current) => ({
         ...current,
@@ -1679,6 +1731,10 @@ export function App() {
       }));
       setEngineStatus(error instanceof Error ? error.message : String(error));
       return null;
+    } finally {
+      if (requestId === analysisRequestIdRef.current) {
+        setAnalysisRunning(false);
+      }
     }
   }
 
@@ -2547,13 +2603,14 @@ export function App() {
               <div className="output-section-heading">
                 <div>
                   <h3>Frequencies and phase ZPF</h3>
-                  <p>Use numeric parameter values for BBQ modal analysis.</p>
+                  <p>Analysis runs automatically when parameter values are complete.</p>
                 </div>
               </div>
               <div className="analysis-workspace" data-testid="analysis-workspace">
                 <div className="analysis-controls">
                   <AnalysisParameterPanel
                     activeSweepParameters={activeSweepParameters}
+                    analysisRunning={analysisRunning}
                     disabled={!output}
                     fixedMissingParameters={missingSweepFixedValues}
                     missingParameters={missingParameterValues}
@@ -4140,7 +4197,7 @@ function engineWarmupBadgeState(warmup: EngineWarmupState) {
     return {
       className: "engine-warmup-badge-error",
       label: "BBQ on demand",
-      title: `Background BBQ preload failed. Analyze modes will retry. ${warmup.error ?? ""}`,
+      title: `Background BBQ preload failed. Analysis will retry. ${warmup.error ?? ""}`,
     };
   }
   if (warmup.base === "ready") {
@@ -4179,6 +4236,7 @@ function JosephsonBranchList({
 
 function AnalysisParameterPanel({
   activeSweepParameters,
+  analysisRunning,
   disabled,
   fixedMissingParameters,
   missingParameters,
@@ -4198,6 +4256,7 @@ function AnalysisParameterPanel({
   sweepValues,
 }: {
   activeSweepParameters: string[];
+  analysisRunning: boolean;
   disabled: boolean;
   fixedMissingParameters: string[];
   missingParameters: string[];
@@ -4218,6 +4277,7 @@ function AnalysisParameterPanel({
 }) {
   const missingParameterSet = new Set(missingParameters);
   const actionDisabled = disabled || missingParameters.length > 0;
+  const refreshDisabled = actionDisabled || analysisRunning;
   const missingMessage =
     missingParameters.length > 0
       ? `Enter values for: ${missingParameters.join(", ")}`
@@ -4244,16 +4304,16 @@ function AnalysisParameterPanel({
         <h3>Parameter values</h3>
         <div className="parameter-panel-actions">
           <button
-            disabled={actionDisabled}
+            disabled={refreshDisabled}
             onClick={onAnalyze}
             title={missingMessage}
             type="button"
           >
-            <Play size={14} />
-            Analyze modes
+            <Repeat2 size={14} />
+            {analysisRunning ? "Analyzing..." : "Refresh"}
           </button>
           <button
-            disabled={actionDisabled}
+            disabled={actionDisabled || analysisRunning}
             onClick={onExportAnalysis}
             title={missingMessage}
             type="button"

@@ -781,7 +781,6 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   await page.getByLabel("Value for Cj").fill("80e-15");
   await page.getByLabel("Value for Lj").fill("8e-9");
 
-  await page.getByRole("button", { name: "Analyze modes" }).click();
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
@@ -1937,7 +1936,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("parameter-required-message")).toContainText(
     "Enter values for: C12, Cg, L12_inv, Lg_inv",
   );
-  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeDisabled();
@@ -1947,12 +1946,12 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await page.getByLabel("Value for L12_inv").fill("1e9");
   await page.getByLabel("Value for Lg_inv").fill("2e9");
   await expect(page.getByTestId("parameter-required-message")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Analyze modes" }).click();
-  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
 
   await page.getByLabel("Sweep C12").check();
   await expect(page.getByLabel("Value for C12")).toHaveValue("Previous: 2e-15");

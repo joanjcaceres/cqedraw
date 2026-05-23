@@ -26,6 +26,9 @@ from .core import (
     matrix_node_records,
 )
 
+_CACHED_MODAL_PROJECT_JSON: str | None = None
+_CACHED_MODAL_PROBLEM: dict[str, Any] | None = None
+
 
 def _project_state(project: dict[str, Any]) -> dict[str, Any]:
     return project.get("state", project)
@@ -400,23 +403,19 @@ def _bbq_with_optional_junctions(
     )
 
 
-def analyze_modal(
-    project: dict[str, Any],
-    raw_params: dict[str, Any],
-) -> dict[str, Any]:
-    try:
-        from sccircuits import BBQ
-    except Exception as exc:
-        return {
-            "available": False,
-            "error": (
-                "sccircuits is not available in this Python environment. "
-                "Install cQEDraw with the sccircuits extra or run the copied "
-                "snippet in an environment with sccircuits installed."
-            ),
-            "details": str(exc),
-        }
+def _sccircuits_unavailable_result(exc: Exception) -> dict[str, Any]:
+    return {
+        "available": False,
+        "error": (
+            "sccircuits is not available in this Python environment. "
+            "Install cQEDraw with the sccircuits extra or run the copied "
+            "snippet in an environment with sccircuits installed."
+        ),
+        "details": str(exc),
+    }
 
+
+def _modal_problem(project: dict[str, Any]) -> dict[str, Any]:
     state = _project_state(project)
     node_ids = _node_ids(state)
     edges = _edge_data(state)
@@ -430,13 +429,49 @@ def analyze_modal(
         l_inv_entries,
         josephson_branches,
     )
+    return {
+        "size": size,
+        "c_entries": c_entries,
+        "l_inv_entries": l_inv_entries,
+        "josephson_branches": josephson_branches,
+        "parameter_names": parameter_names,
+    }
+
+
+def _cached_modal_problem(project_json: str) -> dict[str, Any]:
+    global _CACHED_MODAL_PROBLEM, _CACHED_MODAL_PROJECT_JSON
+
+    if (
+        _CACHED_MODAL_PROJECT_JSON == project_json
+        and _CACHED_MODAL_PROBLEM is not None
+    ):
+        return _CACHED_MODAL_PROBLEM
+
+    project = json.loads(project_json)
+    problem = _modal_problem(project)
+    _CACHED_MODAL_PROJECT_JSON = project_json
+    _CACHED_MODAL_PROBLEM = problem
+    return problem
+
+
+def _analyze_modal_problem(
+    problem: dict[str, Any],
+    raw_params: dict[str, Any],
+    bbq_class: Any,
+) -> dict[str, Any]:
+    size = int(problem["size"])
+    c_entries = problem["c_entries"]
+    l_inv_entries = problem["l_inv_entries"]
+    josephson_branches = problem["josephson_branches"]
+    parameter_names = problem["parameter_names"]
+
     params = _numeric_parameter_values(raw_params, parameter_names)
     capacitance_matrix = _dense_numeric_matrix(size, c_entries, params)
     inverse_inductance_matrix = _dense_numeric_matrix(size, l_inv_entries, params)
     junction_records = _evaluated_josephson_branch_records(josephson_branches, params)
 
     bbq = _bbq_with_optional_junctions(
-        BBQ,
+        bbq_class,
         capacitance_matrix,
         inverse_inductance_matrix,
         junction_records,
@@ -477,6 +512,36 @@ def analyze_modal(
         ),
         "branches": modal_branches,
     }
+
+
+def analyze_modal(
+    project: dict[str, Any],
+    raw_params: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        from sccircuits import BBQ
+    except Exception as exc:
+        return _sccircuits_unavailable_result(exc)
+
+    return _analyze_modal_problem(_modal_problem(project), raw_params, BBQ)
+
+
+def analyze_modal_cached_json(project_json: str, params_json: str) -> str:
+    try:
+        try:
+            from sccircuits import BBQ
+        except Exception as exc:
+            result = _sccircuits_unavailable_result(exc)
+        else:
+            params = json.loads(params_json)
+            result = _analyze_modal_problem(
+                _cached_modal_problem(project_json),
+                params,
+                BBQ,
+            )
+    except Exception as exc:
+        result = {"available": False, "error": str(exc)}
+    return json.dumps(result)
 
 
 def analyze_modal_json(project_json: str, params_json: str) -> str:

@@ -4,8 +4,10 @@ import types
 
 import numpy as np
 
+import cqedraw.web_bridge as web_bridge
 from cqedraw.web_bridge import (
     analyze_modal,
+    analyze_modal_cached_json,
     analyze_modal_json,
     export_analysis_results,
     export_analysis_results_json,
@@ -500,6 +502,102 @@ def test_analyze_modal_returns_frequencies_without_junction_rows(monkeypatch):
     assert fallback_call["nonlinear_branches"] == (0,)
     assert np.allclose(first_call["capacitance_matrix"], [[40e-15]])
     assert np.allclose(first_call["inverse_inductance_matrix"], [[1 / 8e-9]])
+
+
+def test_analyze_modal_cached_json_reuses_compiled_matrix_problem(monkeypatch):
+    captured: dict[str, object] = {"bbq_calls": [], "matrix_calls": 0}
+
+    original_compute_matrix_entries = web_bridge.compute_matrix_entries
+
+    def counting_compute_matrix_entries(node_ids, edges):
+        captured["matrix_calls"] = int(captured["matrix_calls"]) + 1
+        return original_compute_matrix_entries(node_ids, edges)
+
+    class FakeBBQ:
+        def __init__(self, capacitance_matrix, inverse_inductance_matrix, *, junctions):
+            captured["bbq_calls"].append(
+                {
+                    "capacitance_matrix": capacitance_matrix.copy(),
+                    "inverse_inductance_matrix": inverse_inductance_matrix.copy(),
+                    "junctions": junctions,
+                }
+            )
+            self.frequencies_ghz = np.array([float(inverse_inductance_matrix[0, 0])])
+            self.branch_phase_zpfs = np.array([])
+            self.josephson_energies_ghz = None
+            self.branch_phase_nodes = []
+
+    fake_sccircuits = types.ModuleType("sccircuits")
+    fake_sccircuits.BBQ = FakeBBQ
+    monkeypatch.setitem(sys.modules, "sccircuits", fake_sccircuits)
+    monkeypatch.setattr(
+        web_bridge,
+        "compute_matrix_entries",
+        counting_compute_matrix_entries,
+    )
+    monkeypatch.setattr(web_bridge, "_CACHED_MODAL_PROJECT_JSON", None)
+    monkeypatch.setattr(web_bridge, "_CACHED_MODAL_PROBLEM", None)
+
+    project = {
+        "version": 2,
+        "state": {
+            "nodes": [{"identifier": 0, "name": "N1", "x": 0, "y": 0}],
+            "edges": [
+                {
+                    "identifier": 3,
+                    "nodes": [0, -1],
+                    "capacitance_text": "Cg",
+                    "inductance_text": "Lg",
+                    "is_ground": True,
+                },
+            ],
+        },
+    }
+    project_json = json.dumps(project)
+
+    first = json.loads(
+        analyze_modal_cached_json(
+            project_json,
+            json.dumps({"Cg": "40e-15", "Lg": "8e-9"}),
+        )
+    )
+    second = json.loads(
+        analyze_modal_cached_json(
+            project_json,
+            json.dumps({"Cg": "50e-15", "Lg": "10e-9"}),
+        )
+    )
+
+    assert first["available"] is True
+    assert second["available"] is True
+    assert captured["matrix_calls"] == 1
+    first_call, second_call = captured["bbq_calls"]
+    assert np.allclose(first_call["capacitance_matrix"], [[40e-15]])
+    assert np.allclose(first_call["inverse_inductance_matrix"], [[1 / 8e-9]])
+    assert np.allclose(second_call["capacitance_matrix"], [[50e-15]])
+    assert np.allclose(second_call["inverse_inductance_matrix"], [[1 / 10e-9]])
+
+    changed_project = {
+        **project,
+        "state": {
+            **project["state"],
+            "edges": [
+                {
+                    **project["state"]["edges"][0],
+                    "capacitance_text": "Cnext",
+                },
+            ],
+        },
+    }
+    third = json.loads(
+        analyze_modal_cached_json(
+            json.dumps(changed_project),
+            json.dumps({"Cnext": "40e-15", "Lg": "8e-9"}),
+        )
+    )
+
+    assert third["available"] is True
+    assert captured["matrix_calls"] == 2
 
 
 def test_analyze_modal_json_reports_missing_sccircuits(monkeypatch):

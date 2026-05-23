@@ -56,7 +56,7 @@ async function initializePyodide() {
         "import sys",
         'sys.path.insert(0, "/home/pyodide")',
         "from cqedraw.web_bridge import (",
-        "    analyze_modal_json,",
+        "    analyze_modal_cached_json,",
         "    export_analysis_results_json,",
         "    generate_output_json,",
         "    normalize_project_json,",
@@ -144,7 +144,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     if (type === "analyze") {
       pyodideRuntime.globals.set("params_json", JSON.stringify(params ?? {}));
       raw = pyodideRuntime.runPython(
-        "analyze_modal_json(project_json, params_json)",
+        "analyze_modal_cached_json(project_json, params_json)",
       ) as string;
     } else if (type === "export") {
       pyodideRuntime.globals.set("params_json", JSON.stringify(params ?? {}));

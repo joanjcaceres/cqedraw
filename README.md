@@ -159,6 +159,13 @@ omega_squared, modes = eigsh(L_inv_matrix, k=4, M=C_matrix, sigma=0.0, which="LM
 frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 
+In the web app, after generating a circuit with Josephson junctions, enter
+numeric parameter values in the Output panel and click **Analyze modes**. The app
+uses `sccircuits.BBQ` to display mode frequencies and one phase-ZPF row per
+Josephson junction. In the browser build, the BBQ class is loaded on demand from
+the `sccircuits` repository; in Python environments, install cQEDraw with the
+`sccircuits` extra to use the same analysis path locally.
+
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not
 required. Install the optional `sccircuits` extra when you want the analysis
 package available in the same environment.

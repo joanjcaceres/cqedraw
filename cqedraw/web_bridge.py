@@ -8,6 +8,7 @@ data comes back out.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Optional
 
 import sympy as sp
@@ -135,6 +136,18 @@ def _matrix_node_records(records: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _all_parameter_names(
+    c_entries: MatrixEntries,
+    l_inv_entries: MatrixEntries,
+    josephson_branches: list[Any],
+) -> list[str]:
+    return sorted(
+        set(matrix_parameter_names(c_entries))
+        | set(matrix_parameter_names(l_inv_entries))
+        | set(josephson_parameter_names(josephson_branches))
+    )
+
+
 def generate_output(project: dict[str, Any]) -> dict[str, Any]:
     state = _project_state(project)
     node_ids = _node_ids(state)
@@ -145,10 +158,16 @@ def generate_output(project: dict[str, Any]) -> dict[str, Any]:
     )
     snippet_size, c_branches, l_inv_branches = compute_matrix_branches(node_ids, edges)
     josephson_branches = compute_josephson_branches(node_ids, edges)
+    parameter_names = _all_parameter_names(
+        c_entries,
+        l_inv_entries,
+        josephson_branches,
+    )
     return {
         "size": size,
         "c_entries": _entry_records(c_entries),
         "l_inv_entries": _entry_records(l_inv_entries),
+        "parameters": parameter_names,
         "c_parameters": matrix_parameter_names(c_entries),
         "l_inv_parameters": matrix_parameter_names(l_inv_entries),
         "josephson_parameters": josephson_parameter_names(josephson_branches),
@@ -170,6 +189,178 @@ def generate_output_json(project_json: str) -> str:
         result = generate_output(project)
     except Exception as exc:
         result = {"error": str(exc)}
+    return json.dumps(result)
+
+
+def _numeric_parameter_values(
+    raw_params: dict[str, Any],
+    parameter_names: list[str],
+) -> dict[str, float]:
+    missing = [
+        name
+        for name in parameter_names
+        if name not in raw_params or raw_params[name] in (None, "")
+    ]
+    if missing:
+        raise ValueError("Missing parameter values: " + ", ".join(missing))
+
+    values: dict[str, float] = {}
+    for name in parameter_names:
+        raw_value = raw_params[name]
+        try:
+            value = sp.N(sp.sympify(raw_value, evaluate=False))
+            if value.free_symbols:
+                raise ValueError
+            values[name] = float(value)
+        except Exception as exc:
+            raise ValueError(f"Parameter {name} must be a finite number.") from exc
+        if not math.isfinite(values[name]):
+            raise ValueError(f"Parameter {name} must be a finite number.")
+    return values
+
+
+def _numeric_expr(expr: sp.Expr, params: dict[str, float]) -> float:
+    substitutions = {sp.Symbol(name): value for name, value in params.items()}
+    value = sp.N(expr.subs(substitutions))
+    if value.free_symbols:
+        missing = sorted(symbol.name for symbol in value.free_symbols)
+        raise ValueError("Missing parameter values: " + ", ".join(missing))
+    numeric_value = float(value)
+    if not math.isfinite(numeric_value):
+        raise ValueError("Matrix expressions must evaluate to finite numbers.")
+    return numeric_value
+
+
+def _dense_numeric_matrix(
+    size: int,
+    entries: MatrixEntries,
+    params: dict[str, float],
+) -> Any:
+    import numpy as np
+
+    matrix = np.zeros((size, size), dtype=float)
+    for (row, col), expr in entries.items():
+        matrix[row, col] = _numeric_expr(expr, params)
+    return matrix
+
+
+def _josephson_energy_ghz(josephson_inductance: float) -> float:
+    if josephson_inductance <= 0:
+        raise ValueError("Josephson inductance must be positive.")
+    planck_constant = 6.62607015e-34
+    elementary_charge = 1.602176634e-19
+    reduced_flux_quantum = planck_constant / (4 * math.pi * elementary_charge)
+    return reduced_flux_quantum**2 / (josephson_inductance * planck_constant * 1e9)
+
+
+def _evaluated_josephson_branch_records(
+    branches: list[Any],
+    params: dict[str, float],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for index, record in enumerate(_josephson_branch_records(branches)):
+        josephson_inductance = _numeric_expr(
+            branches[index].inductance_expr,
+            params,
+        )
+        record["L_j"] = josephson_inductance
+        record["E_j_GHz"] = _josephson_energy_ghz(josephson_inductance)
+        records.append(record)
+    return records
+
+
+def _float_list(values: Any) -> list[float]:
+    return [float(value) for value in values]
+
+
+def _float_rows(values: Any) -> list[list[float]]:
+    return [[float(value) for value in row] for row in values]
+
+
+def analyze_modal(
+    project: dict[str, Any],
+    raw_params: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        from sccircuits import BBQ
+    except Exception as exc:
+        return {
+            "available": False,
+            "error": (
+                "sccircuits is not available in this Python environment. "
+                "Install cQEDraw with the sccircuits extra or run the copied "
+                "snippet in an environment with sccircuits installed."
+            ),
+            "details": str(exc),
+        }
+
+    state = _project_state(project)
+    node_ids = _node_ids(state)
+    edges = _edge_data(state)
+    size, c_entries, l_inv_entries = compute_matrix_entries(node_ids, edges)
+    josephson_branches = compute_josephson_branches(node_ids, edges)
+    if size == 0:
+        raise ValueError("Draw at least one node before running BBQ analysis.")
+    if not josephson_branches:
+        raise ValueError(
+            "Add at least one Josephson junction before running BBQ analysis."
+        )
+
+    parameter_names = _all_parameter_names(
+        c_entries,
+        l_inv_entries,
+        josephson_branches,
+    )
+    params = _numeric_parameter_values(raw_params, parameter_names)
+    capacitance_matrix = _dense_numeric_matrix(size, c_entries, params)
+    inverse_inductance_matrix = _dense_numeric_matrix(size, l_inv_entries, params)
+    junction_records = _evaluated_josephson_branch_records(josephson_branches, params)
+
+    bbq = BBQ(
+        capacitance_matrix,
+        inverse_inductance_matrix,
+        junctions=junction_records,
+    )
+    branch_phase_zpfs = _float_rows(bbq.branch_phase_zpfs)
+    josephson_energies = getattr(bbq, "josephson_energies_ghz", None)
+    branch_phase_nodes = getattr(bbq, "branch_phase_nodes", None)
+    if branch_phase_nodes is None:
+        branch_phase_nodes = [
+            (
+                branch["phase_positive_index"],
+                branch["phase_negative_index"],
+            )
+            for branch in junction_records
+        ]
+
+    modal_branches = []
+    for index, branch in enumerate(junction_records):
+        modal_branches.append(
+            {
+                **branch,
+                "phase_nodes": list(branch_phase_nodes[index]),
+                "phase_zpf": branch_phase_zpfs[index],
+            }
+        )
+
+    return {
+        "available": True,
+        "frequencies_ghz": _float_list(bbq.frequencies_ghz),
+        "branch_phase_zpfs": branch_phase_zpfs,
+        "josephson_energies_ghz": (
+            None if josephson_energies is None else _float_list(josephson_energies)
+        ),
+        "branches": modal_branches,
+    }
+
+
+def analyze_modal_json(project_json: str, params_json: str) -> str:
+    try:
+        project = json.loads(project_json)
+        params = json.loads(params_json)
+        result = analyze_modal(project, params)
+    except Exception as exc:
+        result = {"available": False, "error": str(exc)}
     return json.dumps(result)
 
 

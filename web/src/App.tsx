@@ -61,6 +61,7 @@ import {
   CircuitNode,
   CircuitProject,
   GROUND_NODE_ID,
+  ModalAnalysisResult,
   OutputResult,
   ToolMode,
 } from "./types";
@@ -224,6 +225,10 @@ export function App() {
   const [pastePreview, setPastePreview] = useState<PastePreviewState | null>(null);
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
+  const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
+    null,
+  );
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
     useState<number | null>(null);
@@ -301,6 +306,7 @@ export function App() {
     hasProjectContent || hasUnsavedChanges || output !== null || canUndo || canRedo;
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
+  const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -315,6 +321,20 @@ export function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!output) {
+      setModalAnalysis(null);
+      return;
+    }
+    setParameterValues((current) => {
+      const next: Record<string, string> = {};
+      for (const name of outputParameters) {
+        next[name] = current[name] ?? "";
+      }
+      return next;
+    });
+  }, [output, outputParameters]);
 
   useEffect(() => {
     const canvasElement = canvasRef.current;
@@ -1212,6 +1232,7 @@ export function App() {
   async function runGenerateOutput(): Promise<OutputResult | null> {
     setEngineStatus("Loading Python engine and generating...");
     setSnippetCopied(false);
+    setModalAnalysis(null);
     try {
       const result = await clientRef.current!.generate(project);
       if (result.error) {
@@ -1223,6 +1244,46 @@ export function App() {
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
       return null;
+    }
+  }
+
+  function updateParameterValue(name: string, value: string) {
+    setParameterValues((current) => ({ ...current, [name]: value }));
+    setModalAnalysis(null);
+  }
+
+  async function runModalAnalysis() {
+    const result = output ?? (await runGenerateOutput());
+    if (!result) {
+      return;
+    }
+    if (result.josephson_branches.length === 0) {
+      setEngineStatus("Add a Josephson junction before running BBQ analysis.");
+      return;
+    }
+    const missing = result.parameters.filter(
+      (name) => (parameterValues[name] ?? "").trim() === "",
+    );
+    if (missing.length > 0) {
+      setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
+      return;
+    }
+
+    setEngineStatus("Running BBQ modal analysis...");
+    try {
+      const analysis = await clientRef.current!.analyze(project, parameterValues);
+      if (!analysis.available || analysis.error) {
+        throw new Error(analysis.error ?? "BBQ modal analysis is unavailable.");
+      }
+      setModalAnalysis(analysis);
+      setEngineStatus(
+        `Computed ${analysis.frequencies_ghz?.length ?? 0} mode(s) and ${
+          analysis.branches?.length ?? 0
+        } JJ ZPF row(s).`,
+      );
+    } catch (error) {
+      setModalAnalysis(null);
+      setEngineStatus(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -1980,6 +2041,14 @@ export function App() {
             />
             <MatrixNodeList nodes={output?.matrix_nodes ?? []} />
             <JosephsonBranchList branches={output?.josephson_branches ?? []} />
+            <ParameterValuePanel
+              disabled={!output}
+              onAnalyze={runModalAnalysis}
+              onChange={updateParameterValue}
+              parameters={outputParameters}
+              values={parameterValues}
+            />
+            <ModalAnalysisTable result={modalAnalysis} />
           </section>
         </aside>
       </section>
@@ -3535,6 +3604,114 @@ function JosephsonBranchList({
       </ol>
     </div>
   );
+}
+
+function ParameterValuePanel({
+  disabled,
+  onAnalyze,
+  onChange,
+  parameters,
+  values,
+}: {
+  disabled: boolean;
+  onAnalyze: () => void;
+  onChange: (name: string, value: string) => void;
+  parameters: string[];
+  values: Record<string, string>;
+}) {
+  return (
+    <div className="parameter-panel">
+      <div className="parameter-panel-heading">
+        <h3>Parameter values</h3>
+        <button
+          disabled={disabled || parameters.length === 0}
+          onClick={onAnalyze}
+          type="button"
+        >
+          <Play size={14} />
+          Analyze modes
+        </button>
+      </div>
+      {parameters.length === 0 ? (
+        <p data-testid="parameter-empty">No parameters.</p>
+      ) : (
+        <div className="parameter-grid" data-testid="parameter-values">
+          {parameters.map((name) => (
+            <label key={name}>
+              <span>{name}</span>
+              <input
+                aria-label={`Value for ${name}`}
+                disabled={disabled}
+                inputMode="decimal"
+                onChange={(event) => onChange(name, event.target.value)}
+                placeholder="0"
+                value={values[name] ?? ""}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) {
+  if (!result?.available) {
+    return null;
+  }
+
+  const frequencies = result.frequencies_ghz ?? [];
+  const branches = result.branches ?? [];
+  return (
+    <div className="modal-analysis" data-testid="modal-analysis">
+      <h3>BBQ modal results</h3>
+      <div className="modal-analysis-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Quantity</th>
+              {frequencies.map((_, index) => (
+                <th key={index}>mode {index}</th>
+              ))}
+              <th>Ej GHz</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>frequency GHz</th>
+              {frequencies.map((frequency, index) => (
+                <td key={index}>{formatModalNumber(frequency)}</td>
+              ))}
+              <td />
+            </tr>
+            {branches.map((branch, branchIndex) => (
+              <tr key={branch.edge_id ?? branchIndex}>
+                <th>
+                  edge {branch.edge_id ?? branchIndex} phase{" "}
+                  {branch.phase_nodes[0] ?? "GND"} - {branch.phase_nodes[1] ?? "GND"}
+                </th>
+                {branch.phase_zpf.map((zpf, modeIndex) => (
+                  <td key={modeIndex}>{formatModalNumber(zpf)}</td>
+                ))}
+                <td>{formatModalNumber(branch.E_j_GHz)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatModalNumber(value: number): string {
+  if (value === 0) {
+    return "0";
+  }
+  const absValue = Math.abs(value);
+  if (absValue < 1e-3 || absValue >= 1e4) {
+    return value.toExponential(4);
+  }
+  return value.toPrecision(6);
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement>) {

@@ -149,6 +149,34 @@ export function buildSweepZpfSeries(
   }));
 }
 
+export function buildSweepPrecomputeQueue(
+  values: Record<string, number>[],
+  selectedValues: Record<string, number>,
+  parameters: string[],
+  cachedValues: Record<string, number>[],
+  maxPoints = values.length,
+): Record<string, number>[] {
+  if (values.length === 0 || parameters.length === 0 || maxPoints <= 0) {
+    return [];
+  }
+
+  const cachedKeys = new Set(
+    cachedValues.map((value) => sweepPointKey(value, parameters)),
+  );
+  const indexMaps = sweepValueIndexMaps(values, parameters);
+  return values
+    .map((value, index) => ({
+      distance: sweepPointDistance(value, selectedValues, parameters, indexMaps),
+      index,
+      key: sweepPointKey(value, parameters),
+      value,
+    }))
+    .filter((entry) => !cachedKeys.has(entry.key))
+    .sort((left, right) => left.distance - right.distance || left.index - right.index)
+    .slice(0, maxPoints)
+    .map((entry) => entry.value);
+}
+
 function maxFrequencyCount(samples: SweepSample[]): number {
   return Math.max(
     0,
@@ -170,4 +198,78 @@ function branchTraceLabel(branch: ModalBranchRecord, index: number): string {
   return `${edgeLabel} phase ${branch.phase_nodes[0] ?? "GND"} - ${
     branch.phase_nodes[1] ?? "GND"
   }`;
+}
+
+interface SweepValueIndex {
+  indexes: Map<number, number>;
+  values: number[];
+}
+
+function sweepValueIndexMaps(
+  values: Record<string, number>[],
+  parameters: string[],
+): Record<string, SweepValueIndex> {
+  return Object.fromEntries(
+    parameters.map((parameter) => {
+      const uniqueValues = Array.from(
+        new Set(
+          values
+            .map((value) => value[parameter])
+            .filter((value) => Number.isFinite(value)),
+        ),
+      ).sort((left, right) => left - right);
+      return [
+        parameter,
+        {
+          indexes: new Map(uniqueValues.map((value, index) => [value, index])),
+          values: uniqueValues,
+        },
+      ];
+    }),
+  );
+}
+
+function sweepPointDistance(
+  value: Record<string, number>,
+  selectedValues: Record<string, number>,
+  parameters: string[],
+  indexMaps: Record<string, SweepValueIndex>,
+): number {
+  return parameters.reduce((distance, parameter) => {
+    const parameterIndexes = indexMaps[parameter];
+    if (!parameterIndexes) {
+      return distance;
+    }
+    const valueIndex = parameterIndexes.indexes.get(value[parameter]) ?? 0;
+    const selectedValue = selectedValues[parameter];
+    const selectedIndex =
+      selectedValue === undefined
+        ? 0
+        : parameterIndexes.indexes.get(selectedValue) ??
+          nearestValueIndex(parameterIndexes.values, selectedValue);
+    return distance + Math.abs(valueIndex - selectedIndex);
+  }, 0);
+}
+
+function nearestValueIndex(values: number[], selectedValue: number): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  let nearestIndex = 0;
+  let nearestDistance = Math.abs(values[0] - selectedValue);
+  for (let index = 1; index < values.length; index += 1) {
+    const distance = Math.abs(values[index] - selectedValue);
+    if (distance < nearestDistance) {
+      nearestIndex = index;
+      nearestDistance = distance;
+    }
+  }
+  return nearestIndex;
+}
+
+function sweepPointKey(
+  value: Record<string, number>,
+  parameters: string[],
+): string {
+  return JSON.stringify(parameters.map((parameter) => [parameter, value[parameter]]));
 }

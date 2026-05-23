@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
+  buildSweepPrecomputeQueue,
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
@@ -46,6 +47,39 @@ describe("analysis helpers", () => {
     expect(buildSweepValues("0", "1", "0.001").error).toContain(
       "limited to 101 points",
     );
+  });
+
+  it("orders background sweep work by distance from the selected point", () => {
+    const values = [0, 1, 2, 3, 4].map((C) => ({ C }));
+
+    expect(
+      buildSweepPrecomputeQueue(values, { C: 2 }, ["C"], [{ C: 2 }]),
+    ).toEqual([{ C: 1 }, { C: 3 }, { C: 0 }, { C: 4 }]);
+    expect(
+      buildSweepPrecomputeQueue(values, { C: 2.6 }, ["C"], [], 2),
+    ).toEqual([{ C: 3 }, { C: 2 }]);
+  });
+
+  it("orders multi-parameter background sweep work near the selected grid point", () => {
+    const values = [
+      { C: 1, L: 10 },
+      { C: 1, L: 20 },
+      { C: 2, L: 10 },
+      { C: 2, L: 20 },
+    ];
+
+    expect(
+      buildSweepPrecomputeQueue(
+        values,
+        { C: 1, L: 10 },
+        ["C", "L"],
+        [{ C: 1, L: 10 }],
+      ),
+    ).toEqual([
+      { C: 1, L: 20 },
+      { C: 2, L: 10 },
+      { C: 2, L: 20 },
+    ]);
   });
 
   it("builds current analysis chart series", () => {

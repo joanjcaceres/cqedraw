@@ -1,4 +1,4 @@
-import { CircuitProject, OutputResult } from "./types";
+import { CircuitProject, ModalAnalysisResult, OutputResult } from "./types";
 
 type WorkerResult<T> = {
   id: number;
@@ -48,6 +48,13 @@ export class PyodideBridgeClient {
     return this.send<OutputResult>("generate", project);
   }
 
+  analyze(
+    project: CircuitProject,
+    params: Record<string, string>,
+  ): Promise<ModalAnalysisResult> {
+    return this.send<ModalAnalysisResult>("analyze", project, params);
+  }
+
   normalize(project: unknown): Promise<CircuitProject> {
     return this.send<CircuitProject>("normalize", project);
   }
@@ -57,7 +64,11 @@ export class PyodideBridgeClient {
     this.rejectPending(new Error("Pyodide worker disposed."));
   }
 
-  private send<T>(type: "generate" | "normalize", project: unknown): Promise<T> {
+  private send<T>(
+    type: "generate" | "normalize" | "analyze",
+    project: unknown,
+    params?: Record<string, string>,
+  ): Promise<T> {
     if (this.failure) {
       return Promise.reject(this.failure);
     }
@@ -67,7 +78,7 @@ export class PyodideBridgeClient {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      this.worker.postMessage({ id, type, project });
+      this.worker.postMessage({ id, type, project, params });
     });
   }
 

@@ -1,6 +1,16 @@
 import json
+import sys
+import types
 
-from cqedraw.web_bridge import generate_output, generate_output_json, normalize_project
+import numpy as np
+
+from cqedraw.web_bridge import (
+    analyze_modal,
+    analyze_modal_json,
+    generate_output,
+    generate_output_json,
+    normalize_project,
+)
 
 
 def _web_project() -> dict:
@@ -78,6 +88,14 @@ def test_generate_output_returns_json_safe_core_results():
     ]
     assert result["c_parameters"] == ["C_alpha", "C_beta", "C_ground"]
     assert result["l_inv_parameters"] == [
+        "L_alpha_inv",
+        "L_beta_inv",
+        "L_ground_inv",
+    ]
+    assert result["parameters"] == [
+        "C_alpha",
+        "C_beta",
+        "C_ground",
         "L_alpha_inv",
         "L_beta_inv",
         "L_ground_inv",
@@ -189,3 +207,84 @@ def test_generate_output_includes_josephson_matrix_terms_and_metadata():
     ]
     assert "JOSEPHSON_BRANCHES" in result["snippet"]
     assert "def josephson_branches" in result["snippet"]
+
+
+def test_analyze_modal_uses_sccircuits_bbq_and_preserves_branch_rows(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeBBQ:
+        def __init__(self, capacitance_matrix, inverse_inductance_matrix, *, junctions):
+            captured["capacitance_matrix"] = capacitance_matrix
+            captured["inverse_inductance_matrix"] = inverse_inductance_matrix
+            captured["junctions"] = junctions
+            self.frequencies_ghz = np.array([5.1, 7.2])
+            self.branch_phase_zpfs = np.array([[0.01, -0.02], [-0.03, 0.04]])
+            self.josephson_energies_ghz = np.array([3.5, 4.5])
+            self.branch_phase_nodes = ((0, 1), (1, None))
+
+    fake_sccircuits = types.ModuleType("sccircuits")
+    fake_sccircuits.BBQ = FakeBBQ
+    monkeypatch.setitem(sys.modules, "sccircuits", fake_sccircuits)
+
+    project = {
+        "version": 2,
+        "state": {
+            "nodes": [
+                {"identifier": 0, "name": "A", "x": 0, "y": 0},
+                {"identifier": 1, "name": "B", "x": 100, "y": 0},
+            ],
+            "edges": [
+                {
+                    "identifier": 7,
+                    "nodes": [0, 1],
+                    "capacitance_text": "Cj",
+                    "inductance_text": "Lgeom",
+                    "josephson_inductance_text": "Lj",
+                    "josephson_phase_sign": -1,
+                    "is_ground": False,
+                },
+                {
+                    "identifier": 8,
+                    "nodes": [1, -1],
+                    "josephson_inductance_text": "Lground_j",
+                    "is_ground": True,
+                },
+            ],
+        },
+    }
+
+    result = analyze_modal(
+        project,
+        {"Cj": "40e-15", "Lgeom": "10e-9", "Lj": "8e-9", "Lground_j": "9e-9"},
+    )
+
+    assert result["available"] is True
+    assert np.allclose(
+        captured["capacitance_matrix"],
+        [[40e-15, -40e-15], [-40e-15, 40e-15]],
+    )
+    assert np.allclose(
+        captured["inverse_inductance_matrix"],
+        [
+            [1 / 10e-9 + 1 / 8e-9, -1 / 10e-9 - 1 / 8e-9],
+            [-1 / 10e-9 - 1 / 8e-9, 1 / 10e-9 + 1 / 8e-9 + 1 / 9e-9],
+        ],
+    )
+    assert [branch["edge_id"] for branch in captured["junctions"]] == [7, 8]
+    assert [branch["L_j"] for branch in captured["junctions"]] == [8e-9, 9e-9]
+    assert result["frequencies_ghz"] == [5.1, 7.2]
+    assert result["branches"][0]["edge_id"] == 7
+    assert result["branches"][0]["phase_nodes"] == [0, 1]
+    assert result["branches"][0]["phase_zpf"] == [0.01, -0.02]
+    assert result["branches"][1]["edge_id"] == 8
+    assert result["branches"][1]["phase_nodes"] == [1, None]
+    assert result["branches"][1]["phase_zpf"] == [-0.03, 0.04]
+
+
+def test_analyze_modal_json_reports_missing_sccircuits(monkeypatch):
+    monkeypatch.setitem(sys.modules, "sccircuits", None)
+
+    result = json.loads(analyze_modal_json(json.dumps(_web_project()), "{}"))
+
+    assert result["available"] is False
+    assert "sccircuits is not available" in result["error"]

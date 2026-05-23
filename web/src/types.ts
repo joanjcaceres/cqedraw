@@ -52,6 +52,7 @@ export interface OutputResult {
   size: number;
   c_entries: MatrixEntryRecord[];
   l_inv_entries: MatrixEntryRecord[];
+  parameters: string[];
   c_parameters: string[];
   l_inv_parameters: string[];
   josephson_parameters: string[];
@@ -75,6 +76,23 @@ export interface JosephsonBranchRecord {
   phase_negative_index: number | null;
   phase_sign: 1 | -1;
   inductance_expr: string;
+}
+
+export interface ModalBranchRecord extends JosephsonBranchRecord {
+  L_j: number;
+  E_j_GHz: number;
+  phase_nodes: [number | null, number | null];
+  phase_zpf: number[];
+}
+
+export interface ModalAnalysisResult {
+  available: boolean;
+  frequencies_ghz?: number[];
+  branch_phase_zpfs?: number[][];
+  josephson_energies_ghz?: number[] | null;
+  branches?: ModalBranchRecord[];
+  error?: string;
+  details?: string;
 }
 
 export interface SelectionState {

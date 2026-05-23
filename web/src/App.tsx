@@ -199,6 +199,19 @@ type TutorialStep =
   | "copy"
   | "finish";
 type TutorialPlacement = "canvas" | "tools" | "actions" | "inspector";
+type WarmupPhase = "idle" | "warming" | "ready" | "error";
+
+interface EngineWarmupState {
+  base: WarmupPhase;
+  analysis: WarmupPhase;
+  error: string | null;
+}
+
+const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
+  base: "idle",
+  analysis: "idle",
+  error: null,
+};
 
 export function App() {
   const [project, setProject] = useState<CircuitProject>(() => emptyProject());
@@ -230,6 +243,9 @@ export function App() {
     null,
   );
   const [engineStatus, setEngineStatus] = useState("Ready.");
+  const [engineWarmup, setEngineWarmup] = useState<EngineWarmupState>(
+    INITIAL_ENGINE_WARMUP,
+  );
   const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
     useState<number | null>(null);
   const [inlineValueEditorPosition, setInlineValueEditorPosition] =
@@ -260,8 +276,59 @@ export function App() {
   const gridRect = gridRectForView(viewBox);
 
   useEffect(() => {
-    clientRef.current = new PyodideBridgeClient();
-    return () => clientRef.current?.dispose();
+    const client = new PyodideBridgeClient();
+    clientRef.current = client;
+    let cancelled = false;
+    let analysisWarmupTimer: number | null = null;
+
+    setEngineWarmup({ base: "warming", analysis: "idle", error: null });
+    client
+      .prewarmBase()
+      .then(() => {
+        if (cancelled) {
+          return;
+        }
+        setEngineWarmup({ base: "ready", analysis: "warming", error: null });
+        analysisWarmupTimer = window.setTimeout(() => {
+          client
+            .prewarmAnalysis()
+            .then(() => {
+              if (!cancelled) {
+                setEngineWarmup({
+                  base: "ready",
+                  analysis: "ready",
+                  error: null,
+                });
+              }
+            })
+            .catch((error) => {
+              if (!cancelled) {
+                setEngineWarmup({
+                  base: "ready",
+                  analysis: "error",
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+            });
+        }, 300);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setEngineWarmup({
+            base: "error",
+            analysis: "idle",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (analysisWarmupTimer !== null) {
+        window.clearTimeout(analysisWarmupTimer);
+      }
+      client.dispose();
+    };
   }, []);
 
   useEffect(() => {
@@ -1230,11 +1297,20 @@ export function App() {
   }
 
   async function runGenerateOutput(): Promise<OutputResult | null> {
-    setEngineStatus("Loading Python engine and generating...");
+    setEngineStatus(
+      engineWarmup.base === "ready"
+        ? "Generating matrices..."
+        : "Python engine is warming; generating when ready...",
+    );
     setSnippetCopied(false);
     setModalAnalysis(null);
     try {
       const result = await clientRef.current!.generate(project);
+      setEngineWarmup((current) => ({
+        ...current,
+        base: "ready",
+        error: current.base === "error" ? null : current.error,
+      }));
       if (result.error) {
         throw new Error(result.error);
       }
@@ -1242,6 +1318,11 @@ export function App() {
       setEngineStatus(`Generated ${result.size} x ${result.size} matrices.`);
       return result;
     } catch (error) {
+      setEngineWarmup((current) => ({
+        ...current,
+        base: current.base === "ready" ? current.base : "error",
+        error: error instanceof Error ? error.message : String(error),
+      }));
       setEngineStatus(error instanceof Error ? error.message : String(error));
       return null;
     }
@@ -1257,10 +1338,6 @@ export function App() {
     if (!result) {
       return;
     }
-    if (result.josephson_branches.length === 0) {
-      setEngineStatus("Add a Josephson junction before running BBQ analysis.");
-      return;
-    }
     const missing = result.parameters.filter(
       (name) => (parameterValues[name] ?? "").trim() === "",
     );
@@ -1269,20 +1346,37 @@ export function App() {
       return;
     }
 
-    setEngineStatus("Running BBQ modal analysis...");
+    setEngineWarmup((current) => ({
+      base: "ready",
+      analysis: current.analysis === "ready" ? "ready" : "warming",
+      error: null,
+    }));
+    setEngineStatus(
+      engineWarmup.analysis === "ready"
+        ? "Running BBQ modal analysis..."
+        : "Analysis engine is warming; running when ready...",
+    );
     try {
       const analysis = await clientRef.current!.analyze(project, parameterValues);
+      setEngineWarmup({ base: "ready", analysis: "ready", error: null });
       if (!analysis.available || analysis.error) {
         throw new Error(analysis.error ?? "BBQ modal analysis is unavailable.");
       }
       setModalAnalysis(analysis);
+      const modeCount = analysis.frequencies_ghz?.length ?? 0;
+      const zpfRowCount = analysis.branches?.length ?? 0;
       setEngineStatus(
-        `Computed ${analysis.frequencies_ghz?.length ?? 0} mode(s) and ${
-          analysis.branches?.length ?? 0
-        } JJ ZPF row(s).`,
+        zpfRowCount > 0
+          ? `Computed ${modeCount} mode(s) and ${zpfRowCount} JJ ZPF row(s).`
+          : `Computed ${modeCount} mode frequency result(s).`,
       );
     } catch (error) {
       setModalAnalysis(null);
+      setEngineWarmup((current) => ({
+        ...current,
+        analysis: current.analysis === "ready" ? "ready" : "error",
+        error: error instanceof Error ? error.message : String(error),
+      }));
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
   }
@@ -2032,7 +2126,10 @@ export function App() {
           </section>
 
           <section className="panel output-panel">
-            <h2>Output</h2>
+            <div className="output-panel-heading">
+              <h2>Output</h2>
+              <EngineWarmupBadge warmup={engineWarmup} />
+            </div>
             <EntryList title="C entries" testId="c-entries" entries={output?.c_entries ?? []} />
             <EntryList
               title="L_inv entries"
@@ -3547,6 +3644,69 @@ function ConcatenatePreview({
   );
 }
 
+function EngineWarmupBadge({ warmup }: { warmup: EngineWarmupState }) {
+  const { className, label, title } = engineWarmupBadgeState(warmup);
+  return (
+    <span
+      className={["engine-warmup-badge", className].join(" ")}
+      data-testid="engine-warmup-status"
+      title={title}
+    >
+      {label}
+    </span>
+  );
+}
+
+function engineWarmupBadgeState(warmup: EngineWarmupState) {
+  if (warmup.base === "warming") {
+    return {
+      className: "engine-warmup-badge-warming",
+      label: "Python warming",
+      title: "Pyodide and symbolic matrix dependencies are loading in the background.",
+    };
+  }
+  if (warmup.base === "error") {
+    return {
+      className: "engine-warmup-badge-error",
+      label: "Python on demand",
+      title: `Background Python preload failed. Generate will retry. ${warmup.error ?? ""}`,
+    };
+  }
+  if (warmup.analysis === "warming") {
+    return {
+      className: "engine-warmup-badge-warming",
+      label: "BBQ warming",
+      title: "The matrix engine is ready; BBQ analysis dependencies are loading in the background.",
+    };
+  }
+  if (warmup.analysis === "ready") {
+    return {
+      className: "engine-warmup-badge-ready",
+      label: "Analysis ready",
+      title: "Pyodide, matrix generation, and BBQ analysis dependencies are ready.",
+    };
+  }
+  if (warmup.analysis === "error") {
+    return {
+      className: "engine-warmup-badge-error",
+      label: "BBQ on demand",
+      title: `Background BBQ preload failed. Analyze modes will retry. ${warmup.error ?? ""}`,
+    };
+  }
+  if (warmup.base === "ready") {
+    return {
+      className: "engine-warmup-badge-ready",
+      label: "Matrices ready",
+      title: "Pyodide and symbolic matrix dependencies are ready.",
+    };
+  }
+  return {
+    className: "",
+    label: "Python idle",
+    title: "The Python worker has not started yet.",
+  };
+}
+
 function EntryList({
   title,
   testId,
@@ -3624,7 +3784,7 @@ function ParameterValuePanel({
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
         <button
-          disabled={disabled || parameters.length === 0}
+          disabled={disabled}
           onClick={onAnalyze}
           type="button"
         >
@@ -3662,6 +3822,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
+  const hasJosephsonRows = branches.length > 0;
   return (
     <div className="modal-analysis" data-testid="modal-analysis">
       <h3>BBQ modal results</h3>
@@ -3673,7 +3834,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
               {frequencies.map((_, index) => (
                 <th key={index}>mode {index}</th>
               ))}
-              <th>Ej GHz</th>
+              {hasJosephsonRows ? <th>Ej GHz</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -3682,7 +3843,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
               {frequencies.map((frequency, index) => (
                 <td key={index}>{formatModalNumber(frequency)}</td>
               ))}
-              <td />
+              {hasJosephsonRows ? <td /> : null}
             </tr>
             {branches.map((branch, branchIndex) => (
               <tr key={branch.edge_id ?? branchIndex}>

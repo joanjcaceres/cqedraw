@@ -5,9 +5,10 @@ import bridgeSource from "../../../cqedraw/web_bridge.py?raw";
 
 interface WorkerRequest {
   id: number;
-  type: "generate" | "normalize" | "analyze";
+  type: "generate" | "normalize" | "analyze" | "prewarm";
   project: unknown;
   params?: Record<string, string>;
+  target?: "base" | "analysis";
 }
 
 interface WorkerResponse {
@@ -111,11 +112,23 @@ function patchSccircuitsBBQSourceForPyodide(source: string): string {
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const { id, type, project, params } = event.data;
+  const { id, type, project, params, target } = event.data;
   try {
     await ensureReady();
     if (!pyodideRuntime) {
       throw new Error("Pyodide did not initialize.");
+    }
+    if (type === "prewarm") {
+      if (target === "analysis") {
+        await ensureSccircuitsBBQ();
+      }
+      const response: WorkerResponse = {
+        id,
+        ok: true,
+        result: { target: target ?? "base" },
+      };
+      self.postMessage(response);
+      return;
     }
     if (type === "analyze") {
       await ensureSccircuitsBBQ();

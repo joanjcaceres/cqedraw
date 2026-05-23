@@ -110,6 +110,7 @@ const INLINE_EDGE_EDITOR_OFFSET = 62;
 const INLINE_GROUND_EDITOR_OFFSET = 126;
 const INLINE_EDITOR_ABOVE_THRESHOLD_PX = 96;
 const MAX_SWEEP_CACHE_ENTRIES = 160;
+const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
 
 interface ViewBox {
   x: number;
@@ -328,6 +329,7 @@ export function App() {
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
+  const sweepRequestIdRef = useRef(0);
   const projectRef = useRef<CircuitProject>(project);
   const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
   const gridRect = gridRectForView(viewBox);
@@ -451,6 +453,15 @@ export function App() {
     [outputParameters, sweepConfig],
   );
   const activeSweepParameters = sweepValidation.parameters;
+  const selectedSweepValues = useMemo(
+    () =>
+      selectedValuesForSweep(
+        activeSweepParameters,
+        sweepValidation.parameterValues,
+        sweepSliderValues,
+      ),
+    [activeSweepParameters, sweepSliderValues, sweepValidation.parameterValues],
+  );
   const missingSweepFixedValues = useMemo(
     () =>
       outputParameters.filter(
@@ -461,10 +472,16 @@ export function App() {
     [outputParameters, parameterValues, sweepConfig],
   );
   const selectedSweepSample = useMemo(
-    () => selectedSampleForSweepValues(sweepSamples, sweepSliderValues),
-    [sweepSamples, sweepSliderValues],
+    () => selectedSampleForSweepValues(sweepSamples, selectedSweepValues),
+    [selectedSweepValues, sweepSamples],
   );
-  const displayedAnalysis = selectedSweepSample?.analysis ?? modalAnalysis;
+  const sweepModeActive =
+    activeSweepParameters.length > 0 &&
+    !sweepValidation.error &&
+    sweepValidation.values.length > 0;
+  const displayedAnalysis = sweepModeActive
+    ? selectedSweepSample?.analysis ?? null
+    : modalAnalysis;
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -502,6 +519,130 @@ export function App() {
       return next;
     });
   }, [output, outputParameters]);
+
+  useEffect(() => {
+    setSweepSliderValues((current) => {
+      const next = selectedValuesForSweep(
+        activeSweepParameters,
+        sweepValidation.parameterValues,
+        current,
+      );
+      return numericRecordEquals(current, next) ? current : next;
+    });
+  }, [activeSweepParameters, sweepValidation.parameterValues]);
+
+  useEffect(() => {
+    if (
+      !output ||
+      activeSweepParameters.length === 0 ||
+      sweepValidation.error ||
+      sweepValidation.values.length === 0 ||
+      missingSweepFixedValues.length > 0
+    ) {
+      sweepRequestIdRef.current += 1;
+      setSweepRunning(false);
+      return;
+    }
+
+    const selectedGridPoint = selectedSweepGridPoint(
+      sweepValidation.values,
+      selectedSweepValues,
+      activeSweepParameters,
+    );
+    if (!selectedGridPoint) {
+      sweepRequestIdRef.current += 1;
+      setSweepRunning(false);
+      return;
+    }
+
+    const analysisParameterValues = sweepAnalysisParameterValues(
+      parameterValues,
+      selectedGridPoint,
+    );
+    const missing = missingParameterNames(output.parameters, analysisParameterValues);
+    if (missing.length > 0) {
+      sweepRequestIdRef.current += 1;
+      setSweepRunning(false);
+      return;
+    }
+
+    const sweepProject = projectRef.current;
+    const cacheKey = sweepCacheKey(sweepProject, analysisParameterValues);
+    const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
+    if (cachedSample) {
+      sweepRequestIdRef.current += 1;
+      setSweepRunning(false);
+      setSweepError(null);
+      setSweepSamples((current) => upsertSweepSample(current, cachedSample));
+      setEngineStatus("Loaded cached sweep point.");
+      return;
+    }
+
+    const requestId = sweepRequestIdRef.current + 1;
+    sweepRequestIdRef.current = requestId;
+    const timer = window.setTimeout(() => {
+      if (requestId !== sweepRequestIdRef.current) {
+        return;
+      }
+      setSweepRunning(true);
+      setSweepError(null);
+      setEngineWarmup((current) => ({
+        base: "ready",
+        analysis: current.analysis === "ready" ? "ready" : "warming",
+        error: null,
+      }));
+      setEngineStatus("Calculating selected sweep point...");
+      clientRef.current!
+        .analyze(sweepProject, analysisParameterValues)
+        .then((analysis) => {
+          if (requestId !== sweepRequestIdRef.current) {
+            return;
+          }
+          if (!analysis.available || analysis.error) {
+            throw new Error(
+              analysis.error ?? "BBQ modal analysis failed at the selected sweep point.",
+            );
+          }
+          const sample = {
+            analysis,
+            value: selectedGridPoint[activeSweepParameters[0]],
+            values: selectedGridPoint,
+          };
+          rememberSweepSample(sweepSampleCacheRef.current, cacheKey, sample);
+          setSweepSamples((current) => upsertSweepSample(current, sample));
+          setEngineWarmup({ base: "ready", analysis: "ready", error: null });
+          setEngineStatus("Calculated selected sweep point.");
+        })
+        .catch((error) => {
+          if (requestId !== sweepRequestIdRef.current) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          setSweepError(message);
+          setEngineWarmup((current) => ({
+            ...current,
+            analysis: current.analysis === "ready" ? "ready" : "error",
+            error: message,
+          }));
+          setEngineStatus(message);
+        })
+        .finally(() => {
+          if (requestId === sweepRequestIdRef.current) {
+            setSweepRunning(false);
+          }
+        });
+    }, SWEEP_ANALYSIS_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeSweepParameters,
+    missingSweepFixedValues,
+    output,
+    parameterValues,
+    selectedSweepValues,
+    sweepValidation.error,
+    sweepValidation.values,
+  ]);
 
   useEffect(() => {
     const canvasElement = canvasRef.current;
@@ -684,8 +825,10 @@ export function App() {
   }
 
   function clearSweepResults() {
+    sweepRequestIdRef.current += 1;
     setSweepSamples([]);
     setSweepSliderValues({});
+    setSweepRunning(false);
     setSweepError(null);
   }
 
@@ -1554,120 +1697,6 @@ export function App() {
     clearSweepResults();
   }
 
-  async function runParameterSweep() {
-    setOutputDrawerOpen(true);
-    const result = output ?? (await runGenerateOutput());
-    if (!result) {
-      return;
-    }
-    const validation = buildMultiSweepValues(
-      result.parameters,
-      sweepConfig,
-      MAX_SWEEP_POINTS,
-    );
-    if (validation.parameters.length === 0) {
-      const message = "Set at least one parameter to Sweep.";
-      setSweepError(message);
-      setEngineStatus(message);
-      return;
-    }
-    if (validation.error) {
-      setSweepError(validation.error);
-      setEngineStatus(validation.error);
-      return;
-    }
-    const missingFixedValues = result.parameters.filter(
-      (name) => !validation.parameters.includes(name) && (parameterValues[name] ?? "").trim() === "",
-    );
-    if (missingFixedValues.length > 0) {
-      const message = `Enter fixed values for: ${missingFixedValues.join(", ")}`;
-      setSweepError(message);
-      setEngineStatus(message);
-      return;
-    }
-    if (validation.values.length === 0) {
-      const message = "Sweep produced no parameter values.";
-      setSweepError(message);
-      setEngineStatus(message);
-      return;
-    }
-
-    const sweepProject = projectRef.current;
-    setSweepRunning(true);
-    setSweepSamples([]);
-    setSweepSliderValues({});
-    setSweepError(null);
-    setEngineWarmup((current) => ({
-      base: "ready",
-      analysis: current.analysis === "ready" ? "ready" : "warming",
-      error: null,
-    }));
-
-    try {
-      const samples: SweepSample[] = [];
-      for (let index = 0; index < validation.values.length; index += 1) {
-        const values = validation.values[index];
-        const analysisParameterValues = {
-          ...parameterValues,
-          ...Object.fromEntries(
-            Object.entries(values).map(([name, value]) => [name, String(value)]),
-          ),
-        };
-        const cacheKey = sweepCacheKey(
-          sweepProject,
-          analysisParameterValues,
-        );
-        const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
-        if (cachedSample) {
-          rememberSweepSample(sweepSampleCacheRef.current, cacheKey, cachedSample);
-          samples.push(cachedSample);
-          setSweepSamples([...samples]);
-          setEngineStatus(
-            `Loaded cached sweep ${index + 1} / ${validation.values.length}.`,
-          );
-          continue;
-        }
-
-        setEngineStatus(`Running sweep ${index + 1} / ${validation.values.length}...`);
-        const analysis = await clientRef.current!.analyze(
-          sweepProject,
-          analysisParameterValues,
-        );
-        if (!analysis.available || analysis.error) {
-          throw new Error(
-            analysis.error ?? `BBQ modal analysis failed at sweep point ${index + 1}.`,
-          );
-        }
-        const sample = {
-          analysis,
-          value: values[validation.parameters[0]],
-          values,
-        };
-        rememberSweepSample(sweepSampleCacheRef.current, cacheKey, sample);
-        samples.push(sample);
-        setSweepSamples([...samples]);
-      }
-      setSweepSamples(samples);
-      setSweepSliderValues(samples[0]?.values ?? {});
-      setEngineWarmup({ base: "ready", analysis: "ready", error: null });
-      setEngineStatus(
-        `Computed ${samples.length} sweep point${samples.length === 1 ? "" : "s"}.`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setSweepSamples([]);
-      setSweepError(message);
-      setEngineWarmup((current) => ({
-        ...current,
-        analysis: current.analysis === "ready" ? "ready" : "error",
-        error: message,
-      }));
-      setEngineStatus(message);
-    } finally {
-      setSweepRunning(false);
-    }
-  }
-
   function exportSweepCsv() {
     setOutputDrawerOpen(true);
     if (sweepSamples.length === 0 || activeSweepParameters.length === 0) {
@@ -2489,7 +2518,6 @@ export function App() {
                 }
                 onExportAnalysis={exportAnalysisCsv}
                 onExportSweep={exportSweepCsv}
-                onRunSweep={runParameterSweep}
                 parameters={outputParameters}
                 running={sweepRunning}
                 samples={sweepSamples}
@@ -4108,7 +4136,6 @@ function AnalysisParameterPanel({
   onSliderChange,
   onExportAnalysis,
   onExportSweep,
-  onRunSweep,
   parameters,
   running,
   samples,
@@ -4128,7 +4155,6 @@ function AnalysisParameterPanel({
   onSliderChange: (name: string, value: number) => void;
   onExportAnalysis: () => void;
   onExportSweep: () => void;
-  onRunSweep: () => void;
   parameters: string[];
   running: boolean;
   samples: SweepSample[];
@@ -4148,22 +4174,16 @@ function AnalysisParameterPanel({
     fixedMissingParameters.length > 0
       ? `Enter fixed values for: ${fixedMissingParameters.join(", ")}`
       : "";
+  const parameterWarningMessage =
+    activeSweepParameters.length > 0 ? fixedMissingMessage : missingMessage;
   const sweepValidationMessage =
     disabled
       ? ""
       : parameters.length === 0
         ? "Build matrices with at least one parameter to sweep."
         : activeSweepParameters.length === 0
-          ? "Set at least one parameter to Sweep."
+          ? "Select Sweep on any parameter to enable sliders."
           : fixedMissingMessage || validation.error || sweepError || "";
-  const runDisabled =
-    disabled ||
-    running ||
-    parameters.length === 0 ||
-    activeSweepParameters.length === 0 ||
-    fixedMissingParameters.length > 0 ||
-    Boolean(validation.error) ||
-    validation.values.length === 0;
   const exportSweepDisabled = disabled || running || samples.length === 0;
 
   return (
@@ -4197,19 +4217,19 @@ function AnalysisParameterPanel({
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (
         <>
-          {missingParameters.length > 0 ? (
+          {parameterWarningMessage ? (
             <p
               className="parameter-panel-warning"
               data-testid="parameter-required-message"
             >
-              {missingMessage}
+              {parameterWarningMessage}
             </p>
           ) : null}
           <div className="parameter-grid parameter-mode-grid" data-testid="parameter-values">
             {parameters.map((name) => (
               <ParameterControlRow
                 key={name}
-                disabled={disabled || running}
+                disabled={disabled}
                 missing={missingParameterSet.has(name)}
                 name={name}
                 onParameterChange={onParameterChange}
@@ -4229,18 +4249,13 @@ function AnalysisParameterPanel({
           <h3>Parameter sweep</h3>
           <div className="parameter-panel-actions">
             <button
-              disabled={runDisabled}
-              onClick={onRunSweep}
-              title={sweepValidationMessage}
-              type="button"
-            >
-              <Play size={14} />
-            {running ? "Running..." : "Run sweep"}
-          </button>
-            <button
               disabled={exportSweepDisabled}
               onClick={onExportSweep}
-              title={samples.length === 0 ? "Run a sweep before exporting." : ""}
+              title={
+                samples.length === 0
+                  ? "Move a sweep slider to calculate a point before exporting."
+                  : ""
+              }
               type="button"
             >
               <Download size={14} />
@@ -4252,15 +4267,20 @@ function AnalysisParameterPanel({
           <p className="parameter-panel-warning" data-testid="sweep-validation-message">
             {sweepValidationMessage}
           </p>
+        ) : running ? (
+          <p className="sweep-summary" data-testid="sweep-running-message">
+            Calculating selected sweep point...
+          </p>
         ) : validation.values.length > 0 ? (
           <p className="sweep-summary" data-testid="sweep-point-count">
-            {validation.values.length} point{validation.values.length === 1 ? "" : "s"}{" "}
-            ready, maximum {MAX_SWEEP_POINTS}.
+            {validation.values.length} slider combination
+            {validation.values.length === 1 ? "" : "s"} available, maximum{" "}
+            {MAX_SWEEP_POINTS}.
           </p>
         ) : null}
         {samples.length > 0 ? (
           <p className="sweep-summary" data-testid="sweep-result-summary">
-            Cached sweep: {samples.length} point{samples.length === 1 ? "" : "s"}.
+            Cached points: {samples.length}.
           </p>
         ) : null}
       </div>
@@ -4831,13 +4851,75 @@ function selectedSampleForSweepValues(
   }
   const selectedNames = Object.keys(selectedValues);
   if (selectedNames.length === 0) {
-    return samples[0];
+    return null;
   }
   return (
     samples.find((sample) =>
       selectedNames.every((name) => sample.values?.[name] === selectedValues[name]),
-    ) ?? samples[0]
+    ) ?? null
   );
+}
+
+function selectedValuesForSweep(
+  parameters: string[],
+  parameterValues: Record<string, number[]>,
+  currentValues: Record<string, number>,
+): Record<string, number> {
+  const selected: Record<string, number> = {};
+  for (const parameter of parameters) {
+    const values = parameterValues[parameter] ?? [];
+    if (values.length === 0) {
+      continue;
+    }
+    const currentValue = currentValues[parameter];
+    selected[parameter] =
+      currentValue !== undefined && values.includes(currentValue)
+        ? currentValue
+        : values[0];
+  }
+  return selected;
+}
+
+function selectedSweepGridPoint(
+  values: Record<string, number>[],
+  selectedValues: Record<string, number>,
+  parameters: string[],
+): Record<string, number> | null {
+  if (
+    parameters.length === 0 ||
+    parameters.some((parameter) => selectedValues[parameter] === undefined)
+  ) {
+    return null;
+  }
+  return (
+    values.find((value) =>
+      parameters.every((parameter) => value[parameter] === selectedValues[parameter]),
+    ) ?? null
+  );
+}
+
+function sweepAnalysisParameterValues(
+  fixedValues: Record<string, string>,
+  selectedValues: Record<string, number>,
+): Record<string, string> {
+  return {
+    ...fixedValues,
+    ...Object.fromEntries(
+      Object.entries(selectedValues).map(([name, value]) => [name, String(value)]),
+    ),
+  };
+}
+
+function numericRecordEquals(
+  left: Record<string, number>,
+  right: Record<string, number>,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
 }
 
 function sweepCacheKey(
@@ -4869,6 +4951,21 @@ function rememberSweepSample(
     }
     cache.delete(oldestKey);
   }
+}
+
+function upsertSweepSample(samples: SweepSample[], sample: SweepSample): SweepSample[] {
+  const sampleValues = sample.values ?? {};
+  const next = samples.filter((existing) => {
+    const existingValues = existing.values ?? {};
+    const keys = new Set([
+      ...Object.keys(existingValues),
+      ...Object.keys(sampleValues),
+    ]);
+    return !Array.from(keys).every(
+      (key) => existingValues[key] === sampleValues[key],
+    );
+  });
+  return [...next, sample];
 }
 
 function formatModalNumber(value: number): string {

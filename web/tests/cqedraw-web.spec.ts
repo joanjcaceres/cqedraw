@@ -23,6 +23,19 @@ async function expectRawMatrixEntriesHidden(page: Page) {
   await expect(page.getByTestId("l-entries")).toHaveCount(0);
 }
 
+async function setRangeInputValue(locator: Locator, value: string) {
+  await locator.evaluate((element, nextValue) => {
+    const input = element as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    valueSetter?.call(input, nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -768,13 +781,21 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   await page.getByLabel("Sweep min for Lj").fill("6e-9");
   await page.getByLabel("Sweep max for Lj").fill("1e-8");
   await page.getByLabel("Sweep step for Lj").fill("2e-9");
-  await page.getByRole("button", { name: "Run sweep" }).click();
+  await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 1",
+    { timeout: 60_000 },
+  );
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-Lj"), "1");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 2",
+    { timeout: 60_000 },
+  );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
-  await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
 
   const sweepExportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export sweep CSV" }).click();
@@ -786,7 +807,7 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   }
   const sweepCsv = await readFile(sweepExportedPath, "utf8");
   const sweepRows = sweepCsv.trim().split(/\r?\n/);
-  expect(sweepRows).toHaveLength(4);
+  expect(sweepRows).toHaveLength(3);
   expect(sweepRows[0]).toContain("Lj,frequency_mode_0,phase_zpf_edge_0_mode_0");
 });
 
@@ -1896,7 +1917,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   );
   await expect(page.getByRole("button", { name: "Analyze modes" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Run sweep" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeDisabled();
 
   await page.getByLabel("Value for C12").fill("2e-15");
@@ -1906,7 +1927,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("parameter-required-message")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Analyze modes" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Run sweep" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Analyze modes" }).click();
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
@@ -1919,14 +1940,32 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await page.getByLabel("Sweep min for L12_inv").fill("1e9");
   await page.getByLabel("Sweep max for L12_inv").fill("2e9");
   await page.getByLabel("Sweep step for L12_inv").fill("1e9");
-  await expect(page.getByRole("button", { name: "Run sweep" })).toBeEnabled();
-  await page.getByRole("button", { name: "Run sweep" }).click();
+  await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
+  await expect(page.getByTestId("sweep-sample-slider-C12")).toBeVisible();
+  await expect(page.getByTestId("sweep-sample-slider-L12_inv")).toBeVisible();
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 1",
+    { timeout: 60_000 },
+  );
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "1");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 2",
+    { timeout: 60_000 },
+  );
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-L12_inv"), "1");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 3",
+    { timeout: 60_000 },
+  );
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "0");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 4",
+    { timeout: 60_000 },
+  );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
-  await expect(page.getByTestId("sweep-sample-slider-C12")).toBeVisible();
-  await expect(page.getByTestId("sweep-sample-slider-L12_inv")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeEnabled();
   const sweepExportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export sweep CSV" }).click();

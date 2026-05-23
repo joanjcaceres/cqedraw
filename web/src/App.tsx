@@ -4155,6 +4155,10 @@ function JosephsonBranchList({
 }: {
   branches: OutputResult["josephson_branches"];
 }) {
+  if (branches.length === 0) {
+    return null;
+  }
+
   return (
     <div className="entries">
       <h3>Josephson branches</h3>
@@ -4626,12 +4630,12 @@ function AnalysisLineChart({
   const xTicks = chartTicks(bounds.minX, bounds.maxX);
   const yTicks = chartTicks(bounds.minY, bounds.maxY);
   const viewWidth = 620;
-  const viewHeight = 340;
+  const viewHeight = 300;
   const plot = {
-    bottom: 296,
+    bottom: 258,
     left: 70,
     right: 600,
-    top: 20,
+    top: 18,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;

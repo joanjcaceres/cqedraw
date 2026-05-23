@@ -46,6 +46,18 @@ async function expectAnalysisResultsRightOfControls(page: Page) {
   expect(resultsBox.y).toBeLessThanOrEqual(controlsBox.y + 8);
 }
 
+async function expectFrequencyPlotFitsInOutputPanel(page: Page) {
+  const panelBox = await page.getByTestId("output-panel").boundingBox();
+  const plotBox = await page.getByTestId("frequency-mode-plot").boundingBox();
+  if (!panelBox || !plotBox) {
+    throw new Error("Expected output panel and frequency plot boxes to be available.");
+  }
+  expect(plotBox.y).toBeGreaterThanOrEqual(panelBox.y - 1);
+  expect(plotBox.y + plotBox.height).toBeLessThanOrEqual(
+    panelBox.y + panelBox.height + 1,
+  );
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -1950,6 +1962,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await expectFrequencyPlotFitsInOutputPanel(page);
   await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
 

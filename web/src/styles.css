@@ -594,6 +594,15 @@ textarea {
   padding: 12px;
 }
 
+.output-section-matrices {
+  gap: 8px;
+  padding-block: 10px;
+}
+
+.output-section-matrices .output-section-heading {
+  align-items: center;
+}
+
 .output-section-analysis {
   flex: 1 1 auto;
   min-height: min(660px, calc(100vh - 210px));
@@ -1054,12 +1063,12 @@ textarea {
 
 .analysis-plots {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .analysis-chart {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .analysis-chart-heading {

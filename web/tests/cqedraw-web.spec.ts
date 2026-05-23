@@ -513,6 +513,20 @@ test("renders component symbols for regular and ground edge values", async ({
   await expect(page.getByTestId("edge-value-ind-0")).toContainText(
     "L=1/L12_inv",
   );
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("inline-edge-value-editor")).toHaveCount(0);
+  const capLabelBox = await page.getByTestId("edge-value-cap-0").boundingBox();
+  if (!capLabelBox) {
+    throw new Error("Capacitance label box is unavailable.");
+  }
+  await page.mouse.click(
+    capLabelBox.x + capLabelBox.width / 2,
+    capLabelBox.y + capLabelBox.height / 2,
+  );
+  await expect(page.getByTestId("inline-edge-value-editor")).toBeVisible();
+  await expect(page.getByTestId("inline-cap-input")).toHaveValue("C12");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("inline-edge-value-editor")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Ground" }).click();
   await page.getByTestId("node-1").click();

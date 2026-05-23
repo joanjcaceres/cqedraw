@@ -199,6 +199,19 @@ interface InlineEdgeEditorPosition {
   topPx: number;
 }
 
+interface EdgeValueLabel {
+  point: Point;
+  testId: string;
+  text: string;
+}
+
+interface EdgeInteractionZone {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+
 type TutorialStep =
   | "welcome"
   | "first-node"
@@ -1112,7 +1125,7 @@ export function App() {
     cancelPastePreview();
   }
 
-  function handleEdgePointerDown(event: PointerEvent<SVGLineElement>, edgeId: number) {
+  function handleEdgePointerDown(event: PointerEvent<SVGElement>, edgeId: number) {
     event.stopPropagation();
     if (pastePreview) {
       const svg = event.currentTarget.ownerSVGElement;
@@ -3324,7 +3337,7 @@ function CircuitEdgeShape({
     event: PointerEvent<SVGGElement>,
     edgeId: number,
   ) => void;
-  onPointerDown: (event: PointerEvent<SVGLineElement>, edgeId: number) => void;
+  onPointerDown: (event: PointerEvent<SVGElement>, edgeId: number) => void;
 }) {
   const endpoints = edgeEndpoints(edge, nodes);
   if (!endpoints) {
@@ -3334,9 +3347,23 @@ function CircuitEdgeShape({
   const { end, start } = endpoints;
   const componentKind = edgeComponentKind(edge);
   const valueLabels = edgeValueLabels(edge, start, end, componentKind);
+  const interactionZone = edgeInteractionZone(start, end, componentKind, valueLabels);
+  const geometry = edgeGeometry(start, end);
 
   return (
     <g>
+      {interactionZone ? (
+        <rect
+          className="edge-component-hit-target"
+          data-testid={`edge-component-hit-target-${edge.identifier}`}
+          height={interactionZone.height}
+          transform={`translate(${geometry.center.x} ${geometry.center.y}) rotate(${geometry.angle})`}
+          width={interactionZone.width}
+          x={interactionZone.x}
+          y={interactionZone.y}
+          onPointerDown={(event) => onPointerDown(event, edge.identifier)}
+        />
+      ) : null}
       <line
         data-testid={`edge-${edge.identifier}`}
         className="edge-hit-target"
@@ -4960,7 +4987,7 @@ function edgeValueLabels(
   start: Point,
   end: Point,
   componentKind: EdgeComponentKind,
-) {
+): EdgeValueLabel[] {
   const capacitanceText = edge.capacitance_text?.trim();
   const inductanceText = edge.inductance_text?.trim();
   const josephsonInductanceText = edge.josephson_inductance_text?.trim();
@@ -5082,6 +5109,54 @@ function edgeValueLabels(
   ];
 }
 
+function edgeInteractionZone(
+  start: Point,
+  end: Point,
+  componentKind: EdgeComponentKind,
+  labels: EdgeValueLabel[],
+): EdgeInteractionZone | null {
+  if (componentKind === "none") {
+    return null;
+  }
+  const geometry = edgeGeometry(start, end);
+  if (geometry.length === 0) {
+    return null;
+  }
+
+  let minX = -Math.min(64, Math.max(32, geometry.length / 2 - NODE_RADIUS));
+  let maxX = Math.min(64, Math.max(32, geometry.length / 2 - NODE_RADIUS));
+  let minY = -58;
+  let maxY = 58;
+  if (
+    componentKind === "parallel-lc" ||
+    componentKind === "parallel-cj" ||
+    componentKind === "parallel-lj" ||
+    componentKind === "parallel-lcj"
+  ) {
+    minY = -86;
+    maxY = 92;
+  }
+
+  for (const label of labels) {
+    const local = globalToLocalEdgePoint(geometry, label.point);
+    const halfTextWidth = Math.max(22, label.text.length * 3.9);
+    minX = Math.min(minX, local.x - halfTextWidth - 8);
+    maxX = Math.max(maxX, local.x + halfTextWidth + 8);
+    minY = Math.min(minY, local.y - 18);
+    maxY = Math.max(maxY, local.y + 10);
+  }
+
+  minX = clamp(minX, -geometry.length / 2 - 22, geometry.length / 2 + 42);
+  maxX = clamp(maxX, -geometry.length / 2 - 42, geometry.length / 2 + 96);
+
+  return {
+    height: Math.max(28, maxY - minY),
+    width: Math.max(28, maxX - minX),
+    x: minX,
+    y: minY,
+  };
+}
+
 function localEdgePoint(
   geometry: ReturnType<typeof edgeGeometry>,
   localPoint: Point,
@@ -5092,6 +5167,21 @@ function localEdgePoint(
   return {
     x: geometry.center.x + localPoint.x * cos - localPoint.y * sin,
     y: geometry.center.y + localPoint.x * sin + localPoint.y * cos,
+  };
+}
+
+function globalToLocalEdgePoint(
+  geometry: ReturnType<typeof edgeGeometry>,
+  point: Point,
+): Point {
+  const angle = (geometry.angle * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = point.x - geometry.center.x;
+  const dy = point.y - geometry.center.y;
+  return {
+    x: dx * cos + dy * sin,
+    y: -dx * sin + dy * cos,
   };
 }
 

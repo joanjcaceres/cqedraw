@@ -1856,33 +1856,23 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await page.getByLabel("Value for L12_inv").fill("1e9");
   await page.getByLabel("Value for Lg_inv").fill("2e9");
   const exportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("button", { name: "Export analysis JSON" }).click();
   const exported = await exportPromise;
-  expect(exported.suggestedFilename()).toBe("cqedraw-evaluated-circuit.json");
+  expect(exported.suggestedFilename()).toBe("cqedraw-analysis-results.json");
   const exportedPath = await exported.path();
   if (!exportedPath) {
     throw new Error("Exported JSON download path is unavailable.");
   }
-  const exportedCircuit = JSON.parse(await readFile(exportedPath, "utf8"));
-  expect(exportedCircuit.format).toBe("cqedraw.evaluated_circuit");
-  expect(exportedCircuit.NODE_INDEX_MAP).toEqual({ "0": 0, "1": 1 });
-  expect(exportedCircuit.PARAMETER_NAMES).toEqual([
-    "C12",
-    "Cg",
-    "L12_inv",
-    "Lg_inv",
-  ]);
-  expect(exportedCircuit.C_matrix).toEqual([
-    [2e-15, -2e-15],
-    [-2e-15, 7e-15],
-  ]);
-  expect(exportedCircuit.L_inv_matrix).toEqual([
-    [1e9, -1e9],
-    [-1e9, 3e9],
-  ]);
-  expect(exportedCircuit.modal_analysis).toBeNull();
+  const exportedAnalysis = JSON.parse(await readFile(exportedPath, "utf8"));
+  expect(exportedAnalysis.format).toBe("cqedraw.analysis_results");
+  expect(exportedAnalysis.frequencies_ghz).toHaveLength(2);
+  expect(exportedAnalysis.frequencies_ghz[0]).toBeGreaterThan(0);
+  expect(exportedAnalysis.phase_zpf).toEqual([]);
+  expect(exportedAnalysis.junctions).toEqual([]);
+  expect(exportedAnalysis.C_matrix).toBeUndefined();
+  expect(exportedAnalysis.L_inv_matrix).toBeUndefined();
   await expect(page.getByTestId("output-status")).toContainText(
-    "Exported evaluated circuit JSON.",
+    "Exported analysis JSON.",
   );
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();

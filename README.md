@@ -177,29 +177,25 @@ phase-ZPF row per junction. In the browser build, the BBQ class is loaded on
 demand from the `sccircuits` repository; in Python environments, install cQEDraw
 with the `sccircuits` extra to use the same analysis path locally.
 
-Click **Export JSON** to download an evaluated circuit artifact that can be read
-from a separate Python script without executing the copied snippet:
+Click **Export analysis JSON** to download the frequency and Josephson-junction
+zero-point fluctuation results for use in a separate Python script:
 
 ```python
 import json
 
-with open("cqedraw-evaluated-circuit.json", "r", encoding="utf-8") as handle:
+with open("cqedraw-analysis-results.json", "r", encoding="utf-8") as handle:
     data = json.load(handle)
 
-C = data["C_matrix"]
-L_inv = data["L_inv_matrix"]
-junctions = data["JOSEPHSON_BRANCHES"]
-frequencies = (
-    None
-    if data["modal_analysis"] is None
-    else data["modal_analysis"]["frequencies_ghz"]
-)
+frequencies = data["frequencies_ghz"]
+phase_zpf = data["phase_zpf"]
+junctions = data["junctions"]
 ```
 
-The JSON document includes the normalized project, `NODE_INDEX_MAP`, parameter
-values, symbolic matrix entries, evaluated dense matrices, evaluated Josephson
-branch records, units metadata, and modal results when **Analyze modes** has
-already run.
+The JSON document is intentionally compact. It contains the mode-frequency
+vector, a phase-ZPF matrix with one row per Josephson junction, units metadata,
+and junction labels so each ZPF row can be mapped back to the branch and phase
+orientation. It leaves the project, symbolic matrices, and dense matrices in the
+regular project file and copied Python snippet.
 
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not
 required. Install the optional `sccircuits` extra when you want the analysis

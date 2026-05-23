@@ -57,7 +57,7 @@ async function initializePyodide() {
         'sys.path.insert(0, "/home/pyodide")',
         "from cqedraw.web_bridge import (",
         "    analyze_modal_json,",
-        "    export_evaluated_circuit_json,",
+        "    export_analysis_results_json,",
         "    generate_output_json,",
         "    normalize_project_json,",
         ")",
@@ -153,7 +153,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         JSON.stringify(analysis ?? null),
       );
       raw = pyodideRuntime.runPython(
-        "export_evaluated_circuit_json(project_json, params_json, analysis_json)",
+        "export_analysis_results_json(project_json, params_json, analysis_json)",
       ) as string;
     } else {
       const functionName =

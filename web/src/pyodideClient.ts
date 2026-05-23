@@ -1,8 +1,8 @@
 import {
+  AnalysisExportResult,
   CircuitProject,
   ModalAnalysisResult,
   OutputResult,
-  StructuredExportResult,
 } from "./types";
 
 type PrewarmTarget = "base" | "analysis";
@@ -62,12 +62,12 @@ export class PyodideBridgeClient {
     return this.send<ModalAnalysisResult>("analyze", project, params);
   }
 
-  exportStructuredJson(
+  exportAnalysisJson(
     project: CircuitProject,
     params: Record<string, string>,
     analysis: ModalAnalysisResult | null,
-  ): Promise<StructuredExportResult> {
-    return this.send<StructuredExportResult>(
+  ): Promise<AnalysisExportResult> {
+    return this.send<AnalysisExportResult>(
       "export",
       project,
       params,

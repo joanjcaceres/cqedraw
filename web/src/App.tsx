@@ -1333,17 +1333,17 @@ export function App() {
     setModalAnalysis(null);
   }
 
-  async function runModalAnalysis() {
+  async function runModalAnalysis(): Promise<ModalAnalysisResult | null> {
     const result = output ?? (await runGenerateOutput());
     if (!result) {
-      return;
+      return null;
     }
     const missing = result.parameters.filter(
       (name) => (parameterValues[name] ?? "").trim() === "",
     );
     if (missing.length > 0) {
       setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
-      return;
+      return null;
     }
 
     setEngineWarmup((current) => ({
@@ -1370,6 +1370,7 @@ export function App() {
           ? `Computed ${modeCount} mode(s) and ${zpfRowCount} JJ ZPF row(s).`
           : `Computed ${modeCount} mode frequency result(s).`,
       );
+      return analysis;
     } catch (error) {
       setModalAnalysis(null);
       setEngineWarmup((current) => ({
@@ -1378,6 +1379,7 @@ export function App() {
         error: error instanceof Error ? error.message : String(error),
       }));
       setEngineStatus(error instanceof Error ? error.message : String(error));
+      return null;
     }
   }
 
@@ -1392,31 +1394,30 @@ export function App() {
     setTutorialCopied(true);
   }
 
-  async function exportStructuredJson() {
+  async function exportAnalysisJson() {
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return;
     }
-    const missing = result.parameters.filter(
-      (name) => (parameterValues[name] ?? "").trim() === "",
-    );
-    if (missing.length > 0) {
-      setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
+    const analysis = modalAnalysis?.available
+      ? modalAnalysis
+      : await runModalAnalysis();
+    if (!analysis?.available || analysis.error) {
       return;
     }
 
-    setEngineStatus("Exporting evaluated circuit JSON...");
+    setEngineStatus("Exporting analysis JSON...");
     try {
-      const exportResult = await clientRef.current!.exportStructuredJson(
+      const exportResult = await clientRef.current!.exportAnalysisJson(
         project,
         parameterValues,
-        modalAnalysis,
+        analysis,
       );
       if (exportResult.error) {
         throw new Error(exportResult.error);
       }
-      downloadJson("cqedraw-evaluated-circuit.json", exportResult);
-      setEngineStatus("Exported evaluated circuit JSON.");
+      downloadJson("cqedraw-analysis-results.json", exportResult);
+      setEngineStatus("Exported analysis JSON.");
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
@@ -2172,7 +2173,7 @@ export function App() {
               disabled={!output}
               onAnalyze={runModalAnalysis}
               onChange={updateParameterValue}
-              onExport={exportStructuredJson}
+              onExport={exportAnalysisJson}
               parameters={outputParameters}
               values={parameterValues}
             />
@@ -3831,7 +3832,7 @@ function ParameterValuePanel({
             type="button"
           >
             <Download size={14} />
-            Export JSON
+            Export analysis JSON
           </button>
         </div>
       </div>

@@ -98,29 +98,21 @@ export interface ModalAnalysisResult {
   details?: string;
 }
 
-export interface StructuredExportResult {
+export interface AnalysisExportJunction {
+  edge_id: number | null;
+  project_nodes: number[];
+  phase_nodes: Array<number | null>;
+  phase_sign: 1 | -1;
+  phase_zpf: number[];
+}
+
+export interface AnalysisExportResult {
   format: string;
   schema_version: number;
-  cqedraw_project_version: number;
   units: Record<string, string>;
-  project: CircuitProject;
-  NODE_INDEX_MAP: Record<string, number>;
-  matrix_nodes: MatrixNodeRecord[];
-  PARAMETER_NAMES: string[];
-  C_PARAMETER_NAMES: string[];
-  L_INV_PARAMETER_NAMES: string[];
-  JOSEPHSON_PARAMETER_NAMES: string[];
-  parameter_values: Record<string, number>;
-  parameter_value_text: Record<string, string>;
-  symbolic: {
-    C_entries: MatrixEntryRecord[];
-    L_inv_entries: MatrixEntryRecord[];
-    JOSEPHSON_BRANCHES: JosephsonBranchRecord[];
-  };
-  C_matrix: number[][];
-  L_inv_matrix: number[][];
-  JOSEPHSON_BRANCHES: EvaluatedJosephsonBranchRecord[];
-  modal_analysis: ModalAnalysisResult | null;
+  frequencies_ghz: number[];
+  phase_zpf: number[][];
+  junctions: AnalysisExportJunction[];
   error?: string;
 }
 

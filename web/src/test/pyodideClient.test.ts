@@ -93,7 +93,7 @@ describe("PyodideBridgeClient prewarm", () => {
     client.dispose();
   });
 
-  it("sends structured export requests with parameters and analysis", async () => {
+  it("sends analysis export requests with parameters and analysis", async () => {
     const client = new PyodideBridgeClient();
     const worker = FakeWorker.instances[0];
     const project = {
@@ -116,7 +116,7 @@ describe("PyodideBridgeClient prewarm", () => {
       frequencies_ghz: [5.1],
     };
 
-    const exportRequest = client.exportStructuredJson(
+    const exportRequest = client.exportAnalysisJson(
       project,
       { C: "1e-15" },
       analysis,
@@ -130,10 +130,10 @@ describe("PyodideBridgeClient prewarm", () => {
     });
     worker.respond(1, {
       ok: true,
-      result: { format: "cqedraw.evaluated_circuit", schema_version: 1 },
+      result: { format: "cqedraw.analysis_results", schema_version: 1 },
     });
     await expect(exportRequest).resolves.toMatchObject({
-      format: "cqedraw.evaluated_circuit",
+      format: "cqedraw.analysis_results",
     });
 
     client.dispose();

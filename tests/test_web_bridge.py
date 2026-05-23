@@ -7,8 +7,8 @@ import numpy as np
 from cqedraw.web_bridge import (
     analyze_modal,
     analyze_modal_json,
-    export_evaluated_circuit,
-    export_evaluated_circuit_json,
+    export_analysis_results,
+    export_analysis_results_json,
     generate_output,
     generate_output_json,
     normalize_project,
@@ -123,7 +123,7 @@ def test_generate_output_json_reports_parse_errors():
     assert "error" in result
 
 
-def test_export_evaluated_circuit_returns_python_friendly_json():
+def test_export_analysis_results_returns_compact_frequency_json():
     project = {
         "version": 2,
         "state": {
@@ -149,47 +149,37 @@ def test_export_evaluated_circuit_returns_python_friendly_json():
             ],
         },
     }
+    modal_analysis = {
+        "available": True,
+        "frequencies_ghz": [5.1, 7.2],
+        "branch_phase_zpfs": [],
+        "branches": [],
+    }
 
-    result = export_evaluated_circuit(
+    result = export_analysis_results(
         project,
         {"C12": "2e-15", "Cg": "5e-15", "L12": "10e-9", "Lg": "20e-9"},
+        modal_analysis,
     )
 
     json.loads(json.dumps(result))
-    assert result["format"] == "cqedraw.evaluated_circuit"
-    assert result["schema_version"] == 1
-    assert result["NODE_INDEX_MAP"] == {"2": 0, "5": 1}
-    assert result["PARAMETER_NAMES"] == ["C12", "Cg", "L12", "Lg"]
-    assert result["parameter_values"] == {
-        "C12": 2e-15,
-        "Cg": 5e-15,
-        "L12": 10e-9,
-        "Lg": 20e-9,
+    assert result == {
+        "format": "cqedraw.analysis_results",
+        "schema_version": 1,
+        "units": {
+            "frequencies_ghz": "GHz",
+            "phase_zpf": "dimensionless",
+        },
+        "frequencies_ghz": [5.1, 7.2],
+        "phase_zpf": [],
+        "junctions": [],
     }
-    assert result["parameter_value_text"]["L12"] == "10e-9"
-    assert result["project"]["version"] == 2
-    assert [node["project_node_id"] for node in result["matrix_nodes"]] == [2, 5]
-    assert np.allclose(
-        result["C_matrix"],
-        [[2e-15, -2e-15], [-2e-15, 7e-15]],
-    )
-    assert np.allclose(
-        result["L_inv_matrix"],
-        [[1 / 10e-9, -1 / 10e-9], [-1 / 10e-9, 1 / 10e-9 + 1 / 20e-9]],
-    )
-    assert result["symbolic"]["C_entries"] == [
-        {"row": 0, "col": 0, "expr": "C12"},
-        {"row": 0, "col": 1, "expr": "-C12"},
-        {"row": 1, "col": 0, "expr": "-C12"},
-        {"row": 1, "col": 1, "expr": "C12 + Cg"},
-    ]
-    assert result["JOSEPHSON_BRANCHES"] == []
-    assert result["modal_analysis"] is None
-    assert result["units"]["C_matrix"] == "F"
-    assert result["units"]["frequency"] == "GHz"
+    assert "C_matrix" not in result
+    assert "L_inv_matrix" not in result
+    assert "project" not in result
 
 
-def test_export_evaluated_circuit_includes_jj_and_modal_results():
+def test_export_analysis_results_includes_jj_phase_zpf_rows():
     project = {
         "version": 2,
         "state": {
@@ -232,49 +222,58 @@ def test_export_evaluated_circuit_includes_jj_and_modal_results():
         ],
     }
 
-    result = export_evaluated_circuit(
+    result = export_analysis_results(
         project,
         {"Cj": "40e-15", "Lgeom": "10e-9", "Lj": "8e-9"},
         modal_analysis,
     )
 
-    assert np.allclose(
-        result["L_inv_matrix"],
-        [
-            [1 / 10e-9 + 1 / 8e-9, -1 / 10e-9 - 1 / 8e-9],
-            [-1 / 10e-9 - 1 / 8e-9, 1 / 10e-9 + 1 / 8e-9],
-        ],
-    )
-    assert result["JOSEPHSON_BRANCHES"] == [
+    assert result["format"] == "cqedraw.analysis_results"
+    assert result["schema_version"] == 1
+    assert result["frequencies_ghz"] == [5.1, 7.2]
+    assert result["phase_zpf"] == [[0.01, -0.02]]
+    assert result["junctions"] == [
         {
             "edge_id": 7,
             "project_nodes": [0, 1],
-            "matrix_nodes": [0, 1],
-            "phase_positive_index": 0,
-            "phase_negative_index": 1,
+            "phase_nodes": [0, 1],
             "phase_sign": -1,
-            "inductance_expr": "Lj",
-            "L_j": 8e-9,
-            "E_j_GHz": result["JOSEPHSON_BRANCHES"][0]["E_j_GHz"],
+            "phase_zpf": [0.01, -0.02],
         }
     ]
-    assert result["JOSEPHSON_BRANCHES"][0]["E_j_GHz"] > 0
-    assert result["symbolic"]["JOSEPHSON_BRANCHES"][0]["phase_sign"] == -1
-    assert result["modal_analysis"]["frequencies_ghz"] == [5.1, 7.2]
-    assert result["modal_analysis"]["branches"][0]["phase_zpf"] == [0.01, -0.02]
-    assert result["modal_analysis"]["branches"][0]["phase_nodes"] == [0, 1]
 
 
-def test_export_evaluated_circuit_json_reports_missing_parameters():
+def test_export_analysis_results_json_reports_missing_parameters():
     result = json.loads(
-        export_evaluated_circuit_json(
+        export_analysis_results_json(
             json.dumps(_web_project()),
             json.dumps({"C_alpha": "1e-15"}),
+            json.dumps({"available": True, "frequencies_ghz": [5.1]}),
         )
     )
 
     assert "error" in result
     assert "Missing parameter values" in result["error"]
+
+
+def test_export_analysis_results_json_requires_modal_analysis():
+    result = json.loads(
+        export_analysis_results_json(
+            json.dumps(_web_project()),
+            json.dumps(
+                {
+                    "C_alpha": "1e-15",
+                    "C_beta": "2e-15",
+                    "C_ground": "3e-15",
+                    "L_alpha_inv": "1e9",
+                    "L_beta_inv": "2e9",
+                    "L_ground_inv": "3e9",
+                }
+            ),
+        )
+    )
+
+    assert result == {"error": "Run Analyze modes before exporting analysis JSON."}
 
 
 def test_normalize_project_preserves_desktop_compatible_shape():

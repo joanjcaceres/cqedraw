@@ -6,6 +6,25 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 const CANVAS_WIDTH = 900;
 const OLD_MAX_VIEW_WIDTH = CANVAS_WIDTH * 3;
 
+async function openOutputDrawer(page: Page) {
+  if ((await page.getByTestId("output-drawer").count()) === 0) {
+    await page.getByRole("button", { exact: true, name: "Output" }).click();
+  }
+  await expect(page.getByTestId("output-drawer")).toBeVisible();
+}
+
+async function clickBuildMatrices(page: Page) {
+  await openOutputDrawer(page);
+  await page.getByRole("button", { exact: true, name: "Build matrices" }).click();
+}
+
+async function closeOutputDrawer(page: Page) {
+  if ((await page.getByTestId("output-drawer").count()) > 0) {
+    await page.getByRole("button", { exact: true, name: "Close output" }).click();
+  }
+  await expect(page.getByTestId("output-drawer")).toHaveCount(0);
+}
+
 test("shows and persists the optional tutorial prompt", async ({ page }) => {
   await page.goto("/");
 
@@ -81,12 +100,13 @@ test("starts a new project after confirmation", async ({ page }) => {
     page.getByRole("button", { exact: true, name: "Copy matrices" }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
   await expect(page.getByTestId("snippet-output")).toHaveCount(0);
   await expect(
     page.getByRole("button", { exact: true, name: "Copy matrices" }),
   ).toBeVisible();
+  await closeOutputDrawer(page);
   await page.getByRole("button", { name: "Zoom out" }).click();
   const zoomedView = parseViewBox(await canvas.getAttribute("viewBox"));
   expect(zoomedView.width).toBeGreaterThan(CANVAS_WIDTH);
@@ -407,7 +427,7 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
   await expect(inlineEditor).toHaveCount(0);
   await expect(page.getByTestId("edge-1")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cclicked");
   await expect(page.getByTestId("c-entries")).toContainText(
@@ -528,7 +548,7 @@ test("renders component symbols for regular and ground edge values", async ({
     "L=1/Lg_inv",
   );
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
@@ -671,7 +691,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
     "josephson",
   );
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("l-entries")).toContainText("Lgeom");
   await expect(page.getByTestId("l-entries")).toContainText("Lj");
@@ -737,7 +757,7 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   await page.getByTestId("cap-input").fill("Cj");
   await page.getByTestId("jj-ind-input").fill("Lj");
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
   await page.getByLabel("Value for Cj").fill("80e-15");
   await page.getByLabel("Value for Lj").fill("8e-9");
@@ -791,7 +811,7 @@ test("moves ground branches without changing generated output", async ({ page })
   await page.getByTestId("cap-input").fill("Cg");
   await page.getByTestId("ind-input").fill("1/Lg_inv");
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
   await expect(page.getByTestId("l-entries")).toContainText(
@@ -827,7 +847,7 @@ test("moves ground branches without changing generated output", async ({ page })
   );
   await expect(page.getByTestId("ground-symbol-1")).toHaveClass(/selected/);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
   await expect(page.getByTestId("l-entries")).toContainText(
@@ -926,7 +946,7 @@ test("keeps existing ground when Ground mode clicks a grounded node", async ({
   expect(afterSecondGroundClick.x2).toBeCloseTo(afterMove.x2, 3);
   expect(afterSecondGroundClick.y2).toBeCloseTo(afterMove.y2, 3);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cg");
   await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = Lg_inv");
@@ -1029,10 +1049,16 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     "title",
     "Merge (M)",
   );
-  await expect(page.getByRole("button", { name: "Build matrices" })).toHaveAttribute(
+  await expect(page.getByRole("button", { exact: true, name: "Output" })).toHaveAttribute(
+    "title",
+    "Output",
+  );
+  await openOutputDrawer(page);
+  await expect(page.getByRole("button", { exact: true, name: "Build matrices" })).toHaveAttribute(
     "title",
     "Build matrices (Ctrl/Cmd+Enter)",
   );
+  await closeOutputDrawer(page);
   await expect(page.getByRole("button", { name: "Save" })).toHaveAttribute(
     "title",
     "Save (Ctrl/Cmd+S)",
@@ -1166,7 +1192,7 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await page.getByTestId("edge-0").click({ force: true });
   await expect(page.getByTestId("tutorial-callout")).toContainText("Build matrices");
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C + Cg");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = 1/L");
@@ -1357,7 +1383,7 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await expect(page.getByTestId("edge-0")).toHaveCount(0);
   await expect(page.getByTestId("edge-1")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).not.toContainText("C01");
@@ -1582,7 +1608,7 @@ test("copies selected graph elements and pastes them from a preview", async ({
   expect(Math.abs(pastedGround.x2 - node3Center.x)).toBeLessThan(1);
   expect(Math.abs(pastedGround.y2 - node3Center.y - 104)).toBeLessThan(1);
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");
   await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = C12");
   await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = C12 + Cg");
@@ -1675,7 +1701,7 @@ test("concatenates selected graph blocks", async ({ page }) => {
     "Merge keeps N4",
   );
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).toContainText(
@@ -1800,7 +1826,7 @@ test("expands concatenate pairings for irregular selected blocks", async ({
   await expect(page.getByTestId("node-4")).toBeVisible();
   await expect(page.getByTestId("node-5")).toBeVisible();
 
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 6 x 6");
   await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = 2*Cb");
   await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = 2*Ct");
@@ -1888,7 +1914,7 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await page.mouse.down();
   await page.mouse.move(canvasBox.x + 420, canvasBox.y + 300);
   await page.mouse.up();
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
@@ -1993,7 +2019,7 @@ test("does not create duplicate edges between the same two nodes", async ({ page
   await expect(page.getByTestId("output-status")).toContainText(
     "A connection between those nodes already exists.",
   );
-  await page.getByRole("button", { name: "Build matrices" }).click();
+  await clickBuildMatrices(page);
 
   await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
   await expect(page.getByTestId("c-entries")).not.toContainText("2*C12");

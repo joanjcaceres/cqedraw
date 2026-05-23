@@ -13,6 +13,7 @@ import {
   GripHorizontal,
   Maximize2,
   Merge,
+  Menu,
   MousePointer2,
   Play,
   Redo2,
@@ -20,6 +21,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -276,6 +278,7 @@ export function App() {
   const [sweepModeIndex, setSweepModeIndex] = useState(0);
   const [sweepRunning, setSweepRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
+  const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const [engineWarmup, setEngineWarmup] = useState<EngineWarmupState>(
     INITIAL_ENGINE_WARMUP,
@@ -613,6 +616,9 @@ export function App() {
       setPendingEdgeNodeId(null);
       setNodeDragState(null);
       setGroundDragState(null);
+    }
+    if (nextStep === "generate") {
+      setOutputDrawerOpen(true);
     }
     if (nextStep && nextStep !== tutorialStep) {
       setTutorialStep(nextStep);
@@ -1374,6 +1380,7 @@ export function App() {
   }
 
   async function runGenerateOutput(): Promise<OutputResult | null> {
+    setOutputDrawerOpen(true);
     setEngineStatus(
       engineWarmup.base === "ready"
         ? "Generating matrices..."
@@ -1413,6 +1420,7 @@ export function App() {
   }
 
   async function runModalAnalysis(): Promise<ModalAnalysisResult | null> {
+    setOutputDrawerOpen(true);
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return null;
@@ -1474,6 +1482,7 @@ export function App() {
   }
 
   async function exportAnalysisCsv() {
+    setOutputDrawerOpen(true);
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return;
@@ -1512,6 +1521,7 @@ export function App() {
   }
 
   async function runParameterSweep() {
+    setOutputDrawerOpen(true);
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return;
@@ -1598,6 +1608,7 @@ export function App() {
   }
 
   function exportSweepCsv() {
+    setOutputDrawerOpen(true);
     if (sweepSamples.length === 0 || !selectedSweepParameter) {
       return;
     }
@@ -1636,6 +1647,7 @@ export function App() {
     setMarqueeState(null);
     setPastePreview(null);
     setOutput(null);
+    setOutputDrawerOpen(false);
   }
 
   function resetToNewProject() {
@@ -1648,6 +1660,7 @@ export function App() {
     setSelectionClipboard(null);
     setViewBox(DEFAULT_VIEW_BOX);
     setOutput(null);
+    setOutputDrawerOpen(false);
     setNewProjectDialogOpen(false);
     setTutorialResetOpen(false);
     setTutorialStep(null);
@@ -1698,6 +1711,7 @@ export function App() {
     setPastePreview(null);
     setViewBox(DEFAULT_VIEW_BOX);
     setOutput(null);
+    setOutputDrawerOpen(false);
     setEngineStatus("Ready.");
     setTutorialCopied(false);
     setTutorialPromptOpen(false);
@@ -2021,6 +2035,13 @@ export function App() {
             label="New project"
             onClick={requestNewProject}
           />
+          <ToolButton
+            active={outputDrawerOpen}
+            icon={<Menu size={17} />}
+            iconOnly={false}
+            label="Output"
+            onClick={() => setOutputDrawerOpen((open) => !open)}
+          />
           {hasGeneratedSnippet ? (
             <ToolButton
               confirmation={snippetCopied ? "Copied" : undefined}
@@ -2332,6 +2353,14 @@ export function App() {
             )}
           </section>
 
+        </aside>
+      </section>
+      {outputDrawerOpen ? (
+        <aside
+          aria-label="Output"
+          className="output-drawer"
+          data-testid="output-drawer"
+        >
           <section className="panel output-panel">
             <div className="output-panel-heading">
               <h2>Output</h2>
@@ -2349,6 +2378,15 @@ export function App() {
                   Build matrices
                 </button>
                 <EngineWarmupBadge warmup={engineWarmup} />
+                <button
+                  aria-label="Close output"
+                  className="output-drawer-close"
+                  onClick={() => setOutputDrawerOpen(false)}
+                  title="Close output"
+                  type="button"
+                >
+                  <X size={15} />
+                </button>
               </div>
             </div>
             <EntryList title="C entries" testId="c-entries" entries={output?.c_entries ?? []} />
@@ -2392,7 +2430,7 @@ export function App() {
             />
           </section>
         </aside>
-      </section>
+      ) : null}
       {tutorialPromptOpen && tutorialStep === null && project.state.nodes.length === 0 ? (
         <TutorialPrompt onSkip={dismissTutorial} onStart={beginTutorial} />
       ) : null}

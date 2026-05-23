@@ -2445,18 +2445,6 @@ export function App() {
                   <EngineWarmupBadge warmup={engineWarmup} />
                 </div>
               </div>
-              <EntryList
-                collapsed
-                title="C entries"
-                testId="c-entries"
-                entries={output?.c_entries ?? []}
-              />
-              <EntryList
-                collapsed
-                title="L_inv entries"
-                testId="l-entries"
-                entries={output?.l_inv_entries ?? []}
-              />
               <JosephsonBranchList branches={output?.josephson_branches ?? []} />
             </div>
             <div className="output-section output-section-analysis">
@@ -4069,52 +4057,6 @@ function engineWarmupBadgeState(warmup: EngineWarmupState) {
   };
 }
 
-function EntryList({
-  title,
-  testId,
-  entries,
-  collapsed = false,
-}: {
-  collapsed?: boolean;
-  title: string;
-  testId: string;
-  entries: { row: number; col: number; expr: string }[];
-}) {
-  const entryCount = entries.length;
-  if (collapsed) {
-    return (
-      <details className="entries entries-collapsible">
-        <summary>
-          <span>{title}</span>
-          <span className="entry-count">
-            {entryCount} entr{entryCount === 1 ? "y" : "ies"}
-          </span>
-        </summary>
-        <ol data-testid={testId}>
-          {entries.map((entry) => (
-            <li key={`${entry.row}-${entry.col}`}>
-              ({entry.row}, {entry.col}) = {entry.expr}
-            </li>
-          ))}
-        </ol>
-      </details>
-    );
-  }
-
-  return (
-    <div className="entries">
-      <h3>{title}</h3>
-      <ol data-testid={testId}>
-        {entries.map((entry) => (
-          <li key={`${entry.row}-${entry.col}`}>
-            ({entry.row}, {entry.col}) = {entry.expr}
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
 function JosephsonBranchList({
   branches,
 }: {
@@ -5636,7 +5578,7 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
     progress: "Step 10 of 11",
     title: "Build matrices",
     body:
-      "Click Build matrices to create the C and L_inv entries with the same engine used " +
+      "Click Build matrices to create the C and L_inv matrices with the same engine used " +
       "by the desktop app.",
   },
   copy: {

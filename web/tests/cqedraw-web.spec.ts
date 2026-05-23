@@ -18,6 +18,11 @@ async function clickBuildMatrices(page: Page) {
   await page.getByRole("button", { exact: true, name: "Build matrices" }).click();
 }
 
+async function expectRawMatrixEntriesHidden(page: Page) {
+  await expect(page.getByTestId("c-entries")).toHaveCount(0);
+  await expect(page.getByTestId("l-entries")).toHaveCount(0);
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -266,13 +271,7 @@ test("supports core web keyboard shortcuts without changing generated output", a
 
   await page.keyboard.press("Control+Enter");
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 
   const downloadPromise = page.waitForEvent("download");
   await page.keyboard.press("Control+S");
@@ -429,16 +428,7 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cclicked");
-  await expect(page.getByTestId("c-entries")).toContainText(
-    "(1, 1) = Cclicked + Cg",
-  );
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(0, 0) = Lclicked_inv",
-  );
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = Lclicked_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 });
 
 test("dismisses inline edge values by clicking away without deleting the edge", async ({
@@ -564,13 +554,7 @@ test("renders component symbols for regular and ground edge values", async ({
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 
   await page.locator('input[type="file"]').setInputFiles({
     name: "reversed-and-short-symbols.json",
@@ -707,9 +691,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("l-entries")).toContainText("Lgeom");
-  await expect(page.getByTestId("l-entries")).toContainText("Lj");
-  await expect(page.getByTestId("l-entries")).toContainText("Lground_j");
+  await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("jj-branches")).toContainText(
     "edge 0: phase index 0 - 1, LJ = Lj",
   );
@@ -720,6 +702,9 @@ test("exports Josephson junction branch metadata and phase direction", async ({
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
   const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedSnippet).toContain("Lgeom");
+  expect(copiedSnippet).toContain("Lj");
+  expect(copiedSnippet).toContain("Lground_j");
   expect(copiedSnippet).toContain("NODE_INDEX_MAP");
   expect(copiedSnippet).toContain('"matrix_index": 0');
   expect(copiedSnippet).toContain('"project_node_id": 0');
@@ -824,10 +809,7 @@ test("moves ground branches without changing generated output", async ({ page })
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 
   await page.getByRole("button", { exact: true, name: "Select" }).click();
   const groundEdge = page.getByTestId("edge-1");
@@ -860,10 +842,7 @@ test("moves ground branches without changing generated output", async ({ page })
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(1, 1) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 
   await page.keyboard.press("Control+Z");
   const afterUndo = await parseSvgLine(groundEdge);
@@ -959,8 +938,7 @@ test("keeps existing ground when Ground mode clicks a grounded node", async ({
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 1 x 1");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = Lg_inv");
+  await expectRawMatrixEntriesHidden(page);
 
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByTestId("edge-0")).toHaveCount(0);
@@ -1205,8 +1183,7 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = 1/L");
+  await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("tutorial-callout")).toContainText("Copy matrices");
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
@@ -1397,10 +1374,7 @@ test("selects multiple nodes and merges them into the focused node", async ({
   await clickBuildMatrices(page);
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).not.toContainText("C01");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12");
+  await expectRawMatrixEntriesHidden(page);
 
   await page.keyboard.press("Control+Z");
   await expect(page.getByTestId("output-status")).toContainText(
@@ -1621,12 +1595,7 @@ test("copies selected graph elements and pastes them from a preview", async ({
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");
-  await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(2, 2) = L12_inv");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(3, 3) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 });
 
 test("concatenates selected graph blocks", async ({ page }) => {
@@ -1714,14 +1683,7 @@ test("concatenates selected graph blocks", async ({ page }) => {
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 4 x 4");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText(
-    "(3, 3) = C12 + Cg",
-  );
-  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
-  await expect(page.getByTestId("l-entries")).toContainText(
-    "(3, 3) = L12_inv + Lg_inv",
-  );
+  await expectRawMatrixEntriesHidden(page);
 });
 
 test("concatenates selected graph blocks with multiple offset ports", async ({
@@ -1839,10 +1801,7 @@ test("expands concatenate pairings for irregular selected blocks", async ({
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 6 x 6");
-  await expect(page.getByTestId("c-entries")).toContainText("(2, 2) = 2*Cb");
-  await expect(page.getByTestId("c-entries")).toContainText("(3, 3) = 2*Ct");
-  await expect(page.getByTestId("c-entries")).toContainText("(4, 4) = Cb");
-  await expect(page.getByTestId("c-entries")).toContainText("(5, 5) = Ct");
+  await expectRawMatrixEntriesHidden(page);
 });
 
 test("disables concatenate pairings to duplicate the selected block", async ({
@@ -1886,7 +1845,7 @@ test("disables concatenate pairings to duplicate the selected block", async ({
   expect(Math.abs(duplicatedEdge.y2 - secondRepeatNode.y)).toBeLessThan(1);
 });
 
-test("creates a small circuit and generates matching C and L_inv entries", async ({
+test("creates a small circuit and copies generated C and L_inv matrices", async ({
   context,
   page,
 }) => {
@@ -1928,11 +1887,7 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await clickBuildMatrices(page);
 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 1) = -C12");
-  await expect(page.getByTestId("c-entries")).toContainText("(1, 1) = C12 + Cg");
-  await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
-  await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
+  await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("snippet-output")).toHaveCount(0);
   await expect(page.getByTestId("parameter-required-message")).toContainText(
     "Enter values for: C12, Cg, L12_inv, Lg_inv",
@@ -2007,6 +1962,10 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   expect(copiedSnippet).toContain("def circuit_matrices");
   expect(copiedSnippet).toContain("def capacitance_matrix");
   expect(copiedSnippet).toContain("def inverse_inductance_matrix");
+  expect(copiedSnippet).toContain("C12");
+  expect(copiedSnippet).toContain("Cg");
+  expect(copiedSnippet).toContain("L12_inv");
+  expect(copiedSnippet).toContain("Lg_inv");
   expect(copiedSnippet).toContain("def josephson_branches");
   expect(copiedSnippet).not.toContain("_func");
 });
@@ -2032,8 +1991,8 @@ test("does not create duplicate edges between the same two nodes", async ({ page
   );
   await clickBuildMatrices(page);
 
-  await expect(page.getByTestId("c-entries")).toContainText("(0, 0) = C12");
-  await expect(page.getByTestId("c-entries")).not.toContainText("2*C12");
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expectRawMatrixEntriesHidden(page);
 });
 
 async function symbolCoordinatesStayWithinHalfLength(

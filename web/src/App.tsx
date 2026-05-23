@@ -4367,6 +4367,10 @@ function ParameterControlRow({
     selectedSweepValue === undefined
       ? 0
       : Math.max(0, sweepValues.findIndex((candidate) => candidate === selectedSweepValue));
+  const previousFixedValue = value.trim();
+  const sweepReferenceValue = previousFixedValue
+    ? `Previous: ${previousFixedValue}`
+    : "Controlled by sweep";
   return (
     <div className="parameter-control-row">
       <div className="parameter-control-main">
@@ -4375,12 +4379,13 @@ function ParameterControlRow({
           <input
             aria-invalid={!range.enabled && missing ? true : undefined}
             aria-label={`Value for ${name}`}
+            className={range.enabled ? "parameter-sweep-reference-input" : undefined}
             disabled={disabled || range.enabled}
             inputMode="decimal"
             onChange={(event) => onParameterChange(name, event.target.value)}
-            placeholder={range.enabled ? "swept" : "required"}
+            placeholder="required"
             required={!range.enabled}
-            value={range.enabled ? "" : value}
+            value={range.enabled ? sweepReferenceValue : value}
           />
         </label>
         <label className="parameter-sweep-toggle">

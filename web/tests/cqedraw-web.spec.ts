@@ -788,6 +788,7 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
 
   await page.getByLabel("Sweep Lj").check();
+  await expect(page.getByLabel("Value for Lj")).toHaveValue("Previous: 8e-9");
   await page.getByLabel("Sweep min for Lj").fill("6e-9");
   await page.getByLabel("Sweep max for Lj").fill("1e-8");
   await page.getByLabel("Sweep step for Lj").fill("2e-9");
@@ -1945,6 +1946,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
 
   await page.getByLabel("Sweep C12").check();
+  await expect(page.getByLabel("Value for C12")).toHaveValue("Previous: 2e-15");
   await page.getByLabel("Sweep min for C12").fill("1e-15");
   await page.getByLabel("Sweep max for C12").fill("3e-15");
   await page.getByLabel("Sweep step for C12").fill("2e-15");

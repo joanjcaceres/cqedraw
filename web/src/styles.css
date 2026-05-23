@@ -939,6 +939,12 @@ textarea {
   box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.16);
 }
 
+.parameter-grid input.parameter-sweep-reference-input {
+  background: #eef4fa;
+  color: #516277;
+  font-weight: 700;
+}
+
 .parameter-mode-grid {
   gap: 10px;
 }

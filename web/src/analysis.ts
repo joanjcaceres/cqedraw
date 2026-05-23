@@ -5,6 +5,7 @@ export const MAX_SWEEP_POINTS = 101;
 export interface SweepSample {
   analysis: ModalAnalysisResult;
   value: number;
+  values?: Record<string, number>;
 }
 
 export interface SweepTable {
@@ -154,13 +155,16 @@ export function buildSweepZpfSeries(
 }
 
 export function buildSweepCsvTable(
-  parameterName: string,
+  parameterNames: string | string[],
   samples: SweepSample[],
 ): SweepTable {
+  const sweepParameterNames = Array.isArray(parameterNames)
+    ? parameterNames
+    : [parameterNames];
   const modeCount = maxFrequencyCount(samples);
   const branches = referenceBranches(samples);
   const columns = [
-    parameterName,
+    ...sweepParameterNames,
     ...Array.from({ length: modeCount }, (_, modeIndex) => `frequency_mode_${modeIndex}`),
     ...branches.flatMap((branch, branchIndex) =>
       Array.from(
@@ -170,7 +174,9 @@ export function buildSweepCsvTable(
     ),
   ];
   const rows = samples.map((sample) => [
-    sample.value,
+    ...sweepParameterNames.map((parameterName, index) =>
+      sample.values?.[parameterName] ?? (index === 0 ? sample.value : Number.NaN),
+    ),
     ...Array.from(
       { length: modeCount },
       (_, modeIndex) => sample.analysis.frequencies_ghz?.[modeIndex] ?? Number.NaN,

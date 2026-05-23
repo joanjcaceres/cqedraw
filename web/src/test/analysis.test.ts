@@ -99,6 +99,29 @@ describe("analysis helpers", () => {
     });
   });
 
+  it("builds stable sweep CSV rows for multiple swept parameters", () => {
+    const samples: SweepSample[] = [
+      {
+        analysis: { available: true, frequencies_ghz: [5] },
+        value: 1,
+        values: { C: 1, Lj: 8 },
+      },
+      {
+        analysis: { available: true, frequencies_ghz: [6] },
+        value: 2,
+        values: { C: 2, Lj: 9 },
+      },
+    ];
+
+    expect(buildSweepCsvTable(["C", "Lj"], samples)).toEqual({
+      columns: ["C", "Lj", "frequency_mode_0"],
+      rows: [
+        [1, 8, 5],
+        [2, 9, 6],
+      ],
+    });
+  });
+
   it("builds current analysis chart series", () => {
     const analysis = {
       available: true,

@@ -764,15 +764,17 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   });
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
 
-  await page.getByLabel("Sweep parameter").selectOption("Lj");
-  await page.getByLabel("Sweep min").fill("6e-9");
-  await page.getByLabel("Sweep max").fill("1e-8");
-  await page.getByLabel("Sweep step").fill("2e-9");
+  await page.getByLabel("Sweep Lj").check();
+  await page.getByLabel("Sweep min for Lj").fill("6e-9");
+  await page.getByLabel("Sweep max for Lj").fill("1e-8");
+  await page.getByLabel("Sweep step for Lj").fill("2e-9");
   await page.getByRole("button", { name: "Run sweep" }).click();
-  await expect(page.getByTestId("sweep-frequency-plot")).toBeVisible({
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByTestId("sweep-zpf-plot")).toBeVisible();
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
+  await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
 
   const sweepExportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export sweep CSV" }).click();
@@ -1909,15 +1911,22 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await page.getByRole("button", { name: "Analyze modes" }).click();
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
 
-  await page.getByLabel("Sweep parameter").selectOption("C12");
-  await page.getByLabel("Sweep min").fill("1e-15");
-  await page.getByLabel("Sweep max").fill("3e-15");
-  await page.getByLabel("Sweep step").fill("1e-15");
+  await page.getByLabel("Sweep C12").check();
+  await page.getByLabel("Sweep min for C12").fill("1e-15");
+  await page.getByLabel("Sweep max for C12").fill("3e-15");
+  await page.getByLabel("Sweep step for C12").fill("2e-15");
+  await page.getByLabel("Sweep L12_inv").check();
+  await page.getByLabel("Sweep min for L12_inv").fill("1e9");
+  await page.getByLabel("Sweep max for L12_inv").fill("2e9");
+  await page.getByLabel("Sweep step for L12_inv").fill("1e9");
   await expect(page.getByRole("button", { name: "Run sweep" })).toBeEnabled();
   await page.getByRole("button", { name: "Run sweep" }).click();
-  await expect(page.getByTestId("sweep-frequency-plot")).toBeVisible({
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
+  await expect(page.getByTestId("sweep-sample-slider-C12")).toBeVisible();
+  await expect(page.getByTestId("sweep-sample-slider-L12_inv")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeEnabled();
   const sweepExportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export sweep CSV" }).click();
@@ -1929,8 +1938,8 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   }
   const sweepCsv = await readFile(sweepExportedPath, "utf8");
   const sweepRows = sweepCsv.trim().split(/\r?\n/);
-  expect(sweepRows).toHaveLength(4);
-  expect(sweepRows[0]).toContain("C12,frequency_mode_0");
+  expect(sweepRows).toHaveLength(5);
+  expect(sweepRows[0]).toContain("C12,L12_inv,frequency_mode_0");
 
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();

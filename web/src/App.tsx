@@ -234,11 +234,20 @@ interface EngineWarmupState {
   error: string | null;
 }
 
-interface SweepConfig {
+interface ParameterSweepConfig {
+  enabled: boolean;
   max: string;
   min: string;
-  parameter: string;
   step: string;
+}
+
+type ParameterSweepConfigs = Record<string, ParameterSweepConfig>;
+
+interface MultiSweepValidation {
+  error: string | null;
+  parameterValues: Record<string, number[]>;
+  parameters: string[];
+  values: Record<string, number>[];
 }
 
 const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
@@ -247,10 +256,10 @@ const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
   error: null,
 };
 
-const INITIAL_SWEEP_CONFIG: SweepConfig = {
+const INITIAL_PARAMETER_SWEEP_CONFIG: ParameterSweepConfig = {
+  enabled: false,
   max: "",
   min: "",
-  parameter: "",
   step: "",
 };
 
@@ -283,11 +292,9 @@ export function App() {
   const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
     null,
   );
-  const [sweepConfig, setSweepConfig] = useState<SweepConfig>(
-    INITIAL_SWEEP_CONFIG,
-  );
+  const [sweepConfig, setSweepConfig] = useState<ParameterSweepConfigs>({});
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
-  const [sweepSampleIndex, setSweepSampleIndex] = useState(0);
+  const [sweepSliderValues, setSweepSliderValues] = useState<Record<string, number>>({});
   const [sweepRunning, setSweepRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
@@ -434,29 +441,30 @@ export function App() {
     () => missingParameterNames(outputParameters, parameterValues),
     [outputParameters, parameterValues],
   );
-  const selectedSweepParameter =
-    sweepConfig.parameter && outputParameters.includes(sweepConfig.parameter)
-      ? sweepConfig.parameter
-      : outputParameters[0] ?? "";
   const sweepValidation = useMemo(
     () =>
-      buildSweepValues(
-        sweepConfig.min,
-        sweepConfig.max,
-        sweepConfig.step,
+      buildMultiSweepValues(
+        outputParameters,
+        sweepConfig,
         MAX_SWEEP_POINTS,
       ),
-    [sweepConfig.max, sweepConfig.min, sweepConfig.step],
+    [outputParameters, sweepConfig],
   );
+  const activeSweepParameters = sweepValidation.parameters;
   const missingSweepFixedValues = useMemo(
     () =>
       outputParameters.filter(
         (name) =>
-          name !== selectedSweepParameter &&
+          !sweepConfig[name]?.enabled &&
           (parameterValues[name] ?? "").trim() === "",
       ),
-    [outputParameters, parameterValues, selectedSweepParameter],
+    [outputParameters, parameterValues, sweepConfig],
   );
+  const selectedSweepSample = useMemo(
+    () => selectedSampleForSweepValues(sweepSamples, sweepSliderValues),
+    [sweepSamples, sweepSliderValues],
+  );
+  const displayedAnalysis = selectedSweepSample?.analysis ?? modalAnalysis;
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -487,11 +495,11 @@ export function App() {
       return next;
     });
     setSweepConfig((current) => {
-      const parameter =
-        current.parameter && outputParameters.includes(current.parameter)
-          ? current.parameter
-          : outputParameters[0] ?? "";
-      return current.parameter === parameter ? current : { ...current, parameter };
+      const next: ParameterSweepConfigs = {};
+      for (const name of outputParameters) {
+        next[name] = current[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
+      }
+      return next;
     });
   }, [output, outputParameters]);
 
@@ -677,7 +685,7 @@ export function App() {
 
   function clearSweepResults() {
     setSweepSamples([]);
-    setSweepSampleIndex(0);
+    setSweepSliderValues({});
     setSweepError(null);
   }
 
@@ -1452,6 +1460,7 @@ export function App() {
       return null;
     }
 
+    clearSweepResults();
     setEngineWarmup((current) => ({
       base: "ready",
       analysis: current.analysis === "ready" ? "ready" : "warming",
@@ -1534,8 +1543,14 @@ export function App() {
     }
   }
 
-  function updateSweepConfig(updates: Partial<SweepConfig>) {
-    setSweepConfig((current) => ({ ...current, ...updates }));
+  function updateSweepConfig(name: string, updates: Partial<ParameterSweepConfig>) {
+    setSweepConfig((current) => ({
+      ...current,
+      [name]: {
+        ...(current[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG),
+        ...updates,
+      },
+    }));
     clearSweepResults();
   }
 
@@ -1545,26 +1560,24 @@ export function App() {
     if (!result) {
       return;
     }
-    const parameter = selectedSweepParameter || (result.parameters[0] ?? "");
-    if (!parameter) {
-      const message = "Build matrices with at least one parameter to sweep.";
+    const validation = buildMultiSweepValues(
+      result.parameters,
+      sweepConfig,
+      MAX_SWEEP_POINTS,
+    );
+    if (validation.parameters.length === 0) {
+      const message = "Set at least one parameter to Sweep.";
       setSweepError(message);
       setEngineStatus(message);
       return;
     }
-    const validation = buildSweepValues(
-      sweepConfig.min,
-      sweepConfig.max,
-      sweepConfig.step,
-      MAX_SWEEP_POINTS,
-    );
     if (validation.error) {
       setSweepError(validation.error);
       setEngineStatus(validation.error);
       return;
     }
     const missingFixedValues = result.parameters.filter(
-      (name) => name !== parameter && (parameterValues[name] ?? "").trim() === "",
+      (name) => !validation.parameters.includes(name) && (parameterValues[name] ?? "").trim() === "",
     );
     if (missingFixedValues.length > 0) {
       const message = `Enter fixed values for: ${missingFixedValues.join(", ")}`;
@@ -1582,7 +1595,7 @@ export function App() {
     const sweepProject = projectRef.current;
     setSweepRunning(true);
     setSweepSamples([]);
-    setSweepSampleIndex(0);
+    setSweepSliderValues({});
     setSweepError(null);
     setEngineWarmup((current) => ({
       base: "ready",
@@ -1593,12 +1606,16 @@ export function App() {
     try {
       const samples: SweepSample[] = [];
       for (let index = 0; index < validation.values.length; index += 1) {
-        const value = validation.values[index];
+        const values = validation.values[index];
+        const analysisParameterValues = {
+          ...parameterValues,
+          ...Object.fromEntries(
+            Object.entries(values).map(([name, value]) => [name, String(value)]),
+          ),
+        };
         const cacheKey = sweepCacheKey(
           sweepProject,
-          parameter,
-          parameterValues,
-          value,
+          analysisParameterValues,
         );
         const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
         if (cachedSample) {
@@ -1612,21 +1629,26 @@ export function App() {
         }
 
         setEngineStatus(`Running sweep ${index + 1} / ${validation.values.length}...`);
-        const analysis = await clientRef.current!.analyze(sweepProject, {
-          ...parameterValues,
-          [parameter]: String(value),
-        });
+        const analysis = await clientRef.current!.analyze(
+          sweepProject,
+          analysisParameterValues,
+        );
         if (!analysis.available || analysis.error) {
           throw new Error(
-            analysis.error ?? `BBQ modal analysis failed at ${parameter} = ${value}.`,
+            analysis.error ?? `BBQ modal analysis failed at sweep point ${index + 1}.`,
           );
         }
-        const sample = { analysis, value };
+        const sample = {
+          analysis,
+          value: values[validation.parameters[0]],
+          values,
+        };
         rememberSweepSample(sweepSampleCacheRef.current, cacheKey, sample);
         samples.push(sample);
         setSweepSamples([...samples]);
       }
       setSweepSamples(samples);
+      setSweepSliderValues(samples[0]?.values ?? {});
       setEngineWarmup({ base: "ready", analysis: "ready", error: null });
       setEngineStatus(
         `Computed ${samples.length} sweep point${samples.length === 1 ? "" : "s"}.`,
@@ -1648,10 +1670,10 @@ export function App() {
 
   function exportSweepCsv() {
     setOutputDrawerOpen(true);
-    if (sweepSamples.length === 0 || !selectedSweepParameter) {
+    if (sweepSamples.length === 0 || activeSweepParameters.length === 0) {
       return;
     }
-    const table = buildSweepCsvTable(selectedSweepParameter, sweepSamples);
+    const table = buildSweepCsvTable(activeSweepParameters, sweepSamples);
     downloadCsv("cqedraw-sweep-table.csv", table.columns, table.rows);
     setEngineStatus("Exported sweep table CSV.");
   }
@@ -2455,32 +2477,30 @@ export function App() {
                 </div>
               </div>
               <AnalysisParameterPanel
+                activeSweepParameters={activeSweepParameters}
                 disabled={!output}
                 fixedMissingParameters={missingSweepFixedValues}
                 missingParameters={missingParameterValues}
                 onAnalyze={runModalAnalysis}
                 onParameterChange={updateParameterValue}
                 onRangeChange={updateSweepConfig}
+                onSliderChange={(name, value) =>
+                  setSweepSliderValues((current) => ({ ...current, [name]: value }))
+                }
                 onExportAnalysis={exportAnalysisCsv}
                 onExportSweep={exportSweepCsv}
                 onRunSweep={runParameterSweep}
                 parameters={outputParameters}
                 running={sweepRunning}
                 samples={sweepSamples}
-                selectedParameter={selectedSweepParameter}
+                selectedValues={sweepSliderValues}
                 sweepError={sweepError}
                 validation={sweepValidation}
                 values={parameterValues}
                 sweepValues={sweepConfig}
               />
-              <ModalAnalysisTable result={modalAnalysis} />
-              <ModalAnalysisPlots result={modalAnalysis} />
-              <SweepSampleViewer
-                onSampleIndexChange={setSweepSampleIndex}
-                parameterName={selectedSweepParameter}
-                sampleIndex={sweepSampleIndex}
-                samples={sweepSamples}
-              />
+              <ModalAnalysisTable result={displayedAnalysis} />
+              <ModalAnalysisPlots result={displayedAnalysis} />
             </div>
           </section>
         </aside>
@@ -4078,41 +4098,45 @@ function JosephsonBranchList({
 }
 
 function AnalysisParameterPanel({
+  activeSweepParameters,
   disabled,
   fixedMissingParameters,
   missingParameters,
   onAnalyze,
   onParameterChange,
   onRangeChange,
+  onSliderChange,
   onExportAnalysis,
   onExportSweep,
   onRunSweep,
   parameters,
   running,
   samples,
-  selectedParameter,
+  selectedValues,
   sweepError,
   validation,
   values,
   sweepValues,
 }: {
+  activeSweepParameters: string[];
   disabled: boolean;
   fixedMissingParameters: string[];
   missingParameters: string[];
   onAnalyze: () => void;
   onParameterChange: (name: string, value: string) => void;
-  onRangeChange: (updates: Partial<SweepConfig>) => void;
+  onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
+  onSliderChange: (name: string, value: number) => void;
   onExportAnalysis: () => void;
   onExportSweep: () => void;
   onRunSweep: () => void;
   parameters: string[];
   running: boolean;
   samples: SweepSample[];
-  selectedParameter: string;
+  selectedValues: Record<string, number>;
   sweepError: string | null;
-  validation: { error: string | null; values: number[] };
+  validation: MultiSweepValidation;
   values: Record<string, string>;
-  sweepValues: SweepConfig;
+  sweepValues: ParameterSweepConfigs;
 }) {
   const missingParameterSet = new Set(missingParameters);
   const actionDisabled = disabled || missingParameters.length > 0;
@@ -4129,11 +4153,14 @@ function AnalysisParameterPanel({
       ? ""
       : parameters.length === 0
         ? "Build matrices with at least one parameter to sweep."
-        : fixedMissingMessage || validation.error || sweepError || "";
+        : activeSweepParameters.length === 0
+          ? "Set at least one parameter to Sweep."
+          : fixedMissingMessage || validation.error || sweepError || "";
   const runDisabled =
     disabled ||
     running ||
     parameters.length === 0 ||
+    activeSweepParameters.length === 0 ||
     fixedMissingParameters.length > 0 ||
     Boolean(validation.error) ||
     validation.values.length === 0;
@@ -4178,21 +4205,21 @@ function AnalysisParameterPanel({
               {missingMessage}
             </p>
           ) : null}
-          <div className="parameter-grid" data-testid="parameter-values">
+          <div className="parameter-grid parameter-mode-grid" data-testid="parameter-values">
             {parameters.map((name) => (
-              <label key={name}>
-                <span>{name}</span>
-                <input
-                  aria-invalid={missingParameterSet.has(name) || undefined}
-                  aria-label={`Value for ${name}`}
-                  disabled={disabled}
-                  inputMode="decimal"
-                  onChange={(event) => onParameterChange(name, event.target.value)}
-                  placeholder="required"
-                  required
-                  value={values[name] ?? ""}
-                />
-              </label>
+              <ParameterControlRow
+                key={name}
+                disabled={disabled || running}
+                missing={missingParameterSet.has(name)}
+                name={name}
+                onParameterChange={onParameterChange}
+                onRangeChange={onRangeChange}
+                onSliderChange={onSliderChange}
+                range={sweepValues[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG}
+                selectedSweepValue={selectedValues[name]}
+                sweepValues={validation.parameterValues[name] ?? []}
+                value={values[name] ?? ""}
+              />
             ))}
           </div>
         </>
@@ -4208,8 +4235,8 @@ function AnalysisParameterPanel({
               type="button"
             >
               <Play size={14} />
-              {running ? "Running..." : "Run sweep"}
-            </button>
+            {running ? "Running..." : "Run sweep"}
+          </button>
             <button
               disabled={exportSweepDisabled}
               onClick={onExportSweep}
@@ -4220,57 +4247,6 @@ function AnalysisParameterPanel({
               Export sweep CSV
             </button>
           </div>
-        </div>
-        <div className="sweep-grid">
-          <label>
-            <span>Sweep parameter</span>
-            <select
-              aria-label="Sweep parameter"
-              disabled={disabled || running || parameters.length === 0}
-              onChange={(event) => onRangeChange({ parameter: event.target.value })}
-              value={selectedParameter}
-            >
-              {parameters.length === 0 ? <option value="">No parameters</option> : null}
-              {parameters.map((parameter) => (
-                <option key={parameter} value={parameter}>
-                  {parameter}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Min</span>
-            <input
-              aria-label="Sweep min"
-              disabled={disabled || running}
-              inputMode="decimal"
-              onChange={(event) => onRangeChange({ min: event.target.value })}
-              placeholder="min"
-              value={sweepValues.min}
-            />
-          </label>
-          <label>
-            <span>Max</span>
-            <input
-              aria-label="Sweep max"
-              disabled={disabled || running}
-              inputMode="decimal"
-              onChange={(event) => onRangeChange({ max: event.target.value })}
-              placeholder="max"
-              value={sweepValues.max}
-            />
-          </label>
-          <label>
-            <span>Step</span>
-            <input
-              aria-label="Sweep step"
-              disabled={disabled || running}
-              inputMode="decimal"
-              onChange={(event) => onRangeChange({ step: event.target.value })}
-              placeholder="step"
-              value={sweepValues.step}
-            />
-          </label>
         </div>
         {sweepValidationMessage ? (
           <p className="parameter-panel-warning" data-testid="sweep-validation-message">
@@ -4288,6 +4264,128 @@ function AnalysisParameterPanel({
           </p>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function ParameterControlRow({
+  disabled,
+  missing,
+  name,
+  onParameterChange,
+  onRangeChange,
+  onSliderChange,
+  range,
+  selectedSweepValue,
+  sweepValues,
+  value,
+}: {
+  disabled: boolean;
+  missing: boolean;
+  name: string;
+  onParameterChange: (name: string, value: string) => void;
+  onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
+  onSliderChange: (name: string, value: number) => void;
+  range: ParameterSweepConfig;
+  selectedSweepValue: number | undefined;
+  sweepValues: number[];
+  value: string;
+}) {
+  const selectedIndex =
+    selectedSweepValue === undefined
+      ? 0
+      : Math.max(0, sweepValues.findIndex((candidate) => candidate === selectedSweepValue));
+  return (
+    <div className="parameter-control-row">
+      <div className="parameter-control-main">
+        <label>
+          <span>{name}</span>
+          <input
+            aria-invalid={!range.enabled && missing ? true : undefined}
+            aria-label={`Value for ${name}`}
+            disabled={disabled || range.enabled}
+            inputMode="decimal"
+            onChange={(event) => onParameterChange(name, event.target.value)}
+            placeholder={range.enabled ? "swept" : "required"}
+            required={!range.enabled}
+            value={range.enabled ? "" : value}
+          />
+        </label>
+        <label className="parameter-sweep-toggle">
+          <input
+            aria-label={`Sweep ${name}`}
+            checked={range.enabled}
+            disabled={disabled}
+            onChange={(event) =>
+              onRangeChange(name, { enabled: event.target.checked })
+            }
+            type="checkbox"
+          />
+          <span>Sweep</span>
+        </label>
+      </div>
+      {range.enabled ? (
+        <>
+          <div className="sweep-grid parameter-range-grid">
+            <label>
+              <span>Min</span>
+              <input
+                aria-label={`Sweep min for ${name}`}
+                disabled={disabled}
+                inputMode="decimal"
+                onChange={(event) => onRangeChange(name, { min: event.target.value })}
+                placeholder="min"
+                value={range.min}
+              />
+            </label>
+            <label>
+              <span>Max</span>
+              <input
+                aria-label={`Sweep max for ${name}`}
+                disabled={disabled}
+                inputMode="decimal"
+                onChange={(event) => onRangeChange(name, { max: event.target.value })}
+                placeholder="max"
+                value={range.max}
+              />
+            </label>
+            <label>
+              <span>Step</span>
+              <input
+                aria-label={`Sweep step for ${name}`}
+                disabled={disabled}
+                inputMode="decimal"
+                onChange={(event) => onRangeChange(name, { step: event.target.value })}
+                placeholder="step"
+                value={range.step}
+              />
+            </label>
+          </div>
+          {sweepValues.length > 0 ? (
+            <label className="sweep-sample-slider">
+              <span>
+                {name} ={" "}
+                {formatModalNumber(
+                  selectedSweepValue ?? sweepValues[0],
+                )}
+              </span>
+              <input
+                aria-label={`Sweep sample for ${name}`}
+                data-testid={`sweep-sample-slider-${name}`}
+                disabled={disabled}
+                max={sweepValues.length - 1}
+                min={0}
+                onChange={(event) =>
+                  onSliderChange(name, sweepValues[Number(event.target.value)])
+                }
+                step={1}
+                type="range"
+                value={selectedIndex}
+              />
+            </label>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -4379,61 +4477,6 @@ function ModalAnalysisPlots({
         title={zpfTitle}
         xLabel="mode index"
         yLabel="phase ZPF"
-      />
-    </div>
-  );
-}
-
-function SweepSampleViewer({
-  onSampleIndexChange,
-  parameterName,
-  sampleIndex,
-  samples,
-}: {
-  onSampleIndexChange: (sampleIndex: number) => void;
-  parameterName: string;
-  sampleIndex: number;
-  samples: SweepSample[];
-}) {
-  const selectedIndex =
-    samples.length > 0 ? clamp(sampleIndex, 0, samples.length - 1) : 0;
-
-  useEffect(() => {
-    if (selectedIndex !== sampleIndex) {
-      onSampleIndexChange(selectedIndex);
-    }
-  }, [onSampleIndexChange, sampleIndex, selectedIndex]);
-
-  if (samples.length === 0) {
-    return null;
-  }
-
-  const selectedSample = samples[selectedIndex];
-  const selectedValue = selectedSample?.value ?? samples[0].value;
-
-  return (
-    <div className="sweep-sample-viewer" data-testid="sweep-analysis-plots">
-      <label className="sweep-sample-slider">
-        <span>
-          {parameterName || "Sweep"} = {formatModalNumber(selectedValue)}
-        </span>
-        <input
-          aria-label="Sweep sample"
-          data-testid="sweep-sample-slider"
-          max={samples.length - 1}
-          min={0}
-          onChange={(event) => onSampleIndexChange(Number(event.target.value))}
-          step={1}
-          type="range"
-          value={selectedIndex}
-        />
-      </label>
-      <ModalAnalysisPlots
-        frequencyTestId="sweep-frequency-plot"
-        frequencyTitle="Sweep sample frequencies"
-        result={selectedSample.analysis}
-        zpfTestId="sweep-zpf-plot"
-        zpfTitle="Sweep sample JJ phase ZPF"
       />
     </div>
   );
@@ -4732,20 +4775,81 @@ function missingParameterNames(
   return parameters.filter((name) => (values[name] ?? "").trim() === "");
 }
 
+function buildMultiSweepValues(
+  parameters: string[],
+  configs: ParameterSweepConfigs,
+  maxPoints: number,
+): MultiSweepValidation {
+  const activeParameters = parameters.filter((name) => configs[name]?.enabled);
+  const parameterValues: Record<string, number[]> = {};
+  const values: Record<string, number>[] = [{}];
+
+  for (const parameter of activeParameters) {
+    const config = configs[parameter] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
+    const validation = buildSweepValues(config.min, config.max, config.step, maxPoints);
+    if (validation.error) {
+      return {
+        error: `${parameter}: ${validation.error}`,
+        parameterValues,
+        parameters: activeParameters,
+        values: [],
+      };
+    }
+    parameterValues[parameter] = validation.values;
+    const currentCount = values.length * validation.values.length;
+    if (currentCount > maxPoints) {
+      return {
+        error: `Sweep is limited to ${maxPoints} points. Reduce one range or increase one step.`,
+        parameterValues,
+        parameters: activeParameters,
+        values: [],
+      };
+    }
+    const nextValues: Record<string, number>[] = [];
+    for (const existing of values) {
+      for (const value of validation.values) {
+        nextValues.push({ ...existing, [parameter]: value });
+      }
+    }
+    values.splice(0, values.length, ...nextValues);
+  }
+
+  return {
+    error: null,
+    parameterValues,
+    parameters: activeParameters,
+    values: activeParameters.length === 0 ? [] : values,
+  };
+}
+
+function selectedSampleForSweepValues(
+  samples: SweepSample[],
+  selectedValues: Record<string, number>,
+): SweepSample | null {
+  if (samples.length === 0) {
+    return null;
+  }
+  const selectedNames = Object.keys(selectedValues);
+  if (selectedNames.length === 0) {
+    return samples[0];
+  }
+  return (
+    samples.find((sample) =>
+      selectedNames.every((name) => sample.values?.[name] === selectedValues[name]),
+    ) ?? samples[0]
+  );
+}
+
 function sweepCacheKey(
   project: CircuitProject,
-  sweepParameter: string,
   parameterValues: Record<string, string>,
-  sweepValue: number,
 ): string {
-  const fixedValues = Object.entries(parameterValues)
-    .filter(([name]) => name !== sweepParameter)
-    .sort(([left], [right]) => left.localeCompare(right));
+  const sortedValues = Object.entries(parameterValues).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
   return JSON.stringify({
-    fixedValues,
+    parameterValues: sortedValues,
     project: serializeProjectForDirtyCheck(project),
-    sweepParameter,
-    sweepValue,
   });
 }
 

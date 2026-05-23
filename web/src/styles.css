@@ -873,7 +873,7 @@ textarea {
   gap: 6px;
 }
 
-.parameter-grid label {
+.parameter-grid > label {
   align-items: center;
   display: grid;
   gap: 8px;
@@ -900,6 +900,49 @@ textarea {
 .parameter-grid input[aria-invalid="true"] {
   border-color: #d97706;
   box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.16);
+}
+
+.parameter-mode-grid {
+  gap: 10px;
+}
+
+.parameter-control-row {
+  background: #fbfdff;
+  border: 1px solid #dbe5ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+}
+
+.parameter-control-main {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.parameter-control-main label:first-child {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(52px, 0.35fr) minmax(0, 1fr);
+}
+
+.parameter-sweep-toggle {
+  align-items: center;
+  color: #26384e;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.parameter-sweep-toggle input {
+  min-height: auto;
+  padding: 0;
+  width: auto;
 }
 
 .modal-analysis-table-wrap {
@@ -936,6 +979,10 @@ textarea {
   display: grid;
   gap: 6px;
   grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+}
+
+.parameter-range-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .sweep-grid label,
@@ -1088,11 +1135,6 @@ textarea {
   display: inline-block;
   height: 9px;
   width: 9px;
-}
-
-.sweep-sample-viewer {
-  display: grid;
-  gap: 10px;
 }
 
 .sweep-sample-slider {

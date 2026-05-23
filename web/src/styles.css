@@ -573,7 +573,7 @@ textarea {
   position: fixed;
   right: 0;
   top: 64px;
-  width: min(760px, 52vw);
+  width: min(1040px, 88vw);
   z-index: 7;
 }
 
@@ -592,6 +592,11 @@ textarea {
   display: grid;
   gap: 12px;
   padding: 12px;
+}
+
+.output-section-analysis {
+  flex: 1 1 auto;
+  min-height: min(660px, calc(100vh - 210px));
 }
 
 .output-section-heading {
@@ -777,6 +782,7 @@ textarea {
   height: 100%;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
 }
 
 .entries {
@@ -809,6 +815,37 @@ textarea {
 .modal-analysis {
   display: grid;
   gap: 8px;
+}
+
+.analysis-workspace {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(300px, 0.86fr) minmax(380px, 1.14fr);
+  min-height: 0;
+}
+
+.analysis-controls,
+.analysis-results {
+  min-width: 0;
+}
+
+.analysis-controls {
+  align-self: start;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.analysis-results {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 228px);
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  padding-right: 2px;
 }
 
 .parameter-panel-heading {
@@ -1455,7 +1492,7 @@ textarea {
   }
 
   .output-drawer {
-    width: min(100vw, 620px);
+    width: calc(100vw - 24px);
   }
 
   .output-section-heading {
@@ -1465,10 +1502,6 @@ textarea {
 
   .port-pair-row {
     align-items: stretch;
-    grid-template-columns: 1fr;
-  }
-
-  .sweep-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1483,5 +1516,34 @@ textarea {
     right: 12px;
     max-width: none;
     top: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .output-drawer {
+    max-width: 100vw;
+    width: 100vw;
+  }
+
+  .output-section-analysis {
+    min-height: auto;
+  }
+
+  .analysis-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-controls {
+    position: static;
+  }
+
+  .analysis-results {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .sweep-grid {
+    grid-template-columns: 1fr;
   }
 }

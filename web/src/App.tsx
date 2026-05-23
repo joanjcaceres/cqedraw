@@ -327,9 +327,13 @@ export function App() {
   const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
+  const outputPanelRef = useRef<HTMLElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepRequestIdRef = useRef(0);
+  const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
+    null,
+  );
   const projectRef = useRef<CircuitProject>(project);
   const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
   const gridRect = gridRectForView(viewBox);
@@ -482,6 +486,32 @@ export function App() {
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
+
+  useLayoutEffect(() => {
+    const restore = outputScrollRestoreRef.current;
+    const panel = outputPanelRef.current;
+    if (!restore || !panel) {
+      return;
+    }
+    if (performance.now() > restore.expiresAt) {
+      outputScrollRestoreRef.current = null;
+      return;
+    }
+
+    panel.scrollTop = restore.top;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const activeRestore = outputScrollRestoreRef.current;
+      if (!activeRestore || !outputPanelRef.current) {
+        return;
+      }
+      if (performance.now() > activeRestore.expiresAt) {
+        outputScrollRestoreRef.current = null;
+        return;
+      }
+      outputPanelRef.current.scrollTop = activeRestore.top;
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [displayedAnalysis, engineStatus, sweepRunning, sweepSamples]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -830,6 +860,17 @@ export function App() {
     setSweepSliderValues({});
     setSweepRunning(false);
     setSweepError(null);
+  }
+
+  function preserveOutputPanelScroll() {
+    const panel = outputPanelRef.current;
+    if (!panel) {
+      return;
+    }
+    outputScrollRestoreRef.current = {
+      expiresAt: performance.now() + 2200,
+      top: panel.scrollTop,
+    };
   }
 
   function commitProjectChange(
@@ -2441,7 +2482,11 @@ export function App() {
           className="output-drawer"
           data-testid="output-drawer"
         >
-          <section className="panel output-panel">
+          <section
+            className="panel output-panel"
+            data-testid="output-panel"
+            ref={outputPanelRef}
+          >
             <div className="output-panel-heading">
               <h2>Output</h2>
               <div className="output-panel-actions">
@@ -2505,30 +2550,37 @@ export function App() {
                   <p>Use numeric parameter values for BBQ modal analysis.</p>
                 </div>
               </div>
-              <AnalysisParameterPanel
-                activeSweepParameters={activeSweepParameters}
-                disabled={!output}
-                fixedMissingParameters={missingSweepFixedValues}
-                missingParameters={missingParameterValues}
-                onAnalyze={runModalAnalysis}
-                onParameterChange={updateParameterValue}
-                onRangeChange={updateSweepConfig}
-                onSliderChange={(name, value) =>
-                  setSweepSliderValues((current) => ({ ...current, [name]: value }))
-                }
-                onExportAnalysis={exportAnalysisCsv}
-                onExportSweep={exportSweepCsv}
-                parameters={outputParameters}
-                running={sweepRunning}
-                samples={sweepSamples}
-                selectedValues={sweepSliderValues}
-                sweepError={sweepError}
-                validation={sweepValidation}
-                values={parameterValues}
-                sweepValues={sweepConfig}
-              />
-              <ModalAnalysisTable result={displayedAnalysis} />
-              <ModalAnalysisPlots result={displayedAnalysis} />
+              <div className="analysis-workspace" data-testid="analysis-workspace">
+                <div className="analysis-controls">
+                  <AnalysisParameterPanel
+                    activeSweepParameters={activeSweepParameters}
+                    disabled={!output}
+                    fixedMissingParameters={missingSweepFixedValues}
+                    missingParameters={missingParameterValues}
+                    onAnalyze={runModalAnalysis}
+                    onParameterChange={updateParameterValue}
+                    onRangeChange={updateSweepConfig}
+                    onSliderChange={(name, value) => {
+                      preserveOutputPanelScroll();
+                      setSweepSliderValues((current) => ({ ...current, [name]: value }));
+                    }}
+                    onExportAnalysis={exportAnalysisCsv}
+                    onExportSweep={exportSweepCsv}
+                    parameters={outputParameters}
+                    running={sweepRunning}
+                    samples={sweepSamples}
+                    selectedValues={sweepSliderValues}
+                    sweepError={sweepError}
+                    validation={sweepValidation}
+                    values={parameterValues}
+                    sweepValues={sweepConfig}
+                  />
+                </div>
+                <div className="analysis-results" data-testid="analysis-results">
+                  <ModalAnalysisPlots result={displayedAnalysis} />
+                  <ModalAnalysisTable result={displayedAnalysis} />
+                </div>
+              </div>
             </div>
           </section>
         </aside>
@@ -4187,7 +4239,7 @@ function AnalysisParameterPanel({
   const exportSweepDisabled = disabled || running || samples.length === 0;
 
   return (
-    <div className="parameter-panel analysis-parameter-panel">
+    <div className="parameter-panel analysis-parameter-panel" data-testid="analysis-parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
         <div className="parameter-panel-actions">

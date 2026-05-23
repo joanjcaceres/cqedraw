@@ -36,6 +36,16 @@ async function setRangeInputValue(locator: Locator, value: string) {
   }, value);
 }
 
+async function expectAnalysisResultsRightOfControls(page: Page) {
+  const controlsBox = await page.getByTestId("analysis-parameter-panel").boundingBox();
+  const resultsBox = await page.getByTestId("analysis-results").boundingBox();
+  if (!controlsBox || !resultsBox) {
+    throw new Error("Expected analysis controls and results boxes to be available.");
+  }
+  expect(resultsBox.x).toBeGreaterThan(controlsBox.x + controlsBox.width * 0.85);
+  expect(resultsBox.y).toBeLessThanOrEqual(controlsBox.y + 8);
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -795,6 +805,7 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
     timeout: 60_000,
   });
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 
   const sweepExportPromise = page.waitForEvent("download");
@@ -833,6 +844,7 @@ test("moves ground branches without changing generated output", async ({ page })
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
+  await closeOutputDrawer(page);
 
   await page.getByRole("button", { exact: true, name: "Select" }).click();
   const groundEdge = page.getByTestId("edge-1");
@@ -1965,6 +1977,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeEnabled();
   const sweepExportPromise = page.waitForEvent("download");

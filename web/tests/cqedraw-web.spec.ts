@@ -15,7 +15,9 @@ async function openOutputDrawer(page: Page) {
 
 async function clickBuildMatrices(page: Page) {
   await openOutputDrawer(page);
-  await page.getByRole("button", { exact: true, name: "Build matrices" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(/Generated \d+ x \d+/, {
+    timeout: 60_000,
+  });
 }
 
 async function expectRawMatrixEntriesHidden(page: Page) {
@@ -1011,7 +1013,7 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
     "Click the canvas to place nodes.",
   );
   await expect(page.getByTestId("canvas-hint")).toContainText(
-    "Build matrices creates C and L_inv; Copy matrices appears when ready.",
+    "Open Output to prepare matrices; Copy matrices exports the Python snippet.",
   );
 
   await page.getByRole("button", { name: "Help" }).click();
@@ -1099,9 +1101,9 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     "Output",
   );
   await openOutputDrawer(page);
-  await expect(page.getByRole("button", { exact: true, name: "Build matrices" })).toHaveAttribute(
+  await expect(page.getByRole("button", { exact: true, name: "Copy matrices" })).toHaveAttribute(
     "title",
-    "Build matrices (Ctrl/Cmd+Enter)",
+    "Prepare matrices and copy when ready",
   );
   await closeOutputDrawer(page);
   await expect(page.getByRole("button", { name: "Save" })).toHaveAttribute(
@@ -1235,7 +1237,7 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await page.getByTestId("cap-input").fill("Cg");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Edit existing values");
   await page.getByTestId("edge-0").click({ force: true });
-  await expect(page.getByTestId("tutorial-callout")).toContainText("Build matrices");
+  await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");

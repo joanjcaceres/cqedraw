@@ -1,5 +1,4 @@
 import {
-  Calculator,
   Check,
   ClipboardCopy,
   ClipboardPaste,
@@ -110,6 +109,7 @@ const INLINE_GROUND_EDITOR_OFFSET = 126;
 const INLINE_EDITOR_ABOVE_THRESHOLD_PX = 96;
 const MAX_SWEEP_CACHE_ENTRIES = 160;
 const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
+const OUTPUT_GENERATION_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
 
 interface ViewBox {
@@ -331,6 +331,9 @@ export function App() {
   const outputPanelRef = useRef<HTMLElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
   const analysisRequestIdRef = useRef(0);
+  const outputGenerationPromiseRef = useRef<Promise<OutputResult | null> | null>(
+    null,
+  );
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepRequestIdRef = useRef(0);
   const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
@@ -445,6 +448,19 @@ export function App() {
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
+
+  useEffect(() => {
+    if (!outputDrawerOpen || output || !hasProjectContent) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void runGenerateOutput();
+    }, OUTPUT_GENERATION_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [hasProjectContent, output, outputDrawerOpen, project]);
+
   const missingParameterValues = useMemo(
     () => missingParameterNames(outputParameters, parameterValues),
     [outputParameters, parameterValues],
@@ -1620,6 +1636,10 @@ export function App() {
   }
 
   async function runGenerateOutput(): Promise<OutputResult | null> {
+    if (outputGenerationPromiseRef.current) {
+      return outputGenerationPromiseRef.current;
+    }
+
     setOutputDrawerOpen(true);
     setEngineStatus(
       engineWarmup.base === "ready"
@@ -1631,28 +1651,35 @@ export function App() {
     setAnalysisRunning(false);
     setModalAnalysis(null);
     clearSweepResults();
-    try {
-      const result = await clientRef.current!.generate(project);
-      setEngineWarmup((current) => ({
-        ...current,
-        base: "ready",
-        error: current.base === "error" ? null : current.error,
-      }));
-      if (result.error) {
-        throw new Error(result.error);
+
+    const generationPromise = (async () => {
+      try {
+        const result = await clientRef.current!.generate(project);
+        setEngineWarmup((current) => ({
+          ...current,
+          base: "ready",
+          error: current.base === "error" ? null : current.error,
+        }));
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        setOutput(result);
+        setEngineStatus(`Generated ${result.size} x ${result.size} matrices.`);
+        return result;
+      } catch (error) {
+        setEngineWarmup((current) => ({
+          ...current,
+          base: current.base === "ready" ? current.base : "error",
+          error: error instanceof Error ? error.message : String(error),
+        }));
+        setEngineStatus(error instanceof Error ? error.message : String(error));
+        return null;
+      } finally {
+        outputGenerationPromiseRef.current = null;
       }
-      setOutput(result);
-      setEngineStatus(`Generated ${result.size} x ${result.size} matrices.`);
-      return result;
-    } catch (error) {
-      setEngineWarmup((current) => ({
-        ...current,
-        base: current.base === "ready" ? current.base : "error",
-        error: error instanceof Error ? error.message : String(error),
-      }));
-      setEngineStatus(error instanceof Error ? error.message : String(error));
-      return null;
-    }
+    })();
+    outputGenerationPromiseRef.current = generationPromise;
+    return generationPromise;
   }
 
   function updateParameterValue(name: string, value: string) {
@@ -2561,39 +2588,31 @@ export function App() {
               <div className="output-section-heading">
                 <div>
                   <h3>Matrices for Python</h3>
-                  <p>Build C and L_inv, then copy the generated Python snippet.</p>
+                  <p>Matrices are prepared automatically; copy the Python snippet when needed.</p>
                 </div>
                 <div className="output-panel-actions">
                   <button
+                    aria-label="Copy matrices"
                     className={[
                       "output-action-button",
-                      tutorialStep === "generate" ? "tutorial-highlight-control" : "",
+                      "output-copy-button",
+                      tutorialStep === "copy" ? "tutorial-highlight-control" : "",
                     ].join(" ")}
-                    onClick={generateOutput}
-                    title="Build matrices (Ctrl/Cmd+Enter)"
+                    disabled={!hasProjectContent}
+                    onClick={copySnippet}
+                    title={
+                      hasGeneratedSnippet
+                        ? "Copy matrices"
+                        : "Prepare matrices and copy when ready"
+                    }
                     type="button"
                   >
-                    <Calculator size={14} />
-                    Build matrices
+                    {snippetCopied ? <Check size={14} /> : <Copy size={14} />}
+                    Copy matrices
+                    {snippetCopied ? (
+                      <span className="output-action-confirmation">Copied</span>
+                    ) : null}
                   </button>
-                  {hasGeneratedSnippet ? (
-                    <button
-                      aria-label="Copy matrices"
-                      className={[
-                        "output-action-button",
-                        "output-copy-button",
-                        tutorialStep === "copy" ? "tutorial-highlight-control" : "",
-                      ].join(" ")}
-                      onClick={copySnippet}
-                      type="button"
-                    >
-                      {snippetCopied ? <Check size={14} /> : <Copy size={14} />}
-                      Copy matrices
-                      {snippetCopied ? (
-                        <span className="output-action-confirmation">Copied</span>
-                      ) : null}
-                    </button>
-                  ) : null}
                 </div>
               </div>
               <JosephsonBranchList branches={output?.josephson_branches ?? []} />
@@ -2695,7 +2714,7 @@ function CanvasHint() {
           then select an edge to enter C/L/LJ.
         </tspan>
         <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Build matrices creates C and L_inv; Copy matrices appears when ready.
+          Open Output to prepare matrices; Copy matrices exports the Python snippet.
         </tspan>
       </text>
     </g>
@@ -3274,8 +3293,8 @@ function HelpDialog({
           <li>Use New project to clear the drawing and start from a default canvas.</li>
           <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
           <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
-          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to build matrices.</li>
-          <li>Build matrices creates C and L_inv; Copy copies the Python snippet.</li>
+          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to refresh matrices.</li>
+          <li>Output prepares C and L_inv automatically; Copy matrices copies the Python snippet.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
         </ol>
       </section>
@@ -4232,7 +4251,7 @@ function AnalysisParameterPanel({
     disabled
       ? ""
       : parameters.length === 0
-        ? "Build matrices with at least one parameter to sweep."
+        ? "Prepare matrices with at least one parameter to sweep."
         : activeSweepParameters.length === 0
           ? "Select Sweep on any parameter to enable sliders."
           : fixedMissingMessage || validation.error || sweepError || "";
@@ -4264,7 +4283,7 @@ function AnalysisParameterPanel({
         </div>
       </div>
       {disabled ? (
-        <p data-testid="parameter-empty">Build matrices before running analysis.</p>
+        <p data-testid="parameter-empty">Open Output to prepare matrices for analysis.</p>
       ) : parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (
@@ -5905,10 +5924,9 @@ const TUTORIAL_STEPS: Record<TutorialStep, { progress: string; title: string; bo
   },
   generate: {
     progress: "Step 10 of 11",
-    title: "Build matrices",
+    title: "Prepare matrices",
     body:
-      "Click Build matrices to create the C and L_inv matrices with the same engine used " +
-      "by the desktop app.",
+      "Output prepares C and L_inv with the same engine used by the desktop app.",
   },
   copy: {
     progress: "Step 11 of 11",

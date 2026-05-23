@@ -352,12 +352,11 @@ def test_build_snippet_matches_computed_c_and_l_inverse_matrices():
 
     assert "from scipy import sparse" in snippet
     assert "def circuit_matrices" in snippet
-    assert "def C_matrix" in snippet
-    assert "def L_inv_matrix" in snippet
+    assert "def capacitance_matrix" in snippet
+    assert "def inverse_inductance_matrix" in snippet
     assert "NODE_INDEX_MAP" in snippet
     assert "np.zeros" not in snippet
-    assert "def C_matrix_func" not in snippet
-    assert "def L_inv_matrix_func" not in snippet
+    assert "_func" not in snippet
 
     namespace: dict[str, object] = {}
     exec(snippet, namespace)
@@ -384,8 +383,8 @@ def test_build_snippet_matches_computed_c_and_l_inverse_matrices():
     )
 
     c_sparse, l_sparse = namespace["circuit_matrices"](params)
-    c_only = namespace["C_matrix"](params)
-    l_only = namespace["L_inv_matrix"](params)
+    c_only = namespace["capacitance_matrix"](params)
+    l_only = namespace["inverse_inductance_matrix"](params)
 
     assert sparse.isspmatrix_csr(c_sparse)
     assert sparse.isspmatrix_csr(l_sparse)

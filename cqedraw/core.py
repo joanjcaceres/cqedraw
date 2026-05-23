@@ -507,26 +507,26 @@ def build_snippet(
         f"{indent}matrix.eliminate_zeros()",
         f"{indent}return matrix",
         "",
-        "def _C_matrix_unchecked(params):",
+        "def _capacitance_matrix_unchecked(params):",
     ])
     snippet_lines.extend(_matrix_branch_groups_literal(c_branches))
     snippet_lines.append("")
-    snippet_lines.append("def _L_inv_matrix_unchecked(params):")
+    snippet_lines.append("def _inverse_inductance_matrix_unchecked(params):")
     snippet_lines.extend(_matrix_branch_groups_literal(l_inv_branches))
     snippet_lines.append("")
     snippet_lines.extend(
         [
-            "def C_matrix(params):",
+            "def capacitance_matrix(params):",
             f"{indent}_validate_params(params, C_PARAMETER_NAMES)",
-            f"{indent}return _C_matrix_unchecked(params)",
+            f"{indent}return _capacitance_matrix_unchecked(params)",
             "",
-            "def L_inv_matrix(params):",
+            "def inverse_inductance_matrix(params):",
             f"{indent}_validate_params(params, L_INV_PARAMETER_NAMES)",
-            f"{indent}return _L_inv_matrix_unchecked(params)",
+            f"{indent}return _inverse_inductance_matrix_unchecked(params)",
             "",
             "def circuit_matrices(params):",
             f"{indent}_validate_params(params, PARAMETER_NAMES)",
-            f"{indent}return _C_matrix_unchecked(params), _L_inv_matrix_unchecked(params)",
+            f"{indent}return _capacitance_matrix_unchecked(params), _inverse_inductance_matrix_unchecked(params)",
         ]
     )
     return "\n".join(snippet_lines)

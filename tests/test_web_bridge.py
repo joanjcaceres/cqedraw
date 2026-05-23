@@ -90,12 +90,11 @@ def test_generate_output_returns_json_safe_core_results():
         {"project_node_id": 15, "matrix_index": 2, "name": "N3"},
     ]
     assert "def circuit_matrices" in result["snippet"]
-    assert "def C_matrix" in result["snippet"]
-    assert "def L_inv_matrix" in result["snippet"]
+    assert "def capacitance_matrix" in result["snippet"]
+    assert "def inverse_inductance_matrix" in result["snippet"]
     assert "def josephson_branches" in result["snippet"]
     assert "NODE_INDEX_MAP" in result["snippet"]
-    assert "def C_matrix_func" not in result["snippet"]
-    assert "def L_inv_matrix_func" not in result["snippet"]
+    assert "_func" not in result["snippet"]
 
 
 def test_generate_output_json_reports_parse_errors():

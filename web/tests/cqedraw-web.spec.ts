@@ -1861,11 +1861,10 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   ).toContainText("Copied");
   const copiedSnippet = await page.evaluate(() => navigator.clipboard.readText());
   expect(copiedSnippet).toContain("def circuit_matrices");
-  expect(copiedSnippet).toContain("def C_matrix");
-  expect(copiedSnippet).toContain("def L_inv_matrix");
+  expect(copiedSnippet).toContain("def capacitance_matrix");
+  expect(copiedSnippet).toContain("def inverse_inductance_matrix");
   expect(copiedSnippet).toContain("def josephson_branches");
-  expect(copiedSnippet).not.toContain("def C_matrix_func");
-  expect(copiedSnippet).not.toContain("def L_inv_matrix_func");
+  expect(copiedSnippet).not.toContain("_func");
 });
 
 test("does not create duplicate edges between the same two nodes", async ({ page }) => {

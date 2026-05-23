@@ -218,8 +218,8 @@ def test_build_snippet_materializes_exact_sparse_outputs():
     assert namespace["NODE_NAME_MAP"] == {10: "N1", 11: "N2", 15: "N3"}
 
     c_sparse, l_sparse = namespace["circuit_matrices"](params)
-    c_only = namespace["C_matrix"](params)
-    l_only = namespace["L_inv_matrix"](params)
+    c_only = namespace["capacitance_matrix"](params)
+    l_only = namespace["inverse_inductance_matrix"](params)
 
     assert sparse.isspmatrix_csr(c_sparse)
     assert sparse.isspmatrix_csr(l_sparse)
@@ -229,10 +229,8 @@ def test_build_snippet_materializes_exact_sparse_outputs():
     assert np.allclose(l_only.toarray(), l_expected)
 
     assert "np.zeros" not in snippet
-    assert "def C_matrix_func" not in snippet
-    assert "def L_inv_matrix_func" not in snippet
-    assert "def C_matrix_triplets" not in snippet
-    assert "def L_inv_matrix_triplets" not in snippet
+    assert "_func" not in snippet
+    assert "_triplets" not in snippet
 
 
 def test_build_snippet_reports_missing_parameter_names():

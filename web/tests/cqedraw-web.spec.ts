@@ -1850,6 +1850,36 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
   await expect(page.getByTestId("snippet-output")).toHaveCount(0);
+  await expect(page.getByTestId("parameter-required-message")).toContainText(
+    "Enter values for: C12, Cg, L12_inv, Lg_inv",
+  );
+  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+
+  await page.getByLabel("Value for C12").fill("2e-15");
+  await page.getByLabel("Value for Cg").fill("5e-15");
+  await page.getByLabel("Value for L12_inv").fill("1e9");
+  await page.getByLabel("Value for Lg_inv").fill("2e9");
+  await expect(page.getByTestId("parameter-required-message")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  const exportPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const exported = await exportPromise;
+  expect(exported.suggestedFilename()).toBe("cqedraw-analysis-table.csv");
+  const exportedPath = await exported.path();
+  if (!exportedPath) {
+    throw new Error("Exported CSV download path is unavailable.");
+  }
+  const exportedCsv = await readFile(exportedPath, "utf8");
+  const csvRows = exportedCsv.trim().split(/\r?\n/);
+  expect(csvRows).toHaveLength(3);
+  expect(csvRows[0]).toBe("frequency_ghz");
+  expect(Number(csvRows[1])).toBeGreaterThan(0);
+  expect(Number(csvRows[2])).toBeGreaterThan(0);
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Exported analysis table CSV.",
+  );
 
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
   await expect(page.getByTestId("output-status")).toContainText(

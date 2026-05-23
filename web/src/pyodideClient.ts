@@ -1,4 +1,9 @@
-import { CircuitProject, ModalAnalysisResult, OutputResult } from "./types";
+import {
+  AnalysisExportResult,
+  CircuitProject,
+  ModalAnalysisResult,
+  OutputResult,
+} from "./types";
 
 type PrewarmTarget = "base" | "analysis";
 
@@ -57,6 +62,20 @@ export class PyodideBridgeClient {
     return this.send<ModalAnalysisResult>("analyze", project, params);
   }
 
+  exportAnalysisJson(
+    project: CircuitProject,
+    params: Record<string, string>,
+    analysis: ModalAnalysisResult | null,
+  ): Promise<AnalysisExportResult> {
+    return this.send<AnalysisExportResult>(
+      "export",
+      project,
+      params,
+      undefined,
+      analysis,
+    );
+  }
+
   normalize(project: unknown): Promise<CircuitProject> {
     return this.send<CircuitProject>("normalize", project);
   }
@@ -75,10 +94,11 @@ export class PyodideBridgeClient {
   }
 
   private send<T>(
-    type: "generate" | "normalize" | "analyze" | "prewarm",
+    type: "generate" | "normalize" | "analyze" | "export" | "prewarm",
     project: unknown,
     params?: Record<string, string>,
     target?: PrewarmTarget,
+    analysis?: ModalAnalysisResult | null,
   ): Promise<T> {
     if (this.failure) {
       return Promise.reject(this.failure);
@@ -89,7 +109,7 @@ export class PyodideBridgeClient {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      this.worker.postMessage({ id, type, project, params, target });
+      this.worker.postMessage({ id, type, project, params, target, analysis });
     });
   }
 

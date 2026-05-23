@@ -374,6 +374,13 @@ export function App() {
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
+  const missingParameterValues = useMemo(
+    () =>
+      outputParameters.filter(
+        (name) => (parameterValues[name] ?? "").trim() === "",
+      ),
+    [outputParameters, parameterValues],
+  );
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -1333,17 +1340,19 @@ export function App() {
     setModalAnalysis(null);
   }
 
-  async function runModalAnalysis() {
+  async function runModalAnalysis(): Promise<ModalAnalysisResult | null> {
     const result = output ?? (await runGenerateOutput());
     if (!result) {
-      return;
+      return null;
     }
-    const missing = result.parameters.filter(
-      (name) => (parameterValues[name] ?? "").trim() === "",
+    const missing = missingParameterValues.filter((name) =>
+      result.parameters.includes(name),
     );
     if (missing.length > 0) {
-      setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
-      return;
+      setEngineStatus(
+        `Enter parameter values before analysis: ${missing.join(", ")}`,
+      );
+      return null;
     }
 
     setEngineWarmup((current) => ({
@@ -1370,6 +1379,7 @@ export function App() {
           ? `Computed ${modeCount} mode(s) and ${zpfRowCount} JJ ZPF row(s).`
           : `Computed ${modeCount} mode frequency result(s).`,
       );
+      return analysis;
     } catch (error) {
       setModalAnalysis(null);
       setEngineWarmup((current) => ({
@@ -1378,6 +1388,7 @@ export function App() {
         error: error instanceof Error ? error.message : String(error),
       }));
       setEngineStatus(error instanceof Error ? error.message : String(error));
+      return null;
     }
   }
 
@@ -1390,6 +1401,39 @@ export function App() {
     setEngineStatus(COPY_MATRICES_STATUS);
     setSnippetCopied(true);
     setTutorialCopied(true);
+  }
+
+  async function exportAnalysisCsv() {
+    const result = output ?? (await runGenerateOutput());
+    if (!result) {
+      return;
+    }
+    const analysis = modalAnalysis?.available
+      ? modalAnalysis
+      : await runModalAnalysis();
+    if (!analysis?.available || analysis.error) {
+      return;
+    }
+
+    setEngineStatus("Exporting analysis table CSV...");
+    try {
+      const exportResult = await clientRef.current!.exportAnalysisJson(
+        project,
+        parameterValues,
+        analysis,
+      );
+      if (exportResult.error) {
+        throw new Error(exportResult.error);
+      }
+      downloadCsv(
+        "cqedraw-analysis-table.csv",
+        exportResult.columns,
+        exportResult.rows,
+      );
+      setEngineStatus("Exported analysis table CSV.");
+    } catch (error) {
+      setEngineStatus(error instanceof Error ? error.message : String(error));
+    }
   }
 
   function saveProject() {
@@ -2140,8 +2184,10 @@ export function App() {
             <JosephsonBranchList branches={output?.josephson_branches ?? []} />
             <ParameterValuePanel
               disabled={!output}
+              missingParameters={missingParameterValues}
               onAnalyze={runModalAnalysis}
               onChange={updateParameterValue}
+              onExport={exportAnalysisCsv}
               parameters={outputParameters}
               values={parameterValues}
             />
@@ -3768,48 +3814,82 @@ function JosephsonBranchList({
 
 function ParameterValuePanel({
   disabled,
+  missingParameters,
   onAnalyze,
   onChange,
+  onExport,
   parameters,
   values,
 }: {
   disabled: boolean;
+  missingParameters: string[];
   onAnalyze: () => void;
   onChange: (name: string, value: string) => void;
+  onExport: () => void;
   parameters: string[];
   values: Record<string, string>;
 }) {
+  const missingParameterSet = new Set(missingParameters);
+  const actionDisabled = disabled || missingParameters.length > 0;
+  const missingMessage =
+    missingParameters.length > 0
+      ? `Enter values for: ${missingParameters.join(", ")}`
+      : "";
   return (
     <div className="parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
-        <button
-          disabled={disabled}
-          onClick={onAnalyze}
-          type="button"
-        >
-          <Play size={14} />
-          Analyze modes
-        </button>
+        <div className="parameter-panel-actions">
+          <button
+            disabled={actionDisabled}
+            onClick={onAnalyze}
+            title={missingMessage}
+            type="button"
+          >
+            <Play size={14} />
+            Analyze modes
+          </button>
+          <button
+            disabled={actionDisabled}
+            onClick={onExport}
+            title={missingMessage}
+            type="button"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
+        </div>
       </div>
       {parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (
-        <div className="parameter-grid" data-testid="parameter-values">
-          {parameters.map((name) => (
-            <label key={name}>
-              <span>{name}</span>
-              <input
-                aria-label={`Value for ${name}`}
-                disabled={disabled}
-                inputMode="decimal"
-                onChange={(event) => onChange(name, event.target.value)}
-                placeholder="0"
-                value={values[name] ?? ""}
-              />
-            </label>
-          ))}
-        </div>
+        <>
+          {missingParameters.length > 0 ? (
+            <p
+              className="parameter-panel-warning"
+              data-testid="parameter-required-message"
+            >
+              {missingMessage}
+            </p>
+          ) : null}
+          <div className="parameter-grid" data-testid="parameter-values">
+            {parameters.map((name) => (
+              <label key={name}>
+                <span>{name}</span>
+                <input
+                  aria-invalid={missingParameterSet.has(name) || undefined}
+                  aria-label={`Value for ${name}`}
+                  disabled={disabled}
+                  inputMode="decimal"
+                  onChange={(event) => onChange(name, event.target.value)}
+                  placeholder="required"
+                  required
+                  value={values[name] ?? ""}
+                />
+              </label>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -3873,6 +3953,32 @@ function formatModalNumber(value: number): string {
     return value.toExponential(4);
   }
   return value.toPrecision(6);
+}
+
+function downloadCsv(filename: string, columns: string[], rows: number[][]) {
+  const csv = [
+    columns.map(formatCsvCell).join(","),
+    ...rows.map((row) => row.map(formatCsvCell).join(",")),
+  ].join("\n");
+  const blob = new Blob([`${csv}\n`], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatCsvCell(value: number | string): string {
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement>) {

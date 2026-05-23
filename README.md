@@ -170,12 +170,26 @@ omega_squared, modes = eigsh(
 frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 
-In the web app, after generating a circuit with Josephson junctions, enter
-numeric parameter values in the Output panel and click **Analyze modes**. The app
-uses `sccircuits.BBQ` to display mode frequencies and one phase-ZPF row per
-Josephson junction. In the browser build, the BBQ class is loaded on demand from
-the `sccircuits` repository; in Python environments, install cQEDraw with the
-`sccircuits` extra to use the same analysis path locally.
+In the web app, after generating a circuit, enter numeric parameter values in
+the Output panel and click **Analyze modes**. The app uses `sccircuits.BBQ` to
+display mode frequencies and, when Josephson junctions are present, one
+phase-ZPF row per junction. In the browser build, the BBQ class is loaded on
+demand from the `sccircuits` repository; in Python environments, install cQEDraw
+with the `sccircuits` extra to use the same analysis path locally.
+
+Click **Export CSV** to download the frequency and Josephson-junction
+zero-point fluctuation table for use in a separate Python script:
+
+```python
+import pandas as pd
+
+table = pd.read_csv("cqedraw-analysis-table.csv")
+```
+
+The CSV is intentionally just the table. The first column is `frequency_ghz`;
+each additional column is the phase ZPF for one Josephson junction, such as
+`phase_zpf_edge_7`. It leaves the project, symbolic matrices, and dense matrices
+in the regular project file and copied Python snippet.
 
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not
 required. Install the optional `sccircuits` extra when you want the analysis

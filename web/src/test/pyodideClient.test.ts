@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PyodideBridgeClient } from "../pyodideClient";
 
 interface PostedMessage {
+  analysis?: unknown;
   id: number;
+  params?: Record<string, string>;
+  project?: unknown;
   type: string;
   target?: string;
 }
@@ -86,6 +89,52 @@ describe("PyodideBridgeClient prewarm", () => {
     });
     worker.respond(2, { ok: true, result: { target: "base" } });
     await expect(retryPrewarm).resolves.toBeUndefined();
+
+    client.dispose();
+  });
+
+  it("sends analysis export requests with parameters and analysis", async () => {
+    const client = new PyodideBridgeClient();
+    const worker = FakeWorker.instances[0];
+    const project = {
+      version: 2,
+      state: {
+        edge_counter: 0,
+        edges: [],
+        focus_node: null,
+        mode: null,
+        node_counter: 0,
+        nodes: [],
+        selected_node: null,
+        selected_nodes: [],
+        view_scale: 1,
+      },
+    };
+    const analysis = {
+      available: true,
+      branches: [],
+      frequencies_ghz: [5.1],
+    };
+
+    const exportRequest = client.exportAnalysisJson(
+      project,
+      { C: "1e-15" },
+      analysis,
+    );
+    expect(worker.messages.at(-1)).toMatchObject({
+      analysis,
+      id: 1,
+      params: { C: "1e-15" },
+      project,
+      type: "export",
+    });
+    worker.respond(1, {
+      ok: true,
+      result: { format: "cqedraw.analysis_table", schema_version: 1 },
+    });
+    await expect(exportRequest).resolves.toMatchObject({
+      format: "cqedraw.analysis_table",
+    });
 
     client.dispose();
   });

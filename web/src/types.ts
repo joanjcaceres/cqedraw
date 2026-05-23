@@ -78,9 +78,12 @@ export interface JosephsonBranchRecord {
   inductance_expr: string;
 }
 
-export interface ModalBranchRecord extends JosephsonBranchRecord {
+export interface EvaluatedJosephsonBranchRecord extends JosephsonBranchRecord {
   L_j: number;
   E_j_GHz: number;
+}
+
+export interface ModalBranchRecord extends EvaluatedJosephsonBranchRecord {
   phase_nodes: [number | null, number | null];
   phase_zpf: number[];
 }
@@ -93,6 +96,24 @@ export interface ModalAnalysisResult {
   branches?: ModalBranchRecord[];
   error?: string;
   details?: string;
+}
+
+export interface AnalysisExportJunction {
+  column: string;
+  edge_id: number | null;
+  project_nodes: number[];
+  phase_nodes: Array<number | null>;
+  phase_sign: 1 | -1;
+}
+
+export interface AnalysisExportResult {
+  format: string;
+  schema_version: number;
+  columns: string[];
+  units: Record<string, string>;
+  rows: number[][];
+  junctions: AnalysisExportJunction[];
+  error?: string;
 }
 
 export interface SelectionState {

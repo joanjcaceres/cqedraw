@@ -7,6 +7,8 @@ import numpy as np
 from cqedraw.web_bridge import (
     analyze_modal,
     analyze_modal_json,
+    export_analysis_results,
+    export_analysis_results_json,
     generate_output,
     generate_output_json,
     normalize_project,
@@ -119,6 +121,160 @@ def test_generate_output_json_reports_parse_errors():
     result = json.loads(generate_output_json('{"state": {"nodes": [], "edges": [}'))
 
     assert "error" in result
+
+
+def test_export_analysis_results_returns_frequency_table():
+    project = {
+        "version": 2,
+        "state": {
+            "nodes": [
+                {"identifier": 2, "name": "Drive", "x": 0, "y": 0},
+                {"identifier": 5, "name": "Mode", "x": 100, "y": 0},
+            ],
+            "edges": [
+                {
+                    "identifier": 4,
+                    "nodes": [2, 5],
+                    "capacitance_text": "C12",
+                    "inductance_text": "L12",
+                    "is_ground": False,
+                },
+                {
+                    "identifier": 9,
+                    "nodes": [5, -1],
+                    "capacitance_text": "Cg",
+                    "inductance_text": "Lg",
+                    "is_ground": True,
+                },
+            ],
+        },
+    }
+    modal_analysis = {
+        "available": True,
+        "frequencies_ghz": [5.1, 7.2],
+        "branch_phase_zpfs": [],
+        "branches": [],
+    }
+
+    result = export_analysis_results(
+        project,
+        {"C12": "2e-15", "Cg": "5e-15", "L12": "10e-9", "Lg": "20e-9"},
+        modal_analysis,
+    )
+
+    json.loads(json.dumps(result))
+    assert result == {
+        "format": "cqedraw.analysis_table",
+        "schema_version": 1,
+        "columns": ["frequency_ghz"],
+        "units": {"frequency_ghz": "GHz"},
+        "rows": [[5.1], [7.2]],
+        "junctions": [],
+    }
+    assert "C_matrix" not in result
+    assert "L_inv_matrix" not in result
+    assert "project" not in result
+
+
+def test_export_analysis_results_includes_jj_phase_zpf_columns():
+    project = {
+        "version": 2,
+        "state": {
+            "nodes": [
+                {"identifier": 0, "name": "A", "x": 0, "y": 0},
+                {"identifier": 1, "name": "B", "x": 100, "y": 0},
+            ],
+            "edges": [
+                {
+                    "identifier": 7,
+                    "nodes": [0, 1],
+                    "capacitance_text": "Cj",
+                    "inductance_text": "Lgeom",
+                    "josephson_inductance_text": "Lj",
+                    "josephson_phase_sign": -1,
+                    "is_ground": False,
+                },
+            ],
+        },
+    }
+    modal_analysis = {
+        "available": True,
+        "frequencies_ghz": [5.1, 7.2],
+        "branch_phase_zpfs": [[0.01, -0.02]],
+        "josephson_energies_ghz": [20.43],
+        "branches": [
+            {
+                "edge_id": 7,
+                "project_nodes": [0, 1],
+                "matrix_nodes": [0, 1],
+                "phase_positive_index": 0,
+                "phase_negative_index": 1,
+                "phase_sign": -1,
+                "inductance_expr": "Lj",
+                "L_j": 8e-9,
+                "E_j_GHz": 20.43,
+                "phase_nodes": [0, 1],
+                "phase_zpf": [0.01, -0.02],
+            }
+        ],
+    }
+
+    result = export_analysis_results(
+        project,
+        {"Cj": "40e-15", "Lgeom": "10e-9", "Lj": "8e-9"},
+        modal_analysis,
+    )
+
+    assert result["format"] == "cqedraw.analysis_table"
+    assert result["schema_version"] == 1
+    assert result["columns"] == ["frequency_ghz", "phase_zpf_edge_7"]
+    assert result["units"] == {
+        "frequency_ghz": "GHz",
+        "phase_zpf_edge_7": "dimensionless",
+    }
+    assert result["rows"] == [[5.1, 0.01], [7.2, -0.02]]
+    assert result["junctions"] == [
+        {
+            "column": "phase_zpf_edge_7",
+            "edge_id": 7,
+            "project_nodes": [0, 1],
+            "phase_nodes": [0, 1],
+            "phase_sign": -1,
+        }
+    ]
+
+
+def test_export_analysis_results_json_reports_missing_parameters():
+    result = json.loads(
+        export_analysis_results_json(
+            json.dumps(_web_project()),
+            json.dumps({"C_alpha": "1e-15"}),
+            json.dumps({"available": True, "frequencies_ghz": [5.1]}),
+        )
+    )
+
+    assert "error" in result
+    assert "Missing parameter values" in result["error"]
+
+
+def test_export_analysis_results_json_requires_modal_analysis():
+    result = json.loads(
+        export_analysis_results_json(
+            json.dumps(_web_project()),
+            json.dumps(
+                {
+                    "C_alpha": "1e-15",
+                    "C_beta": "2e-15",
+                    "C_ground": "3e-15",
+                    "L_alpha_inv": "1e9",
+                    "L_beta_inv": "2e9",
+                    "L_ground_inv": "3e9",
+                }
+            ),
+        )
+    )
+
+    assert result == {"error": "Run Analyze modes before exporting analysis JSON."}
 
 
 def test_normalize_project_preserves_desktop_compatible_shape():

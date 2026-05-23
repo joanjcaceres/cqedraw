@@ -277,6 +277,103 @@ def _float_rows(values: Any) -> list[list[float]]:
     return [[float(value) for value in row] for row in values]
 
 
+def _phase_zpf_column_name(branch: dict[str, Any], index: int) -> str:
+    edge_id = branch.get("edge_id")
+    if edge_id is None:
+        return f"phase_zpf_junction_{index}"
+    return f"phase_zpf_edge_{edge_id}"
+
+
+def _analysis_results_export(modal_analysis: Any) -> dict[str, Any]:
+    if not isinstance(modal_analysis, dict) or not modal_analysis.get("available"):
+        raise ValueError("Run Analyze modes before exporting analysis JSON.")
+
+    frequencies = _float_list(modal_analysis.get("frequencies_ghz", []))
+    zpf_rows_by_junction = _float_rows(modal_analysis.get("branch_phase_zpfs", []))
+    zpf_columns: list[list[float]] = []
+    columns = ["frequency_ghz"]
+    units = {"frequency_ghz": "GHz"}
+    junctions = []
+
+    for index, branch in enumerate(modal_analysis.get("branches", [])):
+        if not isinstance(branch, dict):
+            continue
+        column_name = _phase_zpf_column_name(branch, index)
+        phase_zpf = (
+            _float_list(branch["phase_zpf"])
+            if "phase_zpf" in branch
+            else zpf_rows_by_junction[index]
+        )
+        if len(phase_zpf) != len(frequencies):
+            raise ValueError(
+                "Analysis result shape mismatch: every junction ZPF row must "
+                "match the number of mode frequencies."
+            )
+
+        columns.append(column_name)
+        units[column_name] = "dimensionless"
+        zpf_columns.append(phase_zpf)
+        junctions.append(
+            {
+                "column": column_name,
+                "edge_id": branch.get("edge_id"),
+                "project_nodes": list(branch.get("project_nodes", [])),
+                "phase_nodes": list(branch.get("phase_nodes", [])),
+                "phase_sign": int(branch.get("phase_sign", 1)),
+            }
+        )
+
+    rows = [
+        [frequency, *[zpf_column[mode_index] for zpf_column in zpf_columns]]
+        for mode_index, frequency in enumerate(frequencies)
+    ]
+
+    result: dict[str, Any] = {
+        "format": "cqedraw.analysis_table",
+        "schema_version": 1,
+        "columns": columns,
+        "units": units,
+        "rows": rows,
+        "junctions": junctions,
+    }
+
+    return result
+
+
+def export_analysis_results(
+    project: dict[str, Any],
+    raw_params: dict[str, Any],
+    modal_analysis: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    state = _project_state(project)
+    node_ids = _node_ids(state)
+    edges = _edge_data(state)
+    _size, c_entries, l_inv_entries = compute_matrix_entries(node_ids, edges)
+    josephson_branches = compute_josephson_branches(node_ids, edges)
+    parameter_names = _all_parameter_names(
+        c_entries,
+        l_inv_entries,
+        josephson_branches,
+    )
+    _numeric_parameter_values(raw_params, parameter_names)
+    return _analysis_results_export(modal_analysis)
+
+
+def export_analysis_results_json(
+    project_json: str,
+    params_json: str,
+    modal_analysis_json: str = "null",
+) -> str:
+    try:
+        project = json.loads(project_json)
+        params = json.loads(params_json)
+        modal_analysis = json.loads(modal_analysis_json)
+        result = export_analysis_results(project, params, modal_analysis)
+    except Exception as exc:
+        result = {"error": str(exc)}
+    return json.dumps(result)
+
+
 def _bbq_with_optional_junctions(
     bbq_class: Any,
     capacitance_matrix: Any,

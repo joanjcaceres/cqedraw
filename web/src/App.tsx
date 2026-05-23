@@ -2594,7 +2594,6 @@ export function App() {
                       ) : null}
                     </button>
                   ) : null}
-                  <EngineWarmupBadge warmup={engineWarmup} />
                 </div>
               </div>
               <JosephsonBranchList branches={output?.josephson_branches ?? []} />
@@ -4149,69 +4148,6 @@ function ConcatenatePreview({
       ))}
     </g>
   );
-}
-
-function EngineWarmupBadge({ warmup }: { warmup: EngineWarmupState }) {
-  const { className, label, title } = engineWarmupBadgeState(warmup);
-  return (
-    <span
-      className={["engine-warmup-badge", className].join(" ")}
-      data-testid="engine-warmup-status"
-      title={title}
-    >
-      {label}
-    </span>
-  );
-}
-
-function engineWarmupBadgeState(warmup: EngineWarmupState) {
-  if (warmup.base === "warming") {
-    return {
-      className: "engine-warmup-badge-warming",
-      label: "Python warming",
-      title: "Pyodide and symbolic matrix dependencies are loading in the background.",
-    };
-  }
-  if (warmup.base === "error") {
-    return {
-      className: "engine-warmup-badge-error",
-      label: "Python on demand",
-      title: `Background Python preload failed. Build matrices will retry. ${warmup.error ?? ""}`,
-    };
-  }
-  if (warmup.analysis === "warming") {
-    return {
-      className: "engine-warmup-badge-warming",
-      label: "BBQ warming",
-      title: "The matrix engine is ready; BBQ analysis dependencies are loading in the background.",
-    };
-  }
-  if (warmup.analysis === "ready") {
-    return {
-      className: "engine-warmup-badge-ready",
-      label: "Analysis ready",
-      title: "Pyodide, matrix generation, and BBQ analysis dependencies are ready.",
-    };
-  }
-  if (warmup.analysis === "error") {
-    return {
-      className: "engine-warmup-badge-error",
-      label: "BBQ on demand",
-      title: `Background BBQ preload failed. Analysis will retry. ${warmup.error ?? ""}`,
-    };
-  }
-  if (warmup.base === "ready") {
-    return {
-      className: "engine-warmup-badge-ready",
-      label: "Matrices ready",
-      title: "Pyodide and symbolic matrix dependencies are ready.",
-    };
-  }
-  return {
-    className: "",
-    label: "Python idle",
-    title: "The Python worker has not started yet.",
-  };
 }
 
 function JosephsonBranchList({

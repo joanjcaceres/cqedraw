@@ -676,35 +676,6 @@ textarea {
   background: #e6eef6;
 }
 
-.engine-warmup-badge {
-  border: 1px solid #bdcbd8;
-  border-radius: 999px;
-  color: #516277;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 5px 8px;
-  white-space: nowrap;
-}
-
-.engine-warmup-badge-warming {
-  background: #fff5d6;
-  border-color: #e2c15d;
-  color: #6d4d00;
-}
-
-.engine-warmup-badge-ready {
-  background: #dff8ef;
-  border-color: #8ed5bd;
-  color: #0f5b48;
-}
-
-.engine-warmup-badge-error {
-  background: #f5e8db;
-  border-color: #d9b89b;
-  color: #6b3f1f;
-}
-
 .form-grid {
   display: grid;
   gap: 10px;

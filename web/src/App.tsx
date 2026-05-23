@@ -1394,7 +1394,7 @@ export function App() {
     setTutorialCopied(true);
   }
 
-  async function exportAnalysisJson() {
+  async function exportAnalysisCsv() {
     const result = output ?? (await runGenerateOutput());
     if (!result) {
       return;
@@ -1406,7 +1406,7 @@ export function App() {
       return;
     }
 
-    setEngineStatus("Exporting analysis table JSON...");
+    setEngineStatus("Exporting analysis table CSV...");
     try {
       const exportResult = await clientRef.current!.exportAnalysisJson(
         project,
@@ -1416,8 +1416,12 @@ export function App() {
       if (exportResult.error) {
         throw new Error(exportResult.error);
       }
-      downloadJson("cqedraw-analysis-table.json", exportResult);
-      setEngineStatus("Exported analysis table JSON.");
+      downloadCsv(
+        "cqedraw-analysis-table.csv",
+        exportResult.columns,
+        exportResult.rows,
+      );
+      setEngineStatus("Exported analysis table CSV.");
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
@@ -2173,7 +2177,7 @@ export function App() {
               disabled={!output}
               onAnalyze={runModalAnalysis}
               onChange={updateParameterValue}
-              onExport={exportAnalysisJson}
+              onExport={exportAnalysisCsv}
               parameters={outputParameters}
               values={parameterValues}
             />
@@ -3832,7 +3836,7 @@ function ParameterValuePanel({
             type="button"
           >
             <Download size={14} />
-            Export table JSON
+            Export CSV
           </button>
         </div>
       </div>
@@ -3919,9 +3923,13 @@ function formatModalNumber(value: number): string {
   return value.toPrecision(6);
 }
 
-function downloadJson(filename: string, value: unknown) {
-  const blob = new Blob([JSON.stringify(value, null, 2)], {
-    type: "application/json",
+function downloadCsv(filename: string, columns: string[], rows: number[][]) {
+  const csv = [
+    columns.map(formatCsvCell).join(","),
+    ...rows.map((row) => row.map(formatCsvCell).join(",")),
+  ].join("\n");
+  const blob = new Blob([`${csv}\n`], {
+    type: "text/csv;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -3931,6 +3939,14 @@ function downloadJson(filename: string, value: unknown) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatCsvCell(value: number | string): string {
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement>) {

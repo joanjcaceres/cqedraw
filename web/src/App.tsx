@@ -4363,14 +4363,40 @@ function ParameterControlRow({
   sweepValues: number[];
   value: string;
 }) {
+  const displayedSweepValue = selectedSweepValue ?? sweepValues[0];
+  const [manualSweepValueText, setManualSweepValueText] = useState(() =>
+    displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
+  );
+  const [manualSweepValueFocused, setManualSweepValueFocused] = useState(false);
   const selectedIndex =
-    selectedSweepValue === undefined
+    displayedSweepValue === undefined
       ? 0
-      : Math.max(0, sweepValues.findIndex((candidate) => candidate === selectedSweepValue));
+      : nearestSweepValueIndex(sweepValues, displayedSweepValue);
   const previousFixedValue = value.trim();
   const sweepReferenceValue = previousFixedValue
     ? `Previous: ${previousFixedValue}`
     : "Controlled by sweep";
+
+  useEffect(() => {
+    if (!manualSweepValueFocused) {
+      setManualSweepValueText(
+        displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
+      );
+    }
+  }, [displayedSweepValue, manualSweepValueFocused]);
+
+  function commitManualSweepValue() {
+    const parsedValue = Number(manualSweepValueText);
+    if (!Number.isFinite(parsedValue)) {
+      setManualSweepValueText(
+        displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
+      );
+      return;
+    }
+    onSliderChange(name, parsedValue);
+    setManualSweepValueText(formatModalNumber(parsedValue));
+  }
+
   return (
     <div className="parameter-control-row">
       <div className="parameter-control-main">
@@ -4439,13 +4465,29 @@ function ParameterControlRow({
             </label>
           </div>
           {sweepValues.length > 0 ? (
-            <label className="sweep-sample-slider">
-              <span>
-                {name} ={" "}
-                {formatModalNumber(
-                  selectedSweepValue ?? sweepValues[0],
-                )}
-              </span>
+            <div className="sweep-sample-slider">
+              <label className="sweep-manual-value">
+                <span>{name}</span>
+                <input
+                  aria-label={`Selected sweep value for ${name}`}
+                  disabled={disabled}
+                  inputMode="decimal"
+                  onBlur={() => {
+                    setManualSweepValueFocused(false);
+                    commitManualSweepValue();
+                  }}
+                  onChange={(event) =>
+                    setManualSweepValueText(event.target.value)
+                  }
+                  onFocus={() => setManualSweepValueFocused(true)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  value={manualSweepValueText}
+                />
+              </label>
               <input
                 aria-label={`Sweep sample for ${name}`}
                 data-testid={`sweep-sample-slider-${name}`}
@@ -4459,7 +4501,7 @@ function ParameterControlRow({
                 type="range"
                 value={selectedIndex}
               />
-            </label>
+            </div>
           ) : null}
         </>
       ) : null}
@@ -4587,13 +4629,13 @@ function AnalysisLineChart({
   const bounds = chartBounds(visibleSeries.length > 0 ? visibleSeries : populatedSeries);
   const xTicks = chartTicks(bounds.minX, bounds.maxX);
   const yTicks = chartTicks(bounds.minY, bounds.maxY);
-  const viewWidth = 520;
-  const viewHeight = 250;
+  const viewWidth = 620;
+  const viewHeight = 340;
   const plot = {
-    bottom: 208,
-    left: 58,
-    right: 504,
-    top: 18,
+    bottom: 296,
+    left: 70,
+    right: 600,
+    top: 20,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
@@ -4742,7 +4784,7 @@ function AnalysisLineChart({
           );
         })}
         {hoveredPoint ? (
-          <g className="analysis-chart-tooltip" transform="translate(338 28)">
+          <g className="analysis-chart-tooltip" transform="translate(438 30)">
             <rect width="158" height="58" rx="6" />
             <circle cx="12" cy="16" fill={hoveredPoint.color} r="4" />
             <text x="22" y="20">
@@ -4929,8 +4971,13 @@ function selectedValuesForSweep(
       continue;
     }
     const currentValue = currentValues[parameter];
+    const lowerBound = Math.min(values[0], values[values.length - 1]);
+    const upperBound = Math.max(values[0], values[values.length - 1]);
     selected[parameter] =
-      currentValue !== undefined && values.includes(currentValue)
+      currentValue !== undefined &&
+      Number.isFinite(currentValue) &&
+      currentValue >= lowerBound &&
+      currentValue <= upperBound
         ? currentValue
         : values[0];
   }
@@ -4944,15 +4991,39 @@ function selectedSweepGridPoint(
 ): Record<string, number> | null {
   if (
     parameters.length === 0 ||
-    parameters.some((parameter) => selectedValues[parameter] === undefined)
+    parameters.some(
+      (parameter) =>
+        selectedValues[parameter] === undefined ||
+        !Number.isFinite(selectedValues[parameter]),
+    )
   ) {
     return null;
   }
   return (
     values.find((value) =>
       parameters.every((parameter) => value[parameter] === selectedValues[parameter]),
-    ) ?? null
+    ) ??
+    parameters.reduce<Record<string, number>>((point, parameter) => {
+      point[parameter] = selectedValues[parameter] as number;
+      return point;
+    }, {})
   );
+}
+
+function nearestSweepValueIndex(values: number[], selectedValue: number): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  let nearestIndex = 0;
+  let nearestDistance = Math.abs(values[0] - selectedValue);
+  for (let index = 1; index < values.length; index += 1) {
+    const distance = Math.abs(values[index] - selectedValue);
+    if (distance < nearestDistance) {
+      nearestIndex = index;
+      nearestDistance = distance;
+    }
+  }
+  return nearestIndex;
 }
 
 function sweepAnalysisParameterValues(

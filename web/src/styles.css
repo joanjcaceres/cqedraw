@@ -573,7 +573,7 @@ textarea {
   position: fixed;
   right: 0;
   top: 64px;
-  width: min(1040px, 88vw);
+  width: min(1280px, calc(100vw - 24px));
   z-index: 7;
 }
 
@@ -821,7 +821,7 @@ textarea {
   align-items: start;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(300px, 0.86fr) minmax(380px, 1.14fr);
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
   min-height: 0;
 }
 
@@ -841,7 +841,7 @@ textarea {
   align-content: start;
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 228px);
+  max-height: calc(100vh - 184px);
   min-height: 0;
   overflow: auto;
   overflow-anchor: none;
@@ -1034,6 +1034,13 @@ textarea {
   gap: 5px;
 }
 
+.sweep-manual-value {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .sweep-grid span,
 .sweep-sample-slider span {
   color: #26384e;
@@ -1053,6 +1060,11 @@ textarea {
   min-width: 0;
   padding: 6px 8px;
   width: 100%;
+}
+
+.sweep-manual-value input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
 }
 
 .sweep-grid input:focus,
@@ -1187,7 +1199,7 @@ textarea {
   padding: 10px;
 }
 
-.sweep-sample-slider input {
+.sweep-sample-slider input[type="range"] {
   cursor: pointer;
   padding: 0;
 }

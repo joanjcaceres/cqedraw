@@ -802,6 +802,15 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
     "Cached points: 2",
     { timeout: 60_000 },
   );
+  await page.getByLabel("Selected sweep value for Lj").fill("7e-9");
+  await page.getByLabel("Selected sweep value for Lj").press("Enter");
+  await expect(page.getByLabel("Selected sweep value for Lj")).toHaveValue(
+    "7.0000e-9",
+  );
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 3",
+    { timeout: 60_000 },
+  );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
@@ -819,7 +828,7 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   }
   const sweepCsv = await readFile(sweepExportedPath, "utf8");
   const sweepRows = sweepCsv.trim().split(/\r?\n/);
-  expect(sweepRows).toHaveLength(3);
+  expect(sweepRows).toHaveLength(4);
   expect(sweepRows[0]).toContain("Lj,frequency_mode_0,phase_zpf_edge_0_mode_0");
 });
 

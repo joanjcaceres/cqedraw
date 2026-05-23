@@ -1,5 +1,7 @@
 import { CircuitProject, ModalAnalysisResult, OutputResult } from "./types";
 
+type PrewarmTarget = "base" | "analysis";
+
 type WorkerResult<T> = {
   id: number;
   ok: boolean;
@@ -59,15 +61,24 @@ export class PyodideBridgeClient {
     return this.send<CircuitProject>("normalize", project);
   }
 
+  async prewarmBase(): Promise<void> {
+    await this.send("prewarm", null, undefined, "base");
+  }
+
+  async prewarmAnalysis(): Promise<void> {
+    await this.send("prewarm", null, undefined, "analysis");
+  }
+
   dispose(): void {
     this.worker.terminate();
     this.rejectPending(new Error("Pyodide worker disposed."));
   }
 
   private send<T>(
-    type: "generate" | "normalize" | "analyze",
+    type: "generate" | "normalize" | "analyze" | "prewarm",
     project: unknown,
     params?: Record<string, string>,
+    target?: PrewarmTarget,
   ): Promise<T> {
     if (this.failure) {
       return Promise.reject(this.failure);
@@ -78,7 +89,7 @@ export class PyodideBridgeClient {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      this.worker.postMessage({ id, type, project, params });
+      this.worker.postMessage({ id, type, project, params, target });
     });
   }
 

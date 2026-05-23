@@ -59,7 +59,6 @@ import {
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
-  buildSweepCsvTable,
   buildSweepValues,
   MAX_SWEEP_POINTS,
   type ChartPoint,
@@ -1821,16 +1820,6 @@ export function App() {
     clearSweepResults();
   }
 
-  function exportSweepCsv() {
-    setOutputDrawerOpen(true);
-    if (sweepSamples.length === 0 || activeSweepParameters.length === 0) {
-      return;
-    }
-    const table = buildSweepCsvTable(activeSweepParameters, sweepSamples);
-    downloadCsv("cqedraw-sweep-table.csv", table.columns, table.rows);
-    setEngineStatus("Exported sweep table CSV.");
-  }
-
   function saveProject() {
     const blob = new Blob([JSON.stringify(project, null, 2)], {
       type: "application/json",
@@ -2640,7 +2629,6 @@ export function App() {
                       setSweepSliderValues((current) => ({ ...current, [name]: value }));
                     }}
                     onExportAnalysis={exportAnalysisCsv}
-                    onExportSweep={exportSweepCsv}
                     parameters={outputParameters}
                     running={sweepRunning}
                     samples={sweepSamples}
@@ -4204,7 +4192,6 @@ function AnalysisParameterPanel({
   onRangeChange,
   onSliderChange,
   onExportAnalysis,
-  onExportSweep,
   parameters,
   running,
   samples,
@@ -4224,7 +4211,6 @@ function AnalysisParameterPanel({
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
   onExportAnalysis: () => void;
-  onExportSweep: () => void;
   parameters: string[];
   running: boolean;
   samples: SweepSample[];
@@ -4255,8 +4241,6 @@ function AnalysisParameterPanel({
         : activeSweepParameters.length === 0
           ? "Select Sweep on any parameter to enable sliders."
           : fixedMissingMessage || validation.error || sweepError || "";
-  const exportSweepDisabled = disabled || running || samples.length === 0;
-
   return (
     <div className="parameter-panel analysis-parameter-panel" data-testid="analysis-parameter-panel">
       <div className="parameter-panel-heading">
@@ -4318,21 +4302,6 @@ function AnalysisParameterPanel({
       <div className="parameter-sweep" data-testid="parameter-sweep">
         <div className="parameter-panel-heading">
           <h3>Parameter sweep</h3>
-          <div className="parameter-panel-actions">
-            <button
-              disabled={exportSweepDisabled}
-              onClick={onExportSweep}
-              title={
-                samples.length === 0
-                  ? "Move a sweep slider to calculate a point before exporting."
-                  : ""
-              }
-              type="button"
-            >
-              <Download size={14} />
-              Export sweep CSV
-            </button>
-          </div>
         </div>
         {sweepValidationMessage ? (
           <p className="parameter-panel-warning" data-testid="sweep-validation-message">

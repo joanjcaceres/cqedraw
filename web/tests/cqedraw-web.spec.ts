@@ -778,7 +778,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("jj-phase-label")).toContainText("Phase: 0 - 1");
 });
 
-test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
+test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await page.goto("/");
 
   const canvas = page.getByTestId("canvas");
@@ -830,19 +830,6 @@ test("plots Josephson phase ZPF and exports JJ sweep CSV", async ({ page }) => {
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
-
-  const sweepExportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export sweep CSV" }).click();
-  const sweepExported = await sweepExportPromise;
-  expect(sweepExported.suggestedFilename()).toBe("cqedraw-sweep-table.csv");
-  const sweepExportedPath = await sweepExported.path();
-  if (!sweepExportedPath) {
-    throw new Error("Sweep CSV download path is unavailable.");
-  }
-  const sweepCsv = await readFile(sweepExportedPath, "utf8");
-  const sweepRows = sweepCsv.trim().split(/\r?\n/);
-  expect(sweepRows).toHaveLength(4);
-  expect(sweepRows[0]).toContain("Lj,frequency_mode_0,phase_zpf_edge_0_mode_0");
 });
 
 test("moves ground branches without changing generated output", async ({ page }) => {
@@ -1953,7 +1940,6 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByRole("button", { name: "Refresh" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeDisabled();
 
   await page.getByLabel("Value for C12").fill("2e-15");
   await page.getByLabel("Value for Cg").fill("5e-15");
@@ -2004,19 +1990,6 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   });
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Export sweep CSV" })).toBeEnabled();
-  const sweepExportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export sweep CSV" }).click();
-  const sweepExported = await sweepExportPromise;
-  expect(sweepExported.suggestedFilename()).toBe("cqedraw-sweep-table.csv");
-  const sweepExportedPath = await sweepExported.path();
-  if (!sweepExportedPath) {
-    throw new Error("Sweep CSV download path is unavailable.");
-  }
-  const sweepCsv = await readFile(sweepExportedPath, "utf8");
-  const sweepRows = sweepCsv.trim().split(/\r?\n/);
-  expect(sweepRows).toHaveLength(5);
-  expect(sweepRows[0]).toContain("C12,L12_inv,frequency_mode_0");
 
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();

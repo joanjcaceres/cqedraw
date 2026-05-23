@@ -8,11 +8,6 @@ export interface SweepSample {
   values?: Record<string, number>;
 }
 
-export interface SweepTable {
-  columns: string[];
-  rows: number[][];
-}
-
 export interface ChartPoint {
   x: number;
   y: number;
@@ -154,44 +149,6 @@ export function buildSweepZpfSeries(
   }));
 }
 
-export function buildSweepCsvTable(
-  parameterNames: string | string[],
-  samples: SweepSample[],
-): SweepTable {
-  const sweepParameterNames = Array.isArray(parameterNames)
-    ? parameterNames
-    : [parameterNames];
-  const modeCount = maxFrequencyCount(samples);
-  const branches = referenceBranches(samples);
-  const columns = [
-    ...sweepParameterNames,
-    ...Array.from({ length: modeCount }, (_, modeIndex) => `frequency_mode_${modeIndex}`),
-    ...branches.flatMap((branch, branchIndex) =>
-      Array.from(
-        { length: modeCount },
-        (_, modeIndex) => `${zpfColumnPrefix(branch, branchIndex)}_mode_${modeIndex}`,
-      ),
-    ),
-  ];
-  const rows = samples.map((sample) => [
-    ...sweepParameterNames.map((parameterName, index) =>
-      sample.values?.[parameterName] ?? (index === 0 ? sample.value : Number.NaN),
-    ),
-    ...Array.from(
-      { length: modeCount },
-      (_, modeIndex) => sample.analysis.frequencies_ghz?.[modeIndex] ?? Number.NaN,
-    ),
-    ...branches.flatMap((_, branchIndex) =>
-      Array.from(
-        { length: modeCount },
-        (_, modeIndex) =>
-          sample.analysis.branches?.[branchIndex]?.phase_zpf[modeIndex] ?? Number.NaN,
-      ),
-    ),
-  ]);
-  return { columns, rows };
-}
-
 function maxFrequencyCount(samples: SweepSample[]): number {
   return Math.max(
     0,
@@ -206,12 +163,6 @@ function referenceBranches(samples: SweepSample[]): ModalBranchRecord[] {
 
 function zpfTraceKey(branch: ModalBranchRecord, index: number): string {
   return branch.edge_id === null ? `junction_${index}` : `edge_${branch.edge_id}`;
-}
-
-function zpfColumnPrefix(branch: ModalBranchRecord, index: number): string {
-  return branch.edge_id === null
-    ? `phase_zpf_junction_${index}`
-    : `phase_zpf_edge_${branch.edge_id}`;
 }
 
 function branchTraceLabel(branch: ModalBranchRecord, index: number): string {

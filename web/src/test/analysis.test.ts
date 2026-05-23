@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
-  buildSweepCsvTable,
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
@@ -47,79 +46,6 @@ describe("analysis helpers", () => {
     expect(buildSweepValues("0", "1", "0.001").error).toContain(
       "limited to 101 points",
     );
-  });
-
-  it("builds stable sweep CSV rows for frequency-only results", () => {
-    const samples: SweepSample[] = [
-      { analysis: { available: true, frequencies_ghz: [5, 7] }, value: 1 },
-      { analysis: { available: true, frequencies_ghz: [6, 8] }, value: 2 },
-    ];
-
-    expect(buildSweepCsvTable("Lj", samples)).toEqual({
-      columns: ["Lj", "frequency_mode_0", "frequency_mode_1"],
-      rows: [
-        [1, 5, 7],
-        [2, 6, 8],
-      ],
-    });
-  });
-
-  it("builds stable sweep CSV rows for Josephson phase ZPF values", () => {
-    const samples: SweepSample[] = [
-      {
-        analysis: {
-          available: true,
-          branches: [jjBranch],
-          frequencies_ghz: [5, 7],
-        },
-        value: 1,
-      },
-      {
-        analysis: {
-          available: true,
-          branches: [{ ...jjBranch, phase_zpf: [0.03, -0.04] }],
-          frequencies_ghz: [6, 8],
-        },
-        value: 2,
-      },
-    ];
-
-    expect(buildSweepCsvTable("Lj", samples)).toEqual({
-      columns: [
-        "Lj",
-        "frequency_mode_0",
-        "frequency_mode_1",
-        "phase_zpf_edge_7_mode_0",
-        "phase_zpf_edge_7_mode_1",
-      ],
-      rows: [
-        [1, 5, 7, 0.01, -0.02],
-        [2, 6, 8, 0.03, -0.04],
-      ],
-    });
-  });
-
-  it("builds stable sweep CSV rows for multiple swept parameters", () => {
-    const samples: SweepSample[] = [
-      {
-        analysis: { available: true, frequencies_ghz: [5] },
-        value: 1,
-        values: { C: 1, Lj: 8 },
-      },
-      {
-        analysis: { available: true, frequencies_ghz: [6] },
-        value: 2,
-        values: { C: 2, Lj: 9 },
-      },
-    ];
-
-    expect(buildSweepCsvTable(["C", "Lj"], samples)).toEqual({
-      columns: ["C", "Lj", "frequency_mode_0"],
-      rows: [
-        [1, 8, 5],
-        [2, 9, 6],
-      ],
-    });
   });
 
   it("builds current analysis chart series", () => {

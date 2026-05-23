@@ -62,9 +62,7 @@ import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
   buildSweepCsvTable,
-  buildSweepFrequencySeries,
   buildSweepValues,
-  buildSweepZpfSeries,
   MAX_SWEEP_POINTS,
   type ChartPoint,
   type ChartSeries,
@@ -111,6 +109,7 @@ const PARALLEL_LC_SYMBOL_HALF_LENGTH = 44;
 const INLINE_EDGE_EDITOR_OFFSET = 62;
 const INLINE_GROUND_EDITOR_OFFSET = 126;
 const INLINE_EDITOR_ABOVE_THRESHOLD_PX = 96;
+const MAX_SWEEP_CACHE_ENTRIES = 160;
 
 interface ViewBox {
   x: number;
@@ -288,7 +287,7 @@ export function App() {
     INITIAL_SWEEP_CONFIG,
   );
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
-  const [sweepModeIndex, setSweepModeIndex] = useState(0);
+  const [sweepSampleIndex, setSweepSampleIndex] = useState(0);
   const [sweepRunning, setSweepRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
@@ -321,6 +320,7 @@ export function App() {
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const clientRef = useRef<PyodideBridgeClient | null>(null);
+  const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const projectRef = useRef<CircuitProject>(project);
   const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
   const gridRect = gridRectForView(viewBox);
@@ -392,6 +392,12 @@ export function App() {
       setTutorialPromptOpen(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (tutorialStep === "generate" || tutorialStep === "copy") {
+      setOutputDrawerOpen(true);
+    }
+  }, [tutorialStep]);
 
   const selectedNode = useMemo(
     () =>
@@ -671,7 +677,7 @@ export function App() {
 
   function clearSweepResults() {
     setSweepSamples([]);
-    setSweepModeIndex(0);
+    setSweepSampleIndex(0);
     setSweepError(null);
   }
 
@@ -1576,7 +1582,7 @@ export function App() {
     const sweepProject = projectRef.current;
     setSweepRunning(true);
     setSweepSamples([]);
-    setSweepModeIndex(0);
+    setSweepSampleIndex(0);
     setSweepError(null);
     setEngineWarmup((current) => ({
       base: "ready",
@@ -1588,6 +1594,23 @@ export function App() {
       const samples: SweepSample[] = [];
       for (let index = 0; index < validation.values.length; index += 1) {
         const value = validation.values[index];
+        const cacheKey = sweepCacheKey(
+          sweepProject,
+          parameter,
+          parameterValues,
+          value,
+        );
+        const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
+        if (cachedSample) {
+          rememberSweepSample(sweepSampleCacheRef.current, cacheKey, cachedSample);
+          samples.push(cachedSample);
+          setSweepSamples([...samples]);
+          setEngineStatus(
+            `Loaded cached sweep ${index + 1} / ${validation.values.length}.`,
+          );
+          continue;
+        }
+
         setEngineStatus(`Running sweep ${index + 1} / ${validation.values.length}...`);
         const analysis = await clientRef.current!.analyze(sweepProject, {
           ...parameterValues,
@@ -1598,7 +1621,10 @@ export function App() {
             analysis.error ?? `BBQ modal analysis failed at ${parameter} = ${value}.`,
           );
         }
-        samples.push({ analysis, value });
+        const sample = { analysis, value };
+        rememberSweepSample(sweepSampleCacheRef.current, cacheKey, sample);
+        samples.push(sample);
+        setSweepSamples([...samples]);
       }
       setSweepSamples(samples);
       setEngineWarmup({ base: "ready", analysis: "ready", error: null });
@@ -2055,16 +2081,6 @@ export function App() {
             label="Output"
             onClick={() => setOutputDrawerOpen((open) => !open)}
           />
-          {hasGeneratedSnippet ? (
-            <ToolButton
-              confirmation={snippetCopied ? "Copied" : undefined}
-              highlight={tutorialStep === "copy"}
-              icon={snippetCopied ? <Check size={17} /> : <Copy size={17} />}
-              iconOnly={false}
-              label="Copy matrices"
-              onClick={copySnippet}
-            />
-          ) : null}
           <ToolButton
             icon={<Download size={17} />}
             label="Save"
@@ -2379,19 +2395,6 @@ export function App() {
               <h2>Output</h2>
               <div className="output-panel-actions">
                 <button
-                  className={[
-                    "output-build-button",
-                    tutorialStep === "generate" ? "tutorial-highlight-control" : "",
-                  ].join(" ")}
-                  onClick={generateOutput}
-                  title="Build matrices (Ctrl/Cmd+Enter)"
-                  type="button"
-                >
-                  <Calculator size={14} />
-                  Build matrices
-                </button>
-                <EngineWarmupBadge warmup={engineWarmup} />
-                <button
                   aria-label="Close output"
                   className="output-drawer-close"
                   onClick={() => setOutputDrawerOpen(false)}
@@ -2402,51 +2405,96 @@ export function App() {
                 </button>
               </div>
             </div>
-            <EntryList
-              collapsed
-              title="C entries"
-              testId="c-entries"
-              entries={output?.c_entries ?? []}
-            />
-            <EntryList
-              collapsed
-              title="L_inv entries"
-              testId="l-entries"
-              entries={output?.l_inv_entries ?? []}
-            />
-            <MatrixNodeList nodes={output?.matrix_nodes ?? []} />
-            <JosephsonBranchList branches={output?.josephson_branches ?? []} />
-            <ParameterValuePanel
-              disabled={!output}
-              missingParameters={missingParameterValues}
-              onAnalyze={runModalAnalysis}
-              onChange={updateParameterValue}
-              onExport={exportAnalysisCsv}
-              parameters={outputParameters}
-              values={parameterValues}
-            />
-            <ModalAnalysisTable result={modalAnalysis} />
-            <ModalAnalysisPlots result={modalAnalysis} />
-            <ParameterSweepPanel
-              disabled={!output}
-              fixedMissingParameters={missingSweepFixedValues}
-              onChange={updateSweepConfig}
-              onExport={exportSweepCsv}
-              onRun={runParameterSweep}
-              parameters={outputParameters}
-              running={sweepRunning}
-              samples={sweepSamples}
-              selectedParameter={selectedSweepParameter}
-              sweepError={sweepError}
-              validation={sweepValidation}
-              values={sweepConfig}
-            />
-            <SweepAnalysisPlots
-              modeIndex={sweepModeIndex}
-              onModeIndexChange={setSweepModeIndex}
-              parameterName={selectedSweepParameter}
-              samples={sweepSamples}
-            />
+            <div className="output-section output-section-matrices">
+              <div className="output-section-heading">
+                <div>
+                  <h3>Matrices for Python</h3>
+                  <p>Build C and L_inv, then copy the generated Python snippet.</p>
+                </div>
+                <div className="output-panel-actions">
+                  <button
+                    className={[
+                      "output-action-button",
+                      tutorialStep === "generate" ? "tutorial-highlight-control" : "",
+                    ].join(" ")}
+                    onClick={generateOutput}
+                    title="Build matrices (Ctrl/Cmd+Enter)"
+                    type="button"
+                  >
+                    <Calculator size={14} />
+                    Build matrices
+                  </button>
+                  {hasGeneratedSnippet ? (
+                    <button
+                      aria-label="Copy matrices"
+                      className={[
+                        "output-action-button",
+                        "output-copy-button",
+                        tutorialStep === "copy" ? "tutorial-highlight-control" : "",
+                      ].join(" ")}
+                      onClick={copySnippet}
+                      type="button"
+                    >
+                      {snippetCopied ? <Check size={14} /> : <Copy size={14} />}
+                      Copy matrices
+                      {snippetCopied ? (
+                        <span className="output-action-confirmation">Copied</span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                  <EngineWarmupBadge warmup={engineWarmup} />
+                </div>
+              </div>
+              <EntryList
+                collapsed
+                title="C entries"
+                testId="c-entries"
+                entries={output?.c_entries ?? []}
+              />
+              <EntryList
+                collapsed
+                title="L_inv entries"
+                testId="l-entries"
+                entries={output?.l_inv_entries ?? []}
+              />
+              <MatrixNodeList nodes={output?.matrix_nodes ?? []} />
+              <JosephsonBranchList branches={output?.josephson_branches ?? []} />
+            </div>
+            <div className="output-section output-section-analysis">
+              <div className="output-section-heading">
+                <div>
+                  <h3>Frequencies and phase ZPF</h3>
+                  <p>Use numeric parameter values for BBQ modal analysis.</p>
+                </div>
+              </div>
+              <AnalysisParameterPanel
+                disabled={!output}
+                fixedMissingParameters={missingSweepFixedValues}
+                missingParameters={missingParameterValues}
+                onAnalyze={runModalAnalysis}
+                onParameterChange={updateParameterValue}
+                onRangeChange={updateSweepConfig}
+                onExportAnalysis={exportAnalysisCsv}
+                onExportSweep={exportSweepCsv}
+                onRunSweep={runParameterSweep}
+                parameters={outputParameters}
+                running={sweepRunning}
+                samples={sweepSamples}
+                selectedParameter={selectedSweepParameter}
+                sweepError={sweepError}
+                validation={sweepValidation}
+                values={parameterValues}
+                sweepValues={sweepConfig}
+              />
+              <ModalAnalysisTable result={modalAnalysis} />
+              <ModalAnalysisPlots result={modalAnalysis} />
+              <SweepSampleViewer
+                onSampleIndexChange={setSweepSampleIndex}
+                parameterName={selectedSweepParameter}
+                sampleIndex={sweepSampleIndex}
+                samples={sweepSamples}
+              />
+            </div>
           </section>
         </aside>
       ) : null}
@@ -4104,22 +4152,42 @@ function JosephsonBranchList({
   );
 }
 
-function ParameterValuePanel({
+function AnalysisParameterPanel({
   disabled,
+  fixedMissingParameters,
   missingParameters,
   onAnalyze,
-  onChange,
-  onExport,
+  onParameterChange,
+  onRangeChange,
+  onExportAnalysis,
+  onExportSweep,
+  onRunSweep,
   parameters,
+  running,
+  samples,
+  selectedParameter,
+  sweepError,
+  validation,
   values,
+  sweepValues,
 }: {
   disabled: boolean;
+  fixedMissingParameters: string[];
   missingParameters: string[];
   onAnalyze: () => void;
-  onChange: (name: string, value: string) => void;
-  onExport: () => void;
+  onParameterChange: (name: string, value: string) => void;
+  onRangeChange: (updates: Partial<SweepConfig>) => void;
+  onExportAnalysis: () => void;
+  onExportSweep: () => void;
+  onRunSweep: () => void;
   parameters: string[];
+  running: boolean;
+  samples: SweepSample[];
+  selectedParameter: string;
+  sweepError: string | null;
+  validation: { error: string | null; values: number[] };
   values: Record<string, string>;
+  sweepValues: SweepConfig;
 }) {
   const missingParameterSet = new Set(missingParameters);
   const actionDisabled = disabled || missingParameters.length > 0;
@@ -4127,8 +4195,27 @@ function ParameterValuePanel({
     missingParameters.length > 0
       ? `Enter values for: ${missingParameters.join(", ")}`
       : "";
+  const fixedMissingMessage =
+    fixedMissingParameters.length > 0
+      ? `Enter fixed values for: ${fixedMissingParameters.join(", ")}`
+      : "";
+  const sweepValidationMessage =
+    disabled
+      ? ""
+      : parameters.length === 0
+        ? "Build matrices with at least one parameter to sweep."
+        : fixedMissingMessage || validation.error || sweepError || "";
+  const runDisabled =
+    disabled ||
+    running ||
+    parameters.length === 0 ||
+    fixedMissingParameters.length > 0 ||
+    Boolean(validation.error) ||
+    validation.values.length === 0;
+  const exportSweepDisabled = disabled || running || samples.length === 0;
+
   return (
-    <div className="parameter-panel">
+    <div className="parameter-panel analysis-parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
         <div className="parameter-panel-actions">
@@ -4143,7 +4230,7 @@ function ParameterValuePanel({
           </button>
           <button
             disabled={actionDisabled}
-            onClick={onExport}
+            onClick={onExportAnalysis}
             title={missingMessage}
             type="button"
           >
@@ -4152,7 +4239,9 @@ function ParameterValuePanel({
           </button>
         </div>
       </div>
-      {parameters.length === 0 ? (
+      {disabled ? (
+        <p data-testid="parameter-empty">Build matrices before running analysis.</p>
+      ) : parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (
         <>
@@ -4173,7 +4262,7 @@ function ParameterValuePanel({
                   aria-label={`Value for ${name}`}
                   disabled={disabled}
                   inputMode="decimal"
-                  onChange={(event) => onChange(name, event.target.value)}
+                  onChange={(event) => onParameterChange(name, event.target.value)}
                   placeholder="required"
                   required
                   value={values[name] ?? ""}
@@ -4183,6 +4272,97 @@ function ParameterValuePanel({
           </div>
         </>
       )}
+      <div className="parameter-sweep" data-testid="parameter-sweep">
+        <div className="parameter-panel-heading">
+          <h3>Parameter sweep</h3>
+          <div className="parameter-panel-actions">
+            <button
+              disabled={runDisabled}
+              onClick={onRunSweep}
+              title={sweepValidationMessage}
+              type="button"
+            >
+              <Play size={14} />
+              {running ? "Running..." : "Run sweep"}
+            </button>
+            <button
+              disabled={exportSweepDisabled}
+              onClick={onExportSweep}
+              title={samples.length === 0 ? "Run a sweep before exporting." : ""}
+              type="button"
+            >
+              <Download size={14} />
+              Export sweep CSV
+            </button>
+          </div>
+        </div>
+        <div className="sweep-grid">
+          <label>
+            <span>Sweep parameter</span>
+            <select
+              aria-label="Sweep parameter"
+              disabled={disabled || running || parameters.length === 0}
+              onChange={(event) => onRangeChange({ parameter: event.target.value })}
+              value={selectedParameter}
+            >
+              {parameters.length === 0 ? <option value="">No parameters</option> : null}
+              {parameters.map((parameter) => (
+                <option key={parameter} value={parameter}>
+                  {parameter}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Min</span>
+            <input
+              aria-label="Sweep min"
+              disabled={disabled || running}
+              inputMode="decimal"
+              onChange={(event) => onRangeChange({ min: event.target.value })}
+              placeholder="min"
+              value={sweepValues.min}
+            />
+          </label>
+          <label>
+            <span>Max</span>
+            <input
+              aria-label="Sweep max"
+              disabled={disabled || running}
+              inputMode="decimal"
+              onChange={(event) => onRangeChange({ max: event.target.value })}
+              placeholder="max"
+              value={sweepValues.max}
+            />
+          </label>
+          <label>
+            <span>Step</span>
+            <input
+              aria-label="Sweep step"
+              disabled={disabled || running}
+              inputMode="decimal"
+              onChange={(event) => onRangeChange({ step: event.target.value })}
+              placeholder="step"
+              value={sweepValues.step}
+            />
+          </label>
+        </div>
+        {sweepValidationMessage ? (
+          <p className="parameter-panel-warning" data-testid="sweep-validation-message">
+            {sweepValidationMessage}
+          </p>
+        ) : validation.values.length > 0 ? (
+          <p className="sweep-summary" data-testid="sweep-point-count">
+            {validation.values.length} point{validation.values.length === 1 ? "" : "s"}{" "}
+            ready, maximum {MAX_SWEEP_POINTS}.
+          </p>
+        ) : null}
+        {samples.length > 0 ? (
+          <p className="sweep-summary" data-testid="sweep-result-summary">
+            Cached sweep: {samples.length} point{samples.length === 1 ? "" : "s"}.
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -4236,7 +4416,19 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
   );
 }
 
-function ModalAnalysisPlots({ result }: { result: ModalAnalysisResult | null }) {
+function ModalAnalysisPlots({
+  frequencyTestId = "frequency-mode-plot",
+  frequencyTitle = "Mode frequencies",
+  result,
+  zpfTestId = "zpf-mode-plot",
+  zpfTitle = "JJ phase ZPF",
+}: {
+  frequencyTestId?: string;
+  frequencyTitle?: string;
+  result: ModalAnalysisResult | null;
+  zpfTestId?: string;
+  zpfTitle?: string;
+}) {
   if (!result?.available) {
     return null;
   }
@@ -4251,15 +4443,15 @@ function ModalAnalysisPlots({ result }: { result: ModalAnalysisResult | null }) 
     <div className="analysis-plots" data-testid="modal-analysis-plots">
       <AnalysisLineChart
         series={frequencySeries}
-        testId="frequency-mode-plot"
-        title="Mode frequencies"
+        testId={frequencyTestId}
+        title={frequencyTitle}
         xLabel="mode index"
         yLabel="frequency GHz"
       />
       <AnalysisLineChart
         series={zpfSeries}
-        testId="zpf-mode-plot"
-        title="JJ phase ZPF"
+        testId={zpfTestId}
+        title={zpfTitle}
         xLabel="mode index"
         yLabel="phase ZPF"
       />
@@ -4267,209 +4459,57 @@ function ModalAnalysisPlots({ result }: { result: ModalAnalysisResult | null }) 
   );
 }
 
-function ParameterSweepPanel({
-  disabled,
-  fixedMissingParameters,
-  onChange,
-  onExport,
-  onRun,
-  parameters,
-  running,
-  samples,
-  selectedParameter,
-  sweepError,
-  validation,
-  values,
-}: {
-  disabled: boolean;
-  fixedMissingParameters: string[];
-  onChange: (updates: Partial<SweepConfig>) => void;
-  onExport: () => void;
-  onRun: () => void;
-  parameters: string[];
-  running: boolean;
-  samples: SweepSample[];
-  selectedParameter: string;
-  sweepError: string | null;
-  validation: { error: string | null; values: number[] };
-  values: SweepConfig;
-}) {
-  const fixedMissingMessage =
-    fixedMissingParameters.length > 0
-      ? `Enter fixed values for: ${fixedMissingParameters.join(", ")}`
-      : "";
-  const validationMessage =
-    disabled
-      ? ""
-      : parameters.length === 0
-        ? "Build matrices with at least one parameter to sweep."
-        : fixedMissingMessage || validation.error || sweepError || "";
-  const runDisabled =
-    disabled ||
-    running ||
-    parameters.length === 0 ||
-    fixedMissingParameters.length > 0 ||
-    Boolean(validation.error) ||
-    validation.values.length === 0;
-  const exportDisabled = disabled || running || samples.length === 0;
-
-  return (
-    <div className="parameter-panel parameter-sweep" data-testid="parameter-sweep">
-      <div className="parameter-panel-heading">
-        <h3>Parameter sweep</h3>
-        <div className="parameter-panel-actions">
-          <button
-            disabled={runDisabled}
-            onClick={onRun}
-            title={validationMessage}
-            type="button"
-          >
-            <Play size={14} />
-            {running ? "Running..." : "Run sweep"}
-          </button>
-          <button
-            disabled={exportDisabled}
-            onClick={onExport}
-            title={samples.length === 0 ? "Run a sweep before exporting." : ""}
-            type="button"
-          >
-            <Download size={14} />
-            Export sweep CSV
-          </button>
-        </div>
-      </div>
-      <div className="sweep-grid">
-        <label>
-          <span>Sweep parameter</span>
-          <select
-            aria-label="Sweep parameter"
-            disabled={disabled || running || parameters.length === 0}
-            onChange={(event) => onChange({ parameter: event.target.value })}
-            value={selectedParameter}
-          >
-            {parameters.length === 0 ? <option value="">No parameters</option> : null}
-            {parameters.map((parameter) => (
-              <option key={parameter} value={parameter}>
-                {parameter}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Min</span>
-          <input
-            aria-label="Sweep min"
-            disabled={disabled || running}
-            inputMode="decimal"
-            onChange={(event) => onChange({ min: event.target.value })}
-            placeholder="min"
-            value={values.min}
-          />
-        </label>
-        <label>
-          <span>Max</span>
-          <input
-            aria-label="Sweep max"
-            disabled={disabled || running}
-            inputMode="decimal"
-            onChange={(event) => onChange({ max: event.target.value })}
-            placeholder="max"
-            value={values.max}
-          />
-        </label>
-        <label>
-          <span>Step</span>
-          <input
-            aria-label="Sweep step"
-            disabled={disabled || running}
-            inputMode="decimal"
-            onChange={(event) => onChange({ step: event.target.value })}
-            placeholder="step"
-            value={values.step}
-          />
-        </label>
-      </div>
-      {validationMessage ? (
-        <p className="parameter-panel-warning" data-testid="sweep-validation-message">
-          {validationMessage}
-        </p>
-      ) : validation.values.length > 0 ? (
-        <p className="sweep-summary" data-testid="sweep-point-count">
-          {validation.values.length} point{validation.values.length === 1 ? "" : "s"}{" "}
-          ready, maximum {MAX_SWEEP_POINTS}.
-        </p>
-      ) : null}
-      {samples.length > 0 ? (
-        <p className="sweep-summary" data-testid="sweep-result-summary">
-          Last sweep: {samples.length} point{samples.length === 1 ? "" : "s"}.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function SweepAnalysisPlots({
-  modeIndex,
-  onModeIndexChange,
+function SweepSampleViewer({
+  onSampleIndexChange,
   parameterName,
+  sampleIndex,
   samples,
 }: {
-  modeIndex: number;
-  onModeIndexChange: (modeIndex: number) => void;
+  onSampleIndexChange: (sampleIndex: number) => void;
   parameterName: string;
+  sampleIndex: number;
   samples: SweepSample[];
 }) {
-  const modeCount = maxSweepModeCount(samples);
-  const selectedMode = modeCount > 0 ? clamp(modeIndex, 0, modeCount - 1) : 0;
+  const selectedIndex =
+    samples.length > 0 ? clamp(sampleIndex, 0, samples.length - 1) : 0;
 
   useEffect(() => {
-    if (selectedMode !== modeIndex) {
-      onModeIndexChange(selectedMode);
+    if (selectedIndex !== sampleIndex) {
+      onSampleIndexChange(selectedIndex);
     }
-  }, [modeIndex, onModeIndexChange, selectedMode]);
+  }, [onSampleIndexChange, sampleIndex, selectedIndex]);
 
   if (samples.length === 0) {
     return null;
   }
 
-  const xLabel = parameterName || "swept parameter";
-  const frequencySeries = buildSweepFrequencySeries(samples);
-  const zpfSeries = buildSweepZpfSeries(samples, selectedMode);
+  const selectedSample = samples[selectedIndex];
+  const selectedValue = selectedSample?.value ?? samples[0].value;
 
   return (
-    <div className="analysis-plots" data-testid="sweep-analysis-plots">
-      <AnalysisLineChart
-        series={frequencySeries}
-        testId="sweep-frequency-plot"
-        title="Sweep frequencies"
-        xLabel={xLabel}
-        yLabel="frequency GHz"
+    <div className="sweep-sample-viewer" data-testid="sweep-analysis-plots">
+      <label className="sweep-sample-slider">
+        <span>
+          {parameterName || "Sweep"} = {formatModalNumber(selectedValue)}
+        </span>
+        <input
+          aria-label="Sweep sample"
+          data-testid="sweep-sample-slider"
+          max={samples.length - 1}
+          min={0}
+          onChange={(event) => onSampleIndexChange(Number(event.target.value))}
+          step={1}
+          type="range"
+          value={selectedIndex}
+        />
+      </label>
+      <ModalAnalysisPlots
+        frequencyTestId="sweep-frequency-plot"
+        frequencyTitle="Sweep sample frequencies"
+        result={selectedSample.analysis}
+        zpfTestId="sweep-zpf-plot"
+        zpfTitle="Sweep sample JJ phase ZPF"
       />
-      {zpfSeries.length > 0 ? (
-        <>
-          <label className="mode-select">
-            <span>ZPF mode</span>
-            <select
-              aria-label="Sweep ZPF mode"
-              onChange={(event) => onModeIndexChange(Number(event.target.value))}
-              value={selectedMode}
-            >
-              {Array.from({ length: modeCount }, (_, index) => (
-                <option key={index} value={index}>
-                  mode {index}
-                </option>
-              ))}
-            </select>
-          </label>
-          <AnalysisLineChart
-            series={zpfSeries}
-            testId="sweep-zpf-plot"
-            title="Sweep JJ phase ZPF"
-            xLabel={xLabel}
-            yLabel="phase ZPF"
-          />
-        </>
-      ) : null}
     </div>
   );
 }
@@ -4760,21 +4800,46 @@ function formatChartTick(value: number): string {
   return formatModalNumber(value);
 }
 
-function maxSweepModeCount(samples: SweepSample[]): number {
-  return Math.max(
-    0,
-    ...samples.map((sample) => sample.analysis.frequencies_ghz?.length ?? 0),
-    ...samples.flatMap((sample) =>
-      (sample.analysis.branches ?? []).map((branch) => branch.phase_zpf.length),
-    ),
-  );
-}
-
 function missingParameterNames(
   parameters: string[],
   values: Record<string, string>,
 ): string[] {
   return parameters.filter((name) => (values[name] ?? "").trim() === "");
+}
+
+function sweepCacheKey(
+  project: CircuitProject,
+  sweepParameter: string,
+  parameterValues: Record<string, string>,
+  sweepValue: number,
+): string {
+  const fixedValues = Object.entries(parameterValues)
+    .filter(([name]) => name !== sweepParameter)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify({
+    fixedValues,
+    project: serializeProjectForDirtyCheck(project),
+    sweepParameter,
+    sweepValue,
+  });
+}
+
+function rememberSweepSample(
+  cache: Map<string, SweepSample>,
+  key: string,
+  sample: SweepSample,
+) {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, sample);
+  while (cache.size > MAX_SWEEP_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    cache.delete(oldestKey);
+  }
 }
 
 function formatModalNumber(value: number): string {
@@ -5660,9 +5725,6 @@ function hasCapacitanceValue(edge: CircuitEdge | null | undefined): boolean {
 function tutorialPlacement(step: TutorialStep): TutorialPlacement {
   if (step === "edge-mode" || step === "ground-mode") {
     return "tools";
-  }
-  if (step === "copy") {
-    return "actions";
   }
   if (step === "edge-values" || step === "ground-values" || step === "generate") {
     return "inspector";

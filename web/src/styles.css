@@ -573,7 +573,7 @@ textarea {
   position: fixed;
   right: 0;
   top: 64px;
-  width: min(560px, 42vw);
+  width: min(760px, 52vw);
   z-index: 7;
 }
 
@@ -585,7 +585,35 @@ textarea {
   justify-content: flex-end;
 }
 
-.output-build-button {
+.output-section {
+  background: #ffffff;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.output-section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.output-section-heading h3 {
+  color: #172033;
+  font-size: 14px;
+  margin: 0;
+}
+
+.output-section-heading p {
+  color: #66778c;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.output-action-button {
   align-items: center;
   background: #132640;
   border: 1px solid #254567;
@@ -601,13 +629,28 @@ textarea {
   white-space: nowrap;
 }
 
-.output-build-button:hover {
+.output-action-button:hover {
   background: #1a3150;
 }
 
-.output-build-button.tutorial-highlight-control {
+.output-action-button.tutorial-highlight-control {
   border-color: #c28a00;
   box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+}
+
+.output-copy-button {
+  background: #0f5b48;
+  border-color: #2c8f74;
+}
+
+.output-copy-button:hover {
+  background: #126b56;
+}
+
+.output-action-confirmation {
+  color: #b7f4df;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .output-drawer-close {
@@ -953,13 +996,13 @@ textarea {
 }
 
 .sweep-grid label,
-.mode-select {
+.sweep-sample-slider {
   display: grid;
   gap: 5px;
 }
 
 .sweep-grid span,
-.mode-select span {
+.sweep-sample-slider span {
   color: #26384e;
   font-size: 12px;
   font-weight: 700;
@@ -967,7 +1010,7 @@ textarea {
 
 .sweep-grid input,
 .sweep-grid select,
-.mode-select select {
+.sweep-sample-slider input {
   background: #ffffff;
   border: 1px solid #bdcbd8;
   border-radius: 7px;
@@ -981,7 +1024,7 @@ textarea {
 
 .sweep-grid input:focus,
 .sweep-grid select:focus,
-.mode-select select:focus {
+.sweep-sample-slider input:focus {
   border-color: #1fbad6;
   box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
   outline: none;
@@ -1104,8 +1147,21 @@ textarea {
   width: 9px;
 }
 
-.mode-select {
-  max-width: 180px;
+.sweep-sample-viewer {
+  display: grid;
+  gap: 10px;
+}
+
+.sweep-sample-slider {
+  background: #eef4fa;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.sweep-sample-slider input {
+  cursor: pointer;
+  padding: 0;
 }
 
 .hidden-file {
@@ -1411,6 +1467,15 @@ textarea {
 
   .circuit-canvas {
     max-height: none;
+  }
+
+  .output-drawer {
+    width: min(100vw, 620px);
+  }
+
+  .output-section-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .port-pair-row {

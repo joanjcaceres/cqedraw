@@ -5,10 +5,11 @@ import bridgeSource from "../../../cqedraw/web_bridge.py?raw";
 
 interface WorkerRequest {
   id: number;
-  type: "generate" | "normalize" | "analyze" | "prewarm";
+  type: "generate" | "normalize" | "analyze" | "export" | "prewarm";
   project: unknown;
   params?: Record<string, string>;
   target?: "base" | "analysis";
+  analysis?: unknown;
 }
 
 interface WorkerResponse {
@@ -54,7 +55,12 @@ async function initializePyodide() {
       [
         "import sys",
         'sys.path.insert(0, "/home/pyodide")',
-        "from cqedraw.web_bridge import analyze_modal_json, generate_output_json, normalize_project_json",
+        "from cqedraw.web_bridge import (",
+        "    analyze_modal_json,",
+        "    export_evaluated_circuit_json,",
+        "    generate_output_json,",
+        "    normalize_project_json,",
+        ")",
       ].join("\n"),
     );
 }
@@ -112,7 +118,7 @@ function patchSccircuitsBBQSourceForPyodide(source: string): string {
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const { id, type, project, params, target } = event.data;
+  const { id, type, project, params, target, analysis } = event.data;
   try {
     await ensureReady();
     if (!pyodideRuntime) {
@@ -139,6 +145,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       pyodideRuntime.globals.set("params_json", JSON.stringify(params ?? {}));
       raw = pyodideRuntime.runPython(
         "analyze_modal_json(project_json, params_json)",
+      ) as string;
+    } else if (type === "export") {
+      pyodideRuntime.globals.set("params_json", JSON.stringify(params ?? {}));
+      pyodideRuntime.globals.set(
+        "analysis_json",
+        JSON.stringify(analysis ?? null),
+      );
+      raw = pyodideRuntime.runPython(
+        "export_evaluated_circuit_json(project_json, params_json, analysis_json)",
       ) as string;
     } else {
       const functionName =

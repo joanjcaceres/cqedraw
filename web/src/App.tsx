@@ -1392,6 +1392,36 @@ export function App() {
     setTutorialCopied(true);
   }
 
+  async function exportStructuredJson() {
+    const result = output ?? (await runGenerateOutput());
+    if (!result) {
+      return;
+    }
+    const missing = result.parameters.filter(
+      (name) => (parameterValues[name] ?? "").trim() === "",
+    );
+    if (missing.length > 0) {
+      setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
+      return;
+    }
+
+    setEngineStatus("Exporting evaluated circuit JSON...");
+    try {
+      const exportResult = await clientRef.current!.exportStructuredJson(
+        project,
+        parameterValues,
+        modalAnalysis,
+      );
+      if (exportResult.error) {
+        throw new Error(exportResult.error);
+      }
+      downloadJson("cqedraw-evaluated-circuit.json", exportResult);
+      setEngineStatus("Exported evaluated circuit JSON.");
+    } catch (error) {
+      setEngineStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function saveProject() {
     const blob = new Blob([JSON.stringify(project, null, 2)], {
       type: "application/json",
@@ -2142,6 +2172,7 @@ export function App() {
               disabled={!output}
               onAnalyze={runModalAnalysis}
               onChange={updateParameterValue}
+              onExport={exportStructuredJson}
               parameters={outputParameters}
               values={parameterValues}
             />
@@ -3770,12 +3801,14 @@ function ParameterValuePanel({
   disabled,
   onAnalyze,
   onChange,
+  onExport,
   parameters,
   values,
 }: {
   disabled: boolean;
   onAnalyze: () => void;
   onChange: (name: string, value: string) => void;
+  onExport: () => void;
   parameters: string[];
   values: Record<string, string>;
 }) {
@@ -3783,14 +3816,24 @@ function ParameterValuePanel({
     <div className="parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
-        <button
-          disabled={disabled}
-          onClick={onAnalyze}
-          type="button"
-        >
-          <Play size={14} />
-          Analyze modes
-        </button>
+        <div className="parameter-panel-actions">
+          <button
+            disabled={disabled}
+            onClick={onAnalyze}
+            type="button"
+          >
+            <Play size={14} />
+            Analyze modes
+          </button>
+          <button
+            disabled={disabled}
+            onClick={onExport}
+            type="button"
+          >
+            <Download size={14} />
+            Export JSON
+          </button>
+        </div>
       </div>
       {parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
@@ -3873,6 +3916,20 @@ function formatModalNumber(value: number): string {
     return value.toExponential(4);
   }
   return value.toPrecision(6);
+}
+
+function downloadJson(filename: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function svgPoint(event: PointerEvent<SVGSVGElement>) {

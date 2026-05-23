@@ -78,9 +78,12 @@ export interface JosephsonBranchRecord {
   inductance_expr: string;
 }
 
-export interface ModalBranchRecord extends JosephsonBranchRecord {
+export interface EvaluatedJosephsonBranchRecord extends JosephsonBranchRecord {
   L_j: number;
   E_j_GHz: number;
+}
+
+export interface ModalBranchRecord extends EvaluatedJosephsonBranchRecord {
   phase_nodes: [number | null, number | null];
   phase_zpf: number[];
 }
@@ -93,6 +96,32 @@ export interface ModalAnalysisResult {
   branches?: ModalBranchRecord[];
   error?: string;
   details?: string;
+}
+
+export interface StructuredExportResult {
+  format: string;
+  schema_version: number;
+  cqedraw_project_version: number;
+  units: Record<string, string>;
+  project: CircuitProject;
+  NODE_INDEX_MAP: Record<string, number>;
+  matrix_nodes: MatrixNodeRecord[];
+  PARAMETER_NAMES: string[];
+  C_PARAMETER_NAMES: string[];
+  L_INV_PARAMETER_NAMES: string[];
+  JOSEPHSON_PARAMETER_NAMES: string[];
+  parameter_values: Record<string, number>;
+  parameter_value_text: Record<string, string>;
+  symbolic: {
+    C_entries: MatrixEntryRecord[];
+    L_inv_entries: MatrixEntryRecord[];
+    JOSEPHSON_BRANCHES: JosephsonBranchRecord[];
+  };
+  C_matrix: number[][];
+  L_inv_matrix: number[][];
+  JOSEPHSON_BRANCHES: EvaluatedJosephsonBranchRecord[];
+  modal_analysis: ModalAnalysisResult | null;
+  error?: string;
 }
 
 export interface SelectionState {

@@ -170,12 +170,36 @@ omega_squared, modes = eigsh(
 frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 
-In the web app, after generating a circuit with Josephson junctions, enter
-numeric parameter values in the Output panel and click **Analyze modes**. The app
-uses `sccircuits.BBQ` to display mode frequencies and one phase-ZPF row per
-Josephson junction. In the browser build, the BBQ class is loaded on demand from
-the `sccircuits` repository; in Python environments, install cQEDraw with the
-`sccircuits` extra to use the same analysis path locally.
+In the web app, after generating a circuit, enter numeric parameter values in
+the Output panel and click **Analyze modes**. The app uses `sccircuits.BBQ` to
+display mode frequencies and, when Josephson junctions are present, one
+phase-ZPF row per junction. In the browser build, the BBQ class is loaded on
+demand from the `sccircuits` repository; in Python environments, install cQEDraw
+with the `sccircuits` extra to use the same analysis path locally.
+
+Click **Export JSON** to download an evaluated circuit artifact that can be read
+from a separate Python script without executing the copied snippet:
+
+```python
+import json
+
+with open("cqedraw-evaluated-circuit.json", "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+C = data["C_matrix"]
+L_inv = data["L_inv_matrix"]
+junctions = data["JOSEPHSON_BRANCHES"]
+frequencies = (
+    None
+    if data["modal_analysis"] is None
+    else data["modal_analysis"]["frequencies_ghz"]
+)
+```
+
+The JSON document includes the normalized project, `NODE_INDEX_MAP`, parameter
+values, symbolic matrix entries, evaluated dense matrices, evaluated Josephson
+branch records, units metadata, and modal results when **Analyze modes** has
+already run.
 
 If you only need to draw circuits and copy matrix snippets, `sccircuits` is not
 required. Install the optional `sccircuits` extra when you want the analysis

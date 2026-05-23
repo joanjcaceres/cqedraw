@@ -694,6 +694,13 @@ textarea {
   justify-content: space-between;
 }
 
+.parameter-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .parameter-panel h3,
 .modal-analysis h3 {
   color: #516277;

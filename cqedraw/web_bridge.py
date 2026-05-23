@@ -244,6 +244,17 @@ def _dense_numeric_matrix(
     return matrix
 
 
+def _dense_numeric_rows(
+    size: int,
+    entries: MatrixEntries,
+    params: dict[str, float],
+) -> list[list[float]]:
+    matrix = [[0.0 for _ in range(size)] for _ in range(size)]
+    for (row, col), expr in entries.items():
+        matrix[row][col] = _numeric_expr(expr, params)
+    return matrix
+
+
 def _josephson_energy_ghz(josephson_inductance: float) -> float:
     if josephson_inductance <= 0:
         raise ValueError("Josephson inductance must be positive.")
@@ -275,6 +286,122 @@ def _float_list(values: Any) -> list[float]:
 
 def _float_rows(values: Any) -> list[list[float]]:
     return [[float(value) for value in row] for row in values]
+
+
+def _node_index_map(records: list[Any]) -> dict[str, int]:
+    return {
+        str(record.project_node_id): int(record.matrix_index)
+        for record in records
+    }
+
+
+def _modal_analysis_export(modal_analysis: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(modal_analysis, dict) or not modal_analysis.get("available"):
+        return None
+
+    result: dict[str, Any] = {
+        "available": True,
+        "frequencies_ghz": _float_list(modal_analysis.get("frequencies_ghz", [])),
+        "branch_phase_zpfs": _float_rows(
+            modal_analysis.get("branch_phase_zpfs", [])
+        ),
+        "josephson_energies_ghz": (
+            None
+            if modal_analysis.get("josephson_energies_ghz") is None
+            else _float_list(modal_analysis["josephson_energies_ghz"])
+        ),
+        "branches": [],
+    }
+
+    for branch in modal_analysis.get("branches", []):
+        if not isinstance(branch, dict):
+            continue
+        exported_branch = dict(branch)
+        exported_branch["project_nodes"] = list(branch.get("project_nodes", []))
+        exported_branch["matrix_nodes"] = list(branch.get("matrix_nodes", []))
+        exported_branch["phase_nodes"] = list(branch.get("phase_nodes", []))
+        exported_branch["phase_zpf"] = _float_list(branch.get("phase_zpf", []))
+        if "L_j" in exported_branch:
+            exported_branch["L_j"] = float(exported_branch["L_j"])
+        if "E_j_GHz" in exported_branch:
+            exported_branch["E_j_GHz"] = float(exported_branch["E_j_GHz"])
+        result["branches"].append(exported_branch)
+
+    return result
+
+
+def export_evaluated_circuit(
+    project: dict[str, Any],
+    raw_params: dict[str, Any],
+    modal_analysis: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    state = _project_state(project)
+    node_ids = _node_ids(state)
+    matrix_nodes = matrix_node_records(node_ids, _node_names(state))
+    edges = _edge_data(state)
+    size, c_entries, l_inv_entries = compute_matrix_entries(node_ids, edges)
+    josephson_branches = compute_josephson_branches(node_ids, edges)
+    parameter_names = _all_parameter_names(
+        c_entries,
+        l_inv_entries,
+        josephson_branches,
+    )
+    params = _numeric_parameter_values(raw_params, parameter_names)
+    capacitance_matrix = _dense_numeric_rows(size, c_entries, params)
+    inverse_inductance_matrix = _dense_numeric_rows(size, l_inv_entries, params)
+    evaluated_junctions = _evaluated_josephson_branch_records(
+        josephson_branches,
+        params,
+    )
+    numeric_parameters = {name: params[name] for name in parameter_names}
+    text_parameters = {name: str(raw_params[name]) for name in parameter_names}
+
+    return {
+        "format": "cqedraw.evaluated_circuit",
+        "schema_version": 1,
+        "cqedraw_project_version": int(project.get("version", 2)),
+        "units": {
+            "C_matrix": "F",
+            "L_inv_matrix": "1/H",
+            "josephson_inductance": "H",
+            "josephson_energy": "GHz",
+            "frequency": "GHz",
+            "phase_zpf": "dimensionless",
+        },
+        "project": normalize_project(project),
+        "NODE_INDEX_MAP": _node_index_map(matrix_nodes),
+        "matrix_nodes": _matrix_node_records(matrix_nodes),
+        "PARAMETER_NAMES": parameter_names,
+        "C_PARAMETER_NAMES": matrix_parameter_names(c_entries),
+        "L_INV_PARAMETER_NAMES": matrix_parameter_names(l_inv_entries),
+        "JOSEPHSON_PARAMETER_NAMES": josephson_parameter_names(josephson_branches),
+        "parameter_values": numeric_parameters,
+        "parameter_value_text": text_parameters,
+        "symbolic": {
+            "C_entries": _entry_records(c_entries),
+            "L_inv_entries": _entry_records(l_inv_entries),
+            "JOSEPHSON_BRANCHES": _josephson_branch_records(josephson_branches),
+        },
+        "C_matrix": capacitance_matrix,
+        "L_inv_matrix": inverse_inductance_matrix,
+        "JOSEPHSON_BRANCHES": evaluated_junctions,
+        "modal_analysis": _modal_analysis_export(modal_analysis),
+    }
+
+
+def export_evaluated_circuit_json(
+    project_json: str,
+    params_json: str,
+    modal_analysis_json: str = "null",
+) -> str:
+    try:
+        project = json.loads(project_json)
+        params = json.loads(params_json)
+        modal_analysis = json.loads(modal_analysis_json)
+        result = export_evaluated_circuit(project, params, modal_analysis)
+    except Exception as exc:
+        result = {"error": str(exc)}
+    return json.dumps(result)
 
 
 def _bbq_with_optional_junctions(

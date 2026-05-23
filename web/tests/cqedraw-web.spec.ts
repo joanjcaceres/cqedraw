@@ -1851,6 +1851,40 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
   await expect(page.getByTestId("snippet-output")).toHaveCount(0);
 
+  await page.getByLabel("Value for C12").fill("2e-15");
+  await page.getByLabel("Value for Cg").fill("5e-15");
+  await page.getByLabel("Value for L12_inv").fill("1e9");
+  await page.getByLabel("Value for Lg_inv").fill("2e9");
+  const exportPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  const exported = await exportPromise;
+  expect(exported.suggestedFilename()).toBe("cqedraw-evaluated-circuit.json");
+  const exportedPath = await exported.path();
+  if (!exportedPath) {
+    throw new Error("Exported JSON download path is unavailable.");
+  }
+  const exportedCircuit = JSON.parse(await readFile(exportedPath, "utf8"));
+  expect(exportedCircuit.format).toBe("cqedraw.evaluated_circuit");
+  expect(exportedCircuit.NODE_INDEX_MAP).toEqual({ "0": 0, "1": 1 });
+  expect(exportedCircuit.PARAMETER_NAMES).toEqual([
+    "C12",
+    "Cg",
+    "L12_inv",
+    "Lg_inv",
+  ]);
+  expect(exportedCircuit.C_matrix).toEqual([
+    [2e-15, -2e-15],
+    [-2e-15, 7e-15],
+  ]);
+  expect(exportedCircuit.L_inv_matrix).toEqual([
+    [1e9, -1e9],
+    [-1e9, 3e9],
+  ]);
+  expect(exportedCircuit.modal_analysis).toBeNull();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Exported evaluated circuit JSON.",
+  );
+
   await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
   await expect(page.getByTestId("output-status")).toContainText(
     "Copied matrices to clipboard. Paste them into Python or a notebook.",

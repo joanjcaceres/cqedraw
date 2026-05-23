@@ -1338,10 +1338,6 @@ export function App() {
     if (!result) {
       return;
     }
-    if (result.josephson_branches.length === 0) {
-      setEngineStatus("Add a Josephson junction before running BBQ analysis.");
-      return;
-    }
     const missing = result.parameters.filter(
       (name) => (parameterValues[name] ?? "").trim() === "",
     );
@@ -1367,10 +1363,12 @@ export function App() {
         throw new Error(analysis.error ?? "BBQ modal analysis is unavailable.");
       }
       setModalAnalysis(analysis);
+      const modeCount = analysis.frequencies_ghz?.length ?? 0;
+      const zpfRowCount = analysis.branches?.length ?? 0;
       setEngineStatus(
-        `Computed ${analysis.frequencies_ghz?.length ?? 0} mode(s) and ${
-          analysis.branches?.length ?? 0
-        } JJ ZPF row(s).`,
+        zpfRowCount > 0
+          ? `Computed ${modeCount} mode(s) and ${zpfRowCount} JJ ZPF row(s).`
+          : `Computed ${modeCount} mode frequency result(s).`,
       );
     } catch (error) {
       setModalAnalysis(null);
@@ -3786,7 +3784,7 @@ function ParameterValuePanel({
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
         <button
-          disabled={disabled || parameters.length === 0}
+          disabled={disabled}
           onClick={onAnalyze}
           type="button"
         >
@@ -3824,6 +3822,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
+  const hasJosephsonRows = branches.length > 0;
   return (
     <div className="modal-analysis" data-testid="modal-analysis">
       <h3>BBQ modal results</h3>
@@ -3835,7 +3834,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
               {frequencies.map((_, index) => (
                 <th key={index}>mode {index}</th>
               ))}
-              <th>Ej GHz</th>
+              {hasJosephsonRows ? <th>Ej GHz</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -3844,7 +3843,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
               {frequencies.map((frequency, index) => (
                 <td key={index}>{formatModalNumber(frequency)}</td>
               ))}
-              <td />
+              {hasJosephsonRows ? <td /> : null}
             </tr>
             {branches.map((branch, branchIndex) => (
               <tr key={branch.edge_id ?? branchIndex}>

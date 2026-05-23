@@ -281,6 +281,71 @@ def test_analyze_modal_uses_sccircuits_bbq_and_preserves_branch_rows(monkeypatch
     assert result["branches"][1]["phase_zpf"] == [-0.03, 0.04]
 
 
+def test_analyze_modal_returns_frequencies_without_junction_rows(monkeypatch):
+    captured: dict[str, object] = {"calls": []}
+
+    class FakeBBQ:
+        def __init__(
+            self,
+            capacitance_matrix,
+            inverse_inductance_matrix,
+            nonlinear_branches=None,
+            *,
+            junctions=None,
+        ):
+            captured["calls"].append(
+                {
+                    "capacitance_matrix": capacitance_matrix,
+                    "inverse_inductance_matrix": inverse_inductance_matrix,
+                    "junctions": junctions,
+                    "nonlinear_branches": nonlinear_branches,
+                }
+            )
+            if junctions == []:
+                raise ValueError(
+                    "junctions must contain at least one Josephson junction record."
+                )
+            self.frequencies_ghz = np.array([6.25])
+            self.branch_phase_zpfs = np.array([[0.12]])
+            self.josephson_energies_ghz = None
+            self.branch_phase_nodes = ((0, None),)
+
+    fake_sccircuits = types.ModuleType("sccircuits")
+    fake_sccircuits.BBQ = FakeBBQ
+    monkeypatch.setitem(sys.modules, "sccircuits", fake_sccircuits)
+
+    project = {
+        "version": 2,
+        "state": {
+            "nodes": [{"identifier": 0, "name": "N1", "x": 0, "y": 0}],
+            "edges": [
+                {
+                    "identifier": 3,
+                    "nodes": [0, -1],
+                    "capacitance_text": "Cg",
+                    "inductance_text": "Lg",
+                    "is_ground": True,
+                },
+            ],
+        },
+    }
+
+    result = analyze_modal(project, {"Cg": "40e-15", "Lg": "8e-9"})
+
+    assert result["available"] is True
+    assert result["frequencies_ghz"] == [6.25]
+    assert result["branch_phase_zpfs"] == []
+    assert result["josephson_energies_ghz"] is None
+    assert result["branches"] == []
+    assert len(captured["calls"]) == 2
+    first_call, fallback_call = captured["calls"]
+    assert first_call["junctions"] == []
+    assert fallback_call["junctions"] is None
+    assert fallback_call["nonlinear_branches"] == (0,)
+    assert np.allclose(first_call["capacitance_matrix"], [[40e-15]])
+    assert np.allclose(first_call["inverse_inductance_matrix"], [[1 / 8e-9]])
+
+
 def test_analyze_modal_json_reports_missing_sccircuits(monkeypatch):
     monkeypatch.setitem(sys.modules, "sccircuits", None)
 

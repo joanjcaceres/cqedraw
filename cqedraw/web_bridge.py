@@ -277,6 +277,32 @@ def _float_rows(values: Any) -> list[list[float]]:
     return [[float(value) for value in row] for row in values]
 
 
+def _bbq_with_optional_junctions(
+    bbq_class: Any,
+    capacitance_matrix: Any,
+    inverse_inductance_matrix: Any,
+    junction_records: list[dict[str, Any]],
+) -> Any:
+    try:
+        return bbq_class(
+            capacitance_matrix,
+            inverse_inductance_matrix,
+            junctions=junction_records,
+        )
+    except ValueError as exc:
+        if junction_records or "junctions must contain at least one" not in str(exc):
+            raise
+
+    # Older sccircuits.BBQ versions require at least one branch even when the
+    # caller only needs normal-mode frequencies. A single valid dummy branch
+    # leaves the generalized eigenproblem unchanged; cQEDraw ignores its ZPF row.
+    return bbq_class(
+        capacitance_matrix,
+        inverse_inductance_matrix,
+        nonlinear_branches=(0,),
+    )
+
+
 def analyze_modal(
     project: dict[str, Any],
     raw_params: dict[str, Any],
@@ -301,10 +327,6 @@ def analyze_modal(
     josephson_branches = compute_josephson_branches(node_ids, edges)
     if size == 0:
         raise ValueError("Draw at least one node before running BBQ analysis.")
-    if not josephson_branches:
-        raise ValueError(
-            "Add at least one Josephson junction before running BBQ analysis."
-        )
 
     parameter_names = _all_parameter_names(
         c_entries,
@@ -316,22 +338,28 @@ def analyze_modal(
     inverse_inductance_matrix = _dense_numeric_matrix(size, l_inv_entries, params)
     junction_records = _evaluated_josephson_branch_records(josephson_branches, params)
 
-    bbq = BBQ(
+    bbq = _bbq_with_optional_junctions(
+        BBQ,
         capacitance_matrix,
         inverse_inductance_matrix,
-        junctions=junction_records,
+        junction_records,
     )
-    branch_phase_zpfs = _float_rows(bbq.branch_phase_zpfs)
-    josephson_energies = getattr(bbq, "josephson_energies_ghz", None)
-    branch_phase_nodes = getattr(bbq, "branch_phase_nodes", None)
-    if branch_phase_nodes is None:
-        branch_phase_nodes = [
-            (
-                branch["phase_positive_index"],
-                branch["phase_negative_index"],
-            )
-            for branch in junction_records
-        ]
+    if junction_records:
+        branch_phase_zpfs = _float_rows(bbq.branch_phase_zpfs)
+        josephson_energies = getattr(bbq, "josephson_energies_ghz", None)
+        branch_phase_nodes = getattr(bbq, "branch_phase_nodes", None)
+        if branch_phase_nodes is None:
+            branch_phase_nodes = [
+                (
+                    branch["phase_positive_index"],
+                    branch["phase_negative_index"],
+                )
+                for branch in junction_records
+            ]
+    else:
+        branch_phase_zpfs = []
+        josephson_energies = None
+        branch_phase_nodes = []
 
     modal_branches = []
     for index, branch in enumerate(junction_records):

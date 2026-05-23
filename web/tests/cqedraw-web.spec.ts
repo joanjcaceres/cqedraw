@@ -1850,11 +1850,19 @@ test("creates a small circuit and generates matching C and L_inv entries", async
   await expect(page.getByTestId("l-entries")).toContainText("(0, 0) = L12_inv");
   await expect(page.getByTestId("l-entries")).toContainText("(1, 1) = L12_inv + Lg_inv");
   await expect(page.getByTestId("snippet-output")).toHaveCount(0);
+  await expect(page.getByTestId("parameter-required-message")).toContainText(
+    "Enter values for: C12, Cg, L12_inv, Lg_inv",
+  );
+  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
 
   await page.getByLabel("Value for C12").fill("2e-15");
   await page.getByLabel("Value for Cg").fill("5e-15");
   await page.getByLabel("Value for L12_inv").fill("1e9");
   await page.getByLabel("Value for Lg_inv").fill("2e9");
+  await expect(page.getByTestId("parameter-required-message")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Analyze modes" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const exported = await exportPromise;

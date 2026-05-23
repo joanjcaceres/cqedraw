@@ -736,6 +736,14 @@ textarea {
   margin: 0;
 }
 
+.parameter-panel .parameter-panel-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 7px;
+  color: #8a3a0a;
+  padding: 7px 9px;
+}
+
 .parameter-grid {
   display: grid;
   gap: 6px;
@@ -763,6 +771,11 @@ textarea {
   font: inherit;
   min-width: 0;
   padding: 6px 8px;
+}
+
+.parameter-grid input[aria-invalid="true"] {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.16);
 }
 
 .modal-analysis-table-wrap {

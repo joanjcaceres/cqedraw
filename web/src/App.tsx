@@ -374,6 +374,13 @@ export function App() {
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
+  const missingParameterValues = useMemo(
+    () =>
+      outputParameters.filter(
+        (name) => (parameterValues[name] ?? "").trim() === "",
+      ),
+    [outputParameters, parameterValues],
+  );
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -1338,11 +1345,13 @@ export function App() {
     if (!result) {
       return null;
     }
-    const missing = result.parameters.filter(
-      (name) => (parameterValues[name] ?? "").trim() === "",
+    const missing = missingParameterValues.filter((name) =>
+      result.parameters.includes(name),
     );
     if (missing.length > 0) {
-      setEngineStatus(`Missing parameter values: ${missing.join(", ")}`);
+      setEngineStatus(
+        `Enter parameter values before analysis: ${missing.join(", ")}`,
+      );
       return null;
     }
 
@@ -2175,6 +2184,7 @@ export function App() {
             <JosephsonBranchList branches={output?.josephson_branches ?? []} />
             <ParameterValuePanel
               disabled={!output}
+              missingParameters={missingParameterValues}
               onAnalyze={runModalAnalysis}
               onChange={updateParameterValue}
               onExport={exportAnalysisCsv}
@@ -3804,6 +3814,7 @@ function JosephsonBranchList({
 
 function ParameterValuePanel({
   disabled,
+  missingParameters,
   onAnalyze,
   onChange,
   onExport,
@@ -3811,28 +3822,37 @@ function ParameterValuePanel({
   values,
 }: {
   disabled: boolean;
+  missingParameters: string[];
   onAnalyze: () => void;
   onChange: (name: string, value: string) => void;
   onExport: () => void;
   parameters: string[];
   values: Record<string, string>;
 }) {
+  const missingParameterSet = new Set(missingParameters);
+  const actionDisabled = disabled || missingParameters.length > 0;
+  const missingMessage =
+    missingParameters.length > 0
+      ? `Enter values for: ${missingParameters.join(", ")}`
+      : "";
   return (
     <div className="parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
         <div className="parameter-panel-actions">
           <button
-            disabled={disabled}
+            disabled={actionDisabled}
             onClick={onAnalyze}
+            title={missingMessage}
             type="button"
           >
             <Play size={14} />
             Analyze modes
           </button>
           <button
-            disabled={disabled}
+            disabled={actionDisabled}
             onClick={onExport}
+            title={missingMessage}
             type="button"
           >
             <Download size={14} />
@@ -3843,21 +3863,33 @@ function ParameterValuePanel({
       {parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (
-        <div className="parameter-grid" data-testid="parameter-values">
-          {parameters.map((name) => (
-            <label key={name}>
-              <span>{name}</span>
-              <input
-                aria-label={`Value for ${name}`}
-                disabled={disabled}
-                inputMode="decimal"
-                onChange={(event) => onChange(name, event.target.value)}
-                placeholder="0"
-                value={values[name] ?? ""}
-              />
-            </label>
-          ))}
-        </div>
+        <>
+          {missingParameters.length > 0 ? (
+            <p
+              className="parameter-panel-warning"
+              data-testid="parameter-required-message"
+            >
+              {missingMessage}
+            </p>
+          ) : null}
+          <div className="parameter-grid" data-testid="parameter-values">
+            {parameters.map((name) => (
+              <label key={name}>
+                <span>{name}</span>
+                <input
+                  aria-invalid={missingParameterSet.has(name) || undefined}
+                  aria-label={`Value for ${name}`}
+                  disabled={disabled}
+                  inputMode="decimal"
+                  onChange={(event) => onChange(name, event.target.value)}
+                  placeholder="required"
+                  required
+                  value={values[name] ?? ""}
+                />
+              </label>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

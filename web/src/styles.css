@@ -667,6 +667,13 @@ textarea {
   font-weight: 700;
 }
 
+.jj-branch-summary {
+  color: #516277;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+}
+
 .output-drawer-close {
   align-items: center;
   background: #ffffff;

@@ -773,10 +773,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("jj-branches")).toContainText(
-    "edge 0: phase index 0 - 1, LJ = Lj",
-  );
-  await expect(page.getByTestId("jj-branches")).toContainText(
-    "edge 1: phase index 1 - GND, LJ = Lground_j",
+    "2 Josephson branches included in the copied Python snippet.",
   );
   await expect(page.getByTestId("matrix-nodes")).toHaveCount(0);
 

@@ -2742,7 +2742,7 @@ export function App() {
                   </button>
                 </div>
               </div>
-              <JosephsonBranchList branches={output?.josephson_branches ?? []} />
+              <JosephsonBranchSummary branches={output?.josephson_branches ?? []} />
             </div>
             <div className="output-section output-section-analysis">
               <div className="output-section-heading">
@@ -4302,7 +4302,7 @@ function ConcatenatePreview({
   );
 }
 
-function JosephsonBranchList({
+function JosephsonBranchSummary({
   branches,
 }: {
   branches: OutputResult["josephson_branches"];
@@ -4312,17 +4312,10 @@ function JosephsonBranchList({
   }
 
   return (
-    <div className="entries">
-      <h3>Josephson branches</h3>
-      <ol data-testid="jj-branches">
-        {branches.map((branch) => (
-          <li key={branch.edge_id ?? `${branch.project_nodes[0]}-${branch.project_nodes[1]}`}>
-            edge {branch.edge_id}: phase index {branch.phase_positive_index ?? "GND"} -{" "}
-            {branch.phase_negative_index ?? "GND"}, LJ = {branch.inductance_expr}
-          </li>
-        ))}
-      </ol>
-    </div>
+    <p className="jj-branch-summary" data-testid="jj-branches">
+      {branches.length} Josephson branch{branches.length === 1 ? "" : "es"} included
+      in the copied Python snippet.
+    </p>
   );
 }
 

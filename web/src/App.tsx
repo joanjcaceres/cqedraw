@@ -4649,9 +4649,32 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
   const hasJosephsonRows = branches.length > 0;
+  const collapseByDefault = branches.length > 6 || frequencies.length > 16;
+  const modeCountText = `${frequencies.length} mode${frequencies.length === 1 ? "" : "s"}`;
+  const branchCountText =
+    branches.length > 0
+      ? `, ${branches.length} JJ row${branches.length === 1 ? "" : "s"}`
+      : "";
   return (
-    <div className="modal-analysis" data-testid="modal-analysis">
-      <h3>BBQ modal results</h3>
+    <details
+      className="modal-analysis"
+      data-testid="modal-analysis"
+      open={!collapseByDefault}
+    >
+      <summary className="modal-analysis-summary">
+        <span className="modal-analysis-summary-title">
+          <h3>BBQ modal results</h3>
+          {collapseByDefault ? (
+            <span className="modal-analysis-summary-note">
+              Large result; use Export CSV for the full table.
+            </span>
+          ) : null}
+        </span>
+        <span className="modal-analysis-summary-meta">
+          {modeCountText}
+          {branchCountText}
+        </span>
+      </summary>
       <div className="modal-analysis-table-wrap">
         <table>
           <thead>
@@ -4686,7 +4709,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   );
 }
 

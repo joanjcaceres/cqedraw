@@ -915,6 +915,20 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
 
   const zpfChart = page.getByTestId("zpf-mode-plot");
   await expect(zpfChart).toBeVisible({ timeout: 60_000 });
+  const modalTable = page.getByTestId("modal-analysis");
+  await expect(modalTable.locator("summary")).toContainText("7 modes");
+  await expect(modalTable.locator("summary")).toContainText("7 JJ rows");
+  await expect
+    .poll(() =>
+      modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(false);
+  await modalTable.locator("summary").click();
+  await expect
+    .poll(() =>
+      modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
   const traceSelect = page.getByTestId("zpf-mode-plot-trace-select");
   await expect(traceSelect).toBeVisible();
   await expect(traceSelect).not.toHaveValue("all");

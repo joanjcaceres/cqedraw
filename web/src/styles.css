@@ -1232,6 +1232,12 @@ textarea {
   color: #ffffff;
 }
 
+.analysis-chart-nav button[aria-pressed="true"] {
+  background: #132640;
+  border-color: #254567;
+  color: #ffffff;
+}
+
 .analysis-chart-axis-mode button:disabled,
 .analysis-chart-nav button:disabled {
   background: #eef4fa;
@@ -1307,6 +1313,18 @@ textarea {
 
 .analysis-chart-panning .analysis-chart-plot-bg {
   cursor: grabbing;
+}
+
+.analysis-chart-box-zoom-mode .analysis-chart-plot-bg {
+  cursor: crosshair;
+}
+
+.analysis-chart-selection {
+  fill: rgba(31, 186, 214, 0.16);
+  pointer-events: none;
+  stroke: #0b7ea0;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
 }
 
 .analysis-chart-grid {

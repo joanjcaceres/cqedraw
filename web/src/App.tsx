@@ -4990,12 +4990,23 @@ function AnalysisLineChart({
   yLabel: string;
 }) {
   type ChartAxisMode = "auto" | "fixed" | "manual";
+  type ChartInteractionMode = "pan" | "boxZoom";
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
+  const [boxZoomCurrent, setBoxZoomCurrent] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [boxZoomStart, setBoxZoomStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{
     color: string;
     point: ChartPoint;
     seriesLabel: string;
   } | null>(null);
+  const [interactionMode, setInteractionMode] =
+    useState<ChartInteractionMode>("pan");
   const [manualYMaxText, setManualYMaxText] = useState("");
   const [manualYMinText, setManualYMinText] = useState("");
   const [panStart, setPanStart] = useState<{
@@ -5114,6 +5125,17 @@ function AnalysisLineChart({
     };
   }
 
+  function plotPositionFromClient(clientX: number, clientY: number) {
+    const position = svgPositionFromClient(clientX, clientY);
+    if (!position) {
+      return null;
+    }
+    return {
+      x: clamp(position.x, plot.left, plot.right),
+      y: clamp(position.y, plot.top, plot.bottom),
+    };
+  }
+
   function chartDataPointFromSvgPosition(
     position: { x: number; y: number },
     domain: ChartBounds,
@@ -5138,6 +5160,64 @@ function AnalysisLineChart({
         };
     setZoomDomain(zoomChartBounds(currentDomain, centerPoint, factor));
   }
+
+  function toggleInteractionMode(mode: ChartInteractionMode) {
+    setInteractionMode((current) => (current === mode ? "pan" : mode));
+    setBoxZoomCurrent(null);
+    setBoxZoomStart(null);
+    setPanStart(null);
+  }
+
+  function finishBoxZoom(clientX: number, clientY: number) {
+    if (!boxZoomStart) {
+      return;
+    }
+    const endPosition =
+      plotPositionFromClient(clientX, clientY) ?? boxZoomCurrent ?? boxZoomStart;
+    const minSvgX = Math.min(boxZoomStart.x, endPosition.x);
+    const maxSvgX = Math.max(boxZoomStart.x, endPosition.x);
+    const minSvgY = Math.min(boxZoomStart.y, endPosition.y);
+    const maxSvgY = Math.max(boxZoomStart.y, endPosition.y);
+    setBoxZoomCurrent(null);
+    setBoxZoomStart(null);
+
+    if (maxSvgX - minSvgX < 8 || maxSvgY - minSvgY < 8) {
+      return;
+    }
+
+    const currentDomain = zoomDomain ?? displayBounds;
+    const lowerLeft = chartDataPointFromSvgPosition(
+      { x: minSvgX, y: maxSvgY },
+      currentDomain,
+    );
+    const upperRight = chartDataPointFromSvgPosition(
+      { x: maxSvgX, y: minSvgY },
+      currentDomain,
+    );
+    setZoomDomain({
+      maxX: upperRight.x,
+      maxY: upperRight.y,
+      minX: lowerLeft.x,
+      minY: lowerLeft.y,
+    });
+  }
+
+  const selectionRect =
+    boxZoomStart && boxZoomCurrent
+      ? {
+          height: Math.abs(boxZoomCurrent.y - boxZoomStart.y),
+          width: Math.abs(boxZoomCurrent.x - boxZoomStart.x),
+          x: Math.min(boxZoomStart.x, boxZoomCurrent.x),
+          y: Math.min(boxZoomStart.y, boxZoomCurrent.y),
+        }
+      : null;
+  const svgClassName = [
+    panStart ? "analysis-chart-panning" : "",
+    interactionMode === "boxZoom" ? "analysis-chart-box-zoom-mode" : "",
+    boxZoomStart ? "analysis-chart-selecting" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="analysis-chart" data-testid={testId}>
@@ -5181,6 +5261,16 @@ function AnalysisLineChart({
             </button>
           </div>
           <div className="analysis-chart-nav">
+            <button
+              aria-label={`${title} box zoom`}
+              aria-pressed={interactionMode === "boxZoom"}
+              data-testid={`${testId}-box-zoom`}
+              onClick={() => toggleInteractionMode("boxZoom")}
+              title="Drag a region to zoom"
+              type="button"
+            >
+              <BoxSelect size={14} />
+            </button>
             <button
               aria-label={`${title} zoom in`}
               data-testid={`${testId}-zoom-in`}
@@ -5245,8 +5335,15 @@ function AnalysisLineChart({
       ) : null}
       <svg
         aria-label={title}
-        className={panStart ? "analysis-chart-panning" : undefined}
+        className={svgClassName || undefined}
         onPointerMove={(event) => {
+          if (boxZoomStart) {
+            const position = plotPositionFromClient(event.clientX, event.clientY);
+            if (position) {
+              setBoxZoomCurrent(position);
+            }
+            return;
+          }
           if (!panStart) {
             return;
           }
@@ -5271,8 +5368,16 @@ function AnalysisLineChart({
         onPointerLeave={() => {
           setHoveredPoint(null);
           setPanStart(null);
+          setBoxZoomStart(null);
+          setBoxZoomCurrent(null);
         }}
-        onPointerUp={() => setPanStart(null)}
+        onPointerUp={(event) => {
+          if (boxZoomStart) {
+            finishBoxZoom(event.clientX, event.clientY);
+            return;
+          }
+          setPanStart(null);
+        }}
         onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) {
             return;
@@ -5299,11 +5404,17 @@ function AnalysisLineChart({
             if (event.button !== 0) {
               return;
             }
-            const position = svgPositionFromClient(event.clientX, event.clientY);
+            const position = plotPositionFromClient(event.clientX, event.clientY);
             if (!position) {
               return;
             }
+            setHoveredPoint(null);
             event.currentTarget.setPointerCapture(event.pointerId);
+            if (interactionMode === "boxZoom") {
+              setBoxZoomStart(position);
+              setBoxZoomCurrent(position);
+              return;
+            }
             setPanStart({
               domain: zoomDomain ?? displayBounds,
               x: position.x,
@@ -5315,6 +5426,16 @@ function AnalysisLineChart({
           width={plotWidth}
           height={plotHeight}
         />
+        {selectionRect ? (
+          <rect
+            className="analysis-chart-selection"
+            data-testid={`${testId}-box-selection`}
+            height={selectionRect.height}
+            width={selectionRect.width}
+            x={selectionRect.x}
+            y={selectionRect.y}
+          />
+        ) : null}
         {yTicks.map((tick) => {
           const y = yScale(tick);
           return (

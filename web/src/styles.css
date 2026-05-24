@@ -1068,11 +1068,11 @@ textarea {
 
 .analysis-chart {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .analysis-chart-heading {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -1082,6 +1082,113 @@ textarea {
   color: #516277;
   font-size: 12px;
   margin: 0;
+}
+
+.analysis-chart-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.analysis-chart-axis-mode,
+.analysis-chart-nav {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.analysis-chart-axis-mode button,
+.analysis-chart-nav button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  color: #172033;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 7px;
+}
+
+.analysis-chart-axis-mode button:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.analysis-chart-axis-mode button:not(:first-child) {
+  margin-left: -1px;
+}
+
+.analysis-chart-axis-mode button:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.analysis-chart-axis-mode button[aria-pressed="true"] {
+  background: #132640;
+  border-color: #254567;
+  color: #ffffff;
+}
+
+.analysis-chart-axis-mode button:disabled,
+.analysis-chart-nav button:disabled {
+  background: #eef4fa;
+  color: #8795a8;
+  cursor: not-allowed;
+}
+
+.analysis-chart-nav button {
+  border-radius: 7px;
+  min-width: 30px;
+  padding: 4px;
+}
+
+.analysis-chart-manual-axis {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.analysis-chart-manual-axis label {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.analysis-chart-manual-axis span {
+  color: #26384e;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.analysis-chart-manual-axis input {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  font: inherit;
+  min-height: 30px;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.analysis-chart-manual-axis input:focus {
+  border-color: #1fbad6;
+  box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
+  outline: none;
+}
+
+.analysis-chart-axis-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 7px;
+  color: #8a3a0a;
+  padding: 6px 8px;
 }
 
 .analysis-chart svg {
@@ -1094,7 +1201,12 @@ textarea {
 }
 
 .analysis-chart-plot-bg {
+  cursor: grab;
   fill: #fbfdff;
+}
+
+.analysis-chart-panning .analysis-chart-plot-bg {
+  cursor: grabbing;
 }
 
 .analysis-chart-grid {
@@ -1111,6 +1223,13 @@ textarea {
 .analysis-chart-tick {
   fill: #516277;
   font-size: 10px;
+}
+
+.analysis-chart-grid,
+.analysis-chart-axis,
+.analysis-chart-axis-label,
+.analysis-chart-tick {
+  pointer-events: none;
 }
 
 .analysis-chart-line {
@@ -1539,6 +1658,20 @@ textarea {
     max-height: none;
     overflow: visible;
     padding-right: 0;
+  }
+
+  .analysis-chart-heading,
+  .analysis-chart-manual-axis {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-chart-heading {
+    flex-direction: column;
+  }
+
+  .analysis-chart-toolbar {
+    justify-content: flex-start;
   }
 
   .sweep-grid {

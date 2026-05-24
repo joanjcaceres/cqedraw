@@ -60,6 +60,49 @@ async function expectFrequencyPlotFitsInOutputPanel(page: Page) {
   );
 }
 
+async function expectFrequencyChartInteractions(page: Page) {
+  const chart = page.getByTestId("frequency-mode-plot");
+  const fixedAxisButton = page.getByTestId("frequency-mode-plot-axis-fixed");
+  const manualAxisButton = page.getByTestId("frequency-mode-plot-axis-manual");
+  const resetButton = page.getByTestId("frequency-mode-plot-reset-view");
+
+  await expect(fixedAxisButton).toBeEnabled();
+  await fixedAxisButton.click();
+  await expect(fixedAxisButton).toHaveAttribute("aria-pressed", "true");
+
+  await manualAxisButton.click();
+  await expect(manualAxisButton).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Mode frequencies y min").fill("0");
+  await page.getByLabel("Mode frequencies y max").fill("100");
+  await expect(page.getByTestId("frequency-mode-plot-axis-message")).toHaveCount(0);
+  await fixedAxisButton.click();
+  await expect(fixedAxisButton).toHaveAttribute("aria-pressed", "true");
+
+  await chart.locator(".analysis-chart-point").nth(1).hover();
+  await expect(chart.locator(".analysis-chart-tooltip")).toBeVisible();
+
+  await expect(resetButton).toBeDisabled();
+  await page.getByTestId("frequency-mode-plot-zoom-in").click();
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+  await expect(resetButton).toBeDisabled();
+
+  const plotArea = page.getByTestId("frequency-mode-plot-plot-area");
+  const plotBox = await plotArea.boundingBox();
+  if (!plotBox) {
+    throw new Error("Expected chart plot area to be available.");
+  }
+  await page.mouse.move(plotBox.x + plotBox.width / 2, plotBox.y + plotBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    plotBox.x + plotBox.width / 2 + 40,
+    plotBox.y + plotBox.height / 2 + 20,
+  );
+  await page.mouse.up();
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -1989,6 +2032,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
     timeout: 60_000,
   });
   await expectAnalysisResultsRightOfControls(page);
+  await expectFrequencyChartInteractions(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 
   await page.getByLabel("Sweep max for C12").fill("10e-15");

@@ -842,17 +842,22 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
 
   await page.getByLabel("Sweep Lj").check();
   await expect(page.getByLabel("Value for Lj")).toHaveValue("Previous: 8e-9");
-  await page.getByLabel("Sweep min for Lj").fill("6e-9");
-  await page.getByLabel("Sweep max for Lj").fill("1e-8");
-  await page.getByLabel("Sweep step for Lj").fill("2e-9");
+  await page.getByLabel("Sweep scale for Lj").selectOption("log");
+  await expect(page.getByText("Points/decade")).toBeVisible();
+  await page.getByLabel("Sweep min for Lj").fill("1e-9");
+  await page.getByLabel("Sweep max for Lj").fill("1e-7");
+  await page.getByLabel("Sweep step for Lj").fill("2");
   await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-Lj"), "1");
+  await expect(page.getByLabel("Selected sweep value for Lj")).toHaveValue(
+    "3.1623e-9",
+  );
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await page.getByLabel("Selected sweep value for Lj").fill("7e-9");
@@ -861,7 +866,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     "7.0000e-9",
   );
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({

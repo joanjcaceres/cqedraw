@@ -65,6 +65,7 @@ import {
   type ChartPoint,
   type ChartSeries,
   type SweepSample,
+  type SweepScale,
 } from "./analysis";
 import { PyodideBridgeClient } from "./pyodideClient";
 import {
@@ -240,6 +241,7 @@ interface ParameterSweepConfig {
   enabled: boolean;
   max: string;
   min: string;
+  scale: SweepScale;
   step: string;
 }
 
@@ -263,6 +265,7 @@ const INITIAL_PARAMETER_SWEEP_CONFIG: ParameterSweepConfig = {
   enabled: false,
   max: "",
   min: "",
+  scale: "linear",
   step: "",
 };
 
@@ -4508,6 +4511,9 @@ function ParameterControlRow({
   const sweepReferenceValue = previousFixedValue
     ? `Previous: ${previousFixedValue}`
     : "Controlled by sweep";
+  const sweepScale = range.scale ?? "linear";
+  const stepLabel = sweepScale === "log" ? "Points/decade" : "Step";
+  const stepPlaceholder = sweepScale === "log" ? "points" : "step";
 
   useEffect(() => {
     if (!manualSweepValueFocused) {
@@ -4563,6 +4569,22 @@ function ParameterControlRow({
         <>
           <div className="sweep-grid parameter-range-grid">
             <label>
+              <span>Scale</span>
+              <select
+                aria-label={`Sweep scale for ${name}`}
+                disabled={disabled}
+                onChange={(event) =>
+                  onRangeChange(name, {
+                    scale: event.target.value as SweepScale,
+                  })
+                }
+                value={sweepScale}
+              >
+                <option value="linear">Linear</option>
+                <option value="log">Log</option>
+              </select>
+            </label>
+            <label>
               <span>Min</span>
               <input
                 aria-label={`Sweep min for ${name}`}
@@ -4585,13 +4607,13 @@ function ParameterControlRow({
               />
             </label>
             <label>
-              <span>Step</span>
+              <span>{stepLabel}</span>
               <input
                 aria-label={`Sweep step for ${name}`}
                 disabled={disabled}
                 inputMode="decimal"
                 onChange={(event) => onRangeChange(name, { step: event.target.value })}
-                placeholder="step"
+                placeholder={stepPlaceholder}
                 value={range.step}
               />
             </label>
@@ -5413,7 +5435,13 @@ function buildMultiSweepValues(
 
   for (const parameter of activeParameters) {
     const config = configs[parameter] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
-    const validation = buildSweepValues(config.min, config.max, config.step, maxPoints);
+    const validation = buildSweepValues(
+      config.min,
+      config.max,
+      config.step,
+      maxPoints,
+      config.scale ?? "linear",
+    );
     if (validation.error) {
       return {
         error: `${parameter}: ${validation.error}`,

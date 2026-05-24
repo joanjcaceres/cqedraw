@@ -2,6 +2,8 @@ import type { ModalAnalysisResult, ModalBranchRecord } from "./types";
 
 export const MAX_SWEEP_POINTS = 101;
 
+export type SweepScale = "linear" | "log";
+
 export interface SweepSample {
   analysis: ModalAnalysisResult;
   value: number;
@@ -35,6 +37,7 @@ export function buildSweepValues(
   maxText: string,
   stepText: string,
   maxPoints = MAX_SWEEP_POINTS,
+  scale: SweepScale = "linear",
 ): { error: string | null; values: number[] } {
   const parsedMin = parseSweepNumber(minText, "min");
   if (typeof parsedMin === "string") {
@@ -50,6 +53,9 @@ export function buildSweepValues(
   }
   if (parsedStep <= 0) {
     return { error: "Sweep step must be positive.", values: [] };
+  }
+  if (scale === "log") {
+    return buildLogSweepValues(parsedMin, parsedMax, parsedStep, maxPoints);
   }
   if (parsedMax < parsedMin) {
     return { error: "Sweep max must be greater than or equal to min.", values: [] };
@@ -82,6 +88,60 @@ export function buildSweepValues(
   if (values.length > maxPoints) {
     return {
       error: `Sweep is limited to ${maxPoints} points. Increase the step or narrow the range.`,
+      values: [],
+    };
+  }
+  return { error: null, values };
+}
+
+function buildLogSweepValues(
+  min: number,
+  max: number,
+  pointsPerDecade: number,
+  maxPoints: number,
+): { error: string | null; values: number[] } {
+  if (max < min) {
+    return { error: "Sweep max must be greater than or equal to min.", values: [] };
+  }
+  if (min <= 0 || max <= 0) {
+    return { error: "Log sweep min and max must be positive.", values: [] };
+  }
+  if (pointsPerDecade < 1) {
+    return {
+      error: "Log sweep points per decade must be at least 1.",
+      values: [],
+    };
+  }
+  if (max === min) {
+    return { error: null, values: [min] };
+  }
+
+  const minLog = Math.log10(min);
+  const maxLog = Math.log10(max);
+  const logStep = 1 / pointsPerDecade;
+  const tolerance = Math.max(Math.abs(maxLog - minLog), logStep) * 1e-9;
+  const values: number[] = [];
+  for (
+    let exponent = minLog;
+    exponent <= maxLog + tolerance;
+    exponent = minLog + logStep * values.length
+  ) {
+    values.push(roundSweepValue(Math.min(10 ** exponent, max)));
+    if (values.length > maxPoints) {
+      return {
+        error: `Sweep is limited to ${maxPoints} points. Decrease the points/decade or narrow the range.`,
+        values: [],
+      };
+    }
+  }
+  const last = values[values.length - 1];
+  const endpointTolerance = Math.max(Math.abs(max), Number.MIN_VALUE) * 1e-9;
+  if (Math.abs(last - max) > endpointTolerance) {
+    values.push(roundSweepValue(max));
+  }
+  if (values.length > maxPoints) {
+    return {
+      error: `Sweep is limited to ${maxPoints} points. Decrease the points/decade or narrow the range.`,
       values: [],
     };
   }

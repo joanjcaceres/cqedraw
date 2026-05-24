@@ -802,6 +802,7 @@ textarea {
 .modal-analysis {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .modal-analysis-summary {
@@ -1025,7 +1026,11 @@ textarea {
 }
 
 .modal-analysis-table-wrap {
+  contain: inline-size;
+  max-width: 100%;
+  min-width: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-analysis table {
@@ -1033,6 +1038,7 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   min-width: 100%;
+  width: max-content;
 }
 
 .modal-analysis th,
@@ -1047,6 +1053,14 @@ textarea {
   color: #26384e;
   font-weight: 700;
   text-align: left;
+}
+
+.modal-analysis-branch-note {
+  color: #516277;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 2px;
 }
 
 .parameter-sweep {
@@ -1120,6 +1134,7 @@ textarea {
 .analysis-plots {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .analysis-plot-tabs {

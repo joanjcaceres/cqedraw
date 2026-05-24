@@ -4717,12 +4717,15 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
-  const hasJosephsonRows = branches.length > 0;
+  const modeCount = Math.max(
+    frequencies.length,
+    ...branches.map((branch) => branch.phase_zpf.length),
+  );
   const collapseByDefault = branches.length > 6 || frequencies.length > 16;
-  const modeCountText = `${frequencies.length} mode${frequencies.length === 1 ? "" : "s"}`;
+  const modeCountText = `${modeCount} mode${modeCount === 1 ? "" : "s"}`;
   const branchCountText =
     branches.length > 0
-      ? `, ${branches.length} JJ row${branches.length === 1 ? "" : "s"}`
+      ? `, ${branches.length} JJ column${branches.length === 1 ? "" : "s"}`
       : "";
   return (
     <details
@@ -4748,31 +4751,37 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
         <table>
           <thead>
             <tr>
-              <th>Quantity</th>
-              {frequencies.map((_, index) => (
-                <th key={index}>mode {index}</th>
+              <th>Mode</th>
+              <th>frequency GHz</th>
+              {branches.map((branch, branchIndex) => (
+                <th key={branch.edge_id ?? branchIndex}>
+                  edge {branch.edge_id ?? branchIndex} phase{" "}
+                  {branch.phase_nodes[0] ?? "GND"} -{" "}
+                  {branch.phase_nodes[1] ?? "GND"}
+                  <span className="modal-analysis-branch-note">
+                    Ej {formatModalNumber(branch.E_j_GHz)} GHz
+                  </span>
+                </th>
               ))}
-              {hasJosephsonRows ? <th>Ej GHz</th> : null}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <th>frequency GHz</th>
-              {frequencies.map((frequency, index) => (
-                <td key={index}>{formatModalNumber(frequency)}</td>
-              ))}
-              {hasJosephsonRows ? <td /> : null}
-            </tr>
-            {branches.map((branch, branchIndex) => (
-              <tr key={branch.edge_id ?? branchIndex}>
-                <th>
-                  edge {branch.edge_id ?? branchIndex} phase{" "}
-                  {branch.phase_nodes[0] ?? "GND"} - {branch.phase_nodes[1] ?? "GND"}
-                </th>
-                {branch.phase_zpf.map((zpf, modeIndex) => (
-                  <td key={modeIndex}>{formatModalNumber(zpf)}</td>
-                ))}
-                <td>{formatModalNumber(branch.E_j_GHz)}</td>
+            {Array.from({ length: modeCount }, (_, modeIndex) => (
+              <tr key={modeIndex}>
+                <th>mode {modeIndex}</th>
+                <td>
+                  {frequencies[modeIndex] === undefined
+                    ? ""
+                    : formatModalNumber(frequencies[modeIndex])}
+                </td>
+                {branches.map((branch, branchIndex) => {
+                  const zpf = branch.phase_zpf[modeIndex];
+                  return (
+                    <td key={branch.edge_id ?? branchIndex}>
+                      {zpf === undefined ? "" : formatModalNumber(zpf)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

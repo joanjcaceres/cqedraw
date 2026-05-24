@@ -962,7 +962,7 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await expect(zpfChart).toBeVisible({ timeout: 60_000 });
   const modalTable = page.getByTestId("modal-analysis");
   await expect(modalTable.locator("summary")).toContainText("7 modes");
-  await expect(modalTable.locator("summary")).toContainText("7 JJ rows");
+  await expect(modalTable.locator("summary")).toContainText("7 JJ columns");
   await expect
     .poll(() =>
       modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
@@ -1035,7 +1035,36 @@ test("keeps large Josephson sweep charts mounted", async ({ page }) => {
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
   await selectAnalysisPlotTab(page, "Phase ZPF");
-  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  const zpfChart = page.getByTestId("zpf-mode-plot");
+  await expect(zpfChart).toBeVisible();
+  const chartBoxBeforeTable = await zpfChart.boundingBox();
+  if (!chartBoxBeforeTable) {
+    throw new Error("Expected phase ZPF chart box before opening modal table.");
+  }
+  const modalTable = page.getByTestId("modal-analysis");
+  await modalTable.locator("summary").click();
+  await expect
+    .poll(() =>
+      modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
+  const chartBoxAfterTable = await zpfChart.boundingBox();
+  if (!chartBoxAfterTable) {
+    throw new Error("Expected phase ZPF chart box after opening modal table.");
+  }
+  expect(chartBoxAfterTable.width).toBeGreaterThanOrEqual(
+    chartBoxBeforeTable.width - 2,
+  );
+  expect(chartBoxAfterTable.width).toBeLessThanOrEqual(
+    chartBoxBeforeTable.width + 2,
+  );
+  const tableWidths = await modalTable
+    .locator(".modal-analysis-table-wrap")
+    .evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+  expect(tableWidths.scrollWidth).toBeGreaterThan(tableWidths.clientWidth);
   await expect(page.getByText("cQEDraw")).toBeVisible();
 });
 

@@ -123,6 +123,8 @@ async function expectFrequencyChartInteractions(page: Page) {
   await resetButton.click();
   await expect(resetButton).toBeDisabled();
 
+  await expectChartRegionZoom(page, "frequency-mode-plot");
+
   const plotBox = await plotArea.boundingBox();
   if (!plotBox) {
     throw new Error("Expected chart plot area to be available.");
@@ -136,6 +138,31 @@ async function expectFrequencyChartInteractions(page: Page) {
   await page.mouse.up();
   await expect(resetButton).toBeEnabled();
   await resetButton.click();
+}
+
+async function expectChartRegionZoom(page: Page, testId: string) {
+  const boxZoomButton = page.getByTestId(`${testId}-box-zoom`);
+  const resetButton = page.getByTestId(`${testId}-reset-view`);
+  const plotArea = page.getByTestId(`${testId}-plot-area`);
+  const plotBox = await plotArea.boundingBox();
+  if (!plotBox) {
+    throw new Error(`Expected ${testId} plot area to be available.`);
+  }
+
+  await expect(boxZoomButton).toHaveAttribute("aria-pressed", "false");
+  await boxZoomButton.click();
+  await expect(boxZoomButton).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(plotBox.x + plotBox.width * 0.22, plotBox.y + plotBox.height * 0.24);
+  await page.mouse.down();
+  await page.mouse.move(plotBox.x + plotBox.width * 0.62, plotBox.y + plotBox.height * 0.68);
+  await expect(page.getByTestId(`${testId}-box-selection`)).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId(`${testId}-box-selection`)).toHaveCount(0);
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+  await expect(resetButton).toBeDisabled();
+  await boxZoomButton.click();
+  await expect(boxZoomButton).toHaveAttribute("aria-pressed", "false");
 }
 
 async function selectAnalysisPlotTab(page: Page, name: "Frequencies" | "Phase ZPF") {
@@ -885,6 +912,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("zpf-mode-plot")).toHaveCount(0);
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expectChartRegionZoom(page, "zpf-mode-plot");
 
   await page.getByLabel("Sweep Lj").check();
   await expect(page.getByLabel("Value for Lj")).toHaveValue("Previous: 8e-9");

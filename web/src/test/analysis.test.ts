@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
+  buildSweepPrecomputeQueue,
+  buildSweepPrecomputeQueueFromParameters,
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
@@ -46,6 +48,64 @@ describe("analysis helpers", () => {
     expect(buildSweepValues("0", "1", "0.001").error).toContain(
       "limited to 101 points",
     );
+  });
+
+  it("orders background sweep work by distance from the selected point", () => {
+    const values = [0, 1, 2, 3, 4].map((C) => ({ C }));
+
+    expect(
+      buildSweepPrecomputeQueue(values, { C: 2 }, ["C"], [{ C: 2 }]),
+    ).toEqual([{ C: 1 }, { C: 3 }, { C: 0 }, { C: 4 }]);
+    expect(
+      buildSweepPrecomputeQueue(values, { C: 2.6 }, ["C"], [], 2),
+    ).toEqual([{ C: 3 }, { C: 2 }]);
+  });
+
+  it("orders multi-parameter background sweep work near the selected grid point", () => {
+    const values = [
+      { C: 1, L: 10 },
+      { C: 1, L: 20 },
+      { C: 2, L: 10 },
+      { C: 2, L: 20 },
+    ];
+
+    expect(
+      buildSweepPrecomputeQueue(
+        values,
+        { C: 1, L: 10 },
+        ["C", "L"],
+        [{ C: 1, L: 10 }],
+      ),
+    ).toEqual([
+      { C: 1, L: 20 },
+      { C: 2, L: 10 },
+      { C: 2, L: 20 },
+    ]);
+  });
+
+  it("orders large multi-parameter background work without materializing the full grid", () => {
+    const parameterValues = {
+      C: [1, 2, 3, 4, 5],
+      Cg: [10, 20, 30, 40, 50],
+      L: [100, 200, 300, 400, 500],
+    };
+
+    expect(
+      buildSweepPrecomputeQueueFromParameters(
+        parameterValues,
+        { C: 3, Cg: 30, L: 300 },
+        ["C", "Cg", "L"],
+        [{ C: 3, Cg: 30, L: 300 }],
+        6,
+      ),
+    ).toEqual([
+      { C: 2, Cg: 30, L: 300 },
+      { C: 3, Cg: 20, L: 300 },
+      { C: 3, Cg: 30, L: 200 },
+      { C: 3, Cg: 30, L: 400 },
+      { C: 3, Cg: 40, L: 300 },
+      { C: 4, Cg: 30, L: 300 },
+    ]);
   });
 
   it("builds current analysis chart series", () => {

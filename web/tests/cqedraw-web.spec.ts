@@ -807,12 +807,12 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await page.getByLabel("Sweep step for Lj").fill("2e-9");
   await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 1",
+    "Cached points: 3 / 3",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-Lj"), "1");
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 2",
+    "Cached points: 3 / 3",
     { timeout: 60_000 },
   );
   await page.getByLabel("Selected sweep value for Lj").fill("7e-9");
@@ -821,7 +821,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     "7.0000e-9",
   );
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3",
+    "Cached points: 3 / 3",
     { timeout: 60_000 },
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
@@ -1967,22 +1967,22 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("sweep-sample-slider-C12")).toBeVisible();
   await expect(page.getByTestId("sweep-sample-slider-L12_inv")).toBeVisible();
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 1",
+    "Cached points: 4 / 4",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "1");
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 2",
+    "Cached points: 4 / 4",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-L12_inv"), "1");
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3",
+    "Cached points: 4 / 4",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "0");
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 4",
+    "Cached points: 4 / 4",
     { timeout: 60_000 },
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
@@ -1990,6 +1990,30 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   });
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
+
+  await page.getByLabel("Sweep max for C12").fill("10e-15");
+  await page.getByLabel("Sweep step for C12").fill("1e-15");
+  await page.getByLabel("Sweep max for L12_inv").fill("20e9");
+  await page.getByLabel("Sweep step for L12_inv").fill("1e9");
+  await expect(page.getByTestId("sweep-validation-message")).toHaveCount(0);
+  await expect(page.getByTestId("sweep-point-count")).toContainText(
+    "200 slider combinations",
+  );
+  await expect(page.getByTestId("sweep-point-count")).toContainText(
+    "up to 101 nearby points",
+  );
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points:",
+    { timeout: 60_000 },
+  );
+  await expect(page.getByText("Sweep is limited to 101 points")).toHaveCount(0);
+  const analysisBeforeLargeSweepMove = await page
+    .getByTestId("modal-analysis")
+    .innerText();
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "9");
+  await expect.poll(async () => page.getByTestId("modal-analysis").innerText(), {
+    timeout: 60_000,
+  }).not.toBe(analysisBeforeLargeSweepMove);
 
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();

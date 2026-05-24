@@ -59,6 +59,7 @@ import {
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
+  buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
   MAX_SWEEP_POINTS,
   type ChartPoint,
@@ -110,6 +111,7 @@ const MAX_SWEEP_CACHE_ENTRIES = 160;
 const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
 const OUTPUT_GENERATION_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
+const SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS = 450;
 
 interface ViewBox {
   x: number;
@@ -246,8 +248,9 @@ type ParameterSweepConfigs = Record<string, ParameterSweepConfig>;
 interface MultiSweepValidation {
   error: string | null;
   parameterValues: Record<string, number[]>;
+  precomputeLimit: number;
   parameters: string[];
-  values: Record<string, number>[];
+  totalCombinations: number;
 }
 
 const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
@@ -297,6 +300,7 @@ export function App() {
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
   const [sweepSliderValues, setSweepSliderValues] = useState<Record<string, number>>({});
   const [sweepRunning, setSweepRunning] = useState(false);
+  const [sweepPrecomputeRunning, setSweepPrecomputeRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
@@ -334,6 +338,8 @@ export function App() {
     null,
   );
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
+  const sweepPrecomputeContextRef = useRef(0);
+  const sweepPrecomputeJobIdRef = useRef(0);
   const sweepRequestIdRef = useRef(0);
   const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
     null,
@@ -496,10 +502,19 @@ export function App() {
     () => selectedSampleForSweepValues(sweepSamples, selectedSweepValues),
     [selectedSweepValues, sweepSamples],
   );
+  const cachedSweepGridPointCount = useMemo(
+    () =>
+      countSweepGridSamples(
+        sweepValidation.parameterValues,
+        sweepSamples,
+        activeSweepParameters,
+      ),
+    [activeSweepParameters, sweepSamples, sweepValidation.parameterValues],
+  );
   const sweepModeActive =
     activeSweepParameters.length > 0 &&
     !sweepValidation.error &&
-    sweepValidation.values.length > 0;
+    sweepValidation.totalCombinations > 0;
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
@@ -528,7 +543,13 @@ export function App() {
       outputPanelRef.current.scrollTop = activeRestore.top;
     });
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [displayedAnalysis, engineStatus, sweepRunning, sweepSamples]);
+  }, [
+    displayedAnalysis,
+    engineStatus,
+    sweepPrecomputeRunning,
+    sweepRunning,
+    sweepSamples,
+  ]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -549,8 +570,7 @@ export function App() {
       analysisRequestIdRef.current += 1;
       setModalAnalysis(null);
       setAnalysisRunning(false);
-      setSweepSamples([]);
-      setSweepError(null);
+      clearSweepResults();
       return;
     }
     setParameterValues((current) => {
@@ -610,7 +630,7 @@ export function App() {
       !output ||
       activeSweepParameters.length === 0 ||
       sweepValidation.error ||
-      sweepValidation.values.length === 0 ||
+      sweepValidation.totalCombinations === 0 ||
       missingSweepFixedValues.length > 0
     ) {
       sweepRequestIdRef.current += 1;
@@ -619,7 +639,6 @@ export function App() {
     }
 
     const selectedGridPoint = selectedSweepGridPoint(
-      sweepValidation.values,
       selectedSweepValues,
       activeSweepParameters,
     );
@@ -715,7 +734,123 @@ export function App() {
     parameterValues,
     selectedSweepValues,
     sweepValidation.error,
-    sweepValidation.values,
+    sweepValidation.totalCombinations,
+  ]);
+
+  useEffect(() => {
+    if (
+      !output ||
+      activeSweepParameters.length === 0 ||
+      sweepValidation.error ||
+      sweepValidation.totalCombinations === 0 ||
+      missingSweepFixedValues.length > 0 ||
+      sweepError ||
+      sweepRunning ||
+      sweepPrecomputeRunning ||
+      !selectedSweepSample
+    ) {
+      return;
+    }
+
+    const queuedPoints = buildSweepPrecomputeQueueFromParameters(
+      sweepValidation.parameterValues,
+      selectedSweepValues,
+      activeSweepParameters,
+      sweepSamples.map((sample) => sample.values ?? {}),
+      sweepValidation.precomputeLimit,
+    );
+    const nextPoint = queuedPoints[0];
+    if (!nextPoint) {
+      return;
+    }
+
+    const sweepProject = projectRef.current;
+    const analysisParameterValues = sweepAnalysisParameterValues(
+      parameterValues,
+      nextPoint,
+    );
+    const missing = missingParameterNames(output.parameters, analysisParameterValues);
+    if (missing.length > 0) {
+      return;
+    }
+
+    const cacheKey = sweepCacheKey(sweepProject, analysisParameterValues);
+    const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
+    if (cachedSample) {
+      setSweepSamples((current) => upsertSweepSample(current, cachedSample));
+      return;
+    }
+
+    const contextId = sweepPrecomputeContextRef.current;
+    const jobId = sweepPrecomputeJobIdRef.current + 1;
+    sweepPrecomputeJobIdRef.current = jobId;
+    const cancelIdleWork = scheduleIdleWork(() => {
+      if (
+        contextId !== sweepPrecomputeContextRef.current ||
+        jobId !== sweepPrecomputeJobIdRef.current
+      ) {
+        return;
+      }
+      setSweepPrecomputeRunning(true);
+      clientRef.current!
+        .analyze(sweepProject, analysisParameterValues)
+        .then((analysis) => {
+          if (
+            contextId !== sweepPrecomputeContextRef.current ||
+            jobId !== sweepPrecomputeJobIdRef.current
+          ) {
+            return;
+          }
+          if (!analysis.available || analysis.error) {
+            throw new Error(
+              analysis.error ?? "BBQ modal analysis failed while precomputing sweep points.",
+            );
+          }
+          const sample = {
+            analysis,
+            value: nextPoint[activeSweepParameters[0]],
+            values: nextPoint,
+          };
+          rememberSweepSample(sweepSampleCacheRef.current, cacheKey, sample);
+          setSweepSamples((current) => upsertSweepSample(current, sample));
+          setEngineWarmup({ base: "ready", analysis: "ready", error: null });
+        })
+        .catch((error) => {
+          if (
+            contextId !== sweepPrecomputeContextRef.current ||
+            jobId !== sweepPrecomputeJobIdRef.current
+          ) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          setSweepError(`Background sweep precompute stopped: ${message}`);
+        })
+        .finally(() => {
+          if (
+            contextId === sweepPrecomputeContextRef.current &&
+            jobId === sweepPrecomputeJobIdRef.current
+          ) {
+            setSweepPrecomputeRunning(false);
+          }
+        });
+    });
+
+    return cancelIdleWork;
+  }, [
+    activeSweepParameters,
+    missingSweepFixedValues,
+    output,
+    parameterValues,
+    selectedSweepSample,
+    selectedSweepValues,
+    sweepError,
+    sweepPrecomputeRunning,
+    sweepRunning,
+    sweepSamples,
+    sweepValidation.error,
+    sweepValidation.parameterValues,
+    sweepValidation.precomputeLimit,
+    sweepValidation.totalCombinations,
   ]);
 
   useEffect(() => {
@@ -900,9 +1035,12 @@ export function App() {
 
   function clearSweepResults() {
     sweepRequestIdRef.current += 1;
+    sweepPrecomputeContextRef.current += 1;
+    sweepPrecomputeJobIdRef.current += 1;
     setSweepSamples([]);
     setSweepSliderValues({});
     setSweepRunning(false);
+    setSweepPrecomputeRunning(false);
     setSweepError(null);
   }
 
@@ -2618,6 +2756,7 @@ export function App() {
                   <AnalysisParameterPanel
                     activeSweepParameters={activeSweepParameters}
                     analysisRunning={analysisRunning}
+                    cachedSweepGridPointCount={cachedSweepGridPointCount}
                     disabled={!output}
                     fixedMissingParameters={missingSweepFixedValues}
                     missingParameters={missingParameterValues}
@@ -2630,6 +2769,7 @@ export function App() {
                     }}
                     onExportAnalysis={exportAnalysisCsv}
                     parameters={outputParameters}
+                    precomputeRunning={sweepPrecomputeRunning}
                     running={sweepRunning}
                     samples={sweepSamples}
                     selectedValues={sweepSliderValues}
@@ -2640,7 +2780,12 @@ export function App() {
                   />
                 </div>
                 <div className="analysis-results" data-testid="analysis-results">
-                  <ModalAnalysisPlots result={displayedAnalysis} />
+                  <ModalAnalysisPlots
+                    result={displayedAnalysis}
+                    yReferenceResults={
+                      sweepModeActive ? sweepSamples.map((sample) => sample.analysis) : []
+                    }
+                  />
                   <ModalAnalysisTable result={displayedAnalysis} />
                 </div>
               </div>
@@ -4184,6 +4329,7 @@ function JosephsonBranchList({
 function AnalysisParameterPanel({
   activeSweepParameters,
   analysisRunning,
+  cachedSweepGridPointCount,
   disabled,
   fixedMissingParameters,
   missingParameters,
@@ -4193,6 +4339,7 @@ function AnalysisParameterPanel({
   onSliderChange,
   onExportAnalysis,
   parameters,
+  precomputeRunning,
   running,
   samples,
   selectedValues,
@@ -4203,6 +4350,7 @@ function AnalysisParameterPanel({
 }: {
   activeSweepParameters: string[];
   analysisRunning: boolean;
+  cachedSweepGridPointCount: number;
   disabled: boolean;
   fixedMissingParameters: string[];
   missingParameters: string[];
@@ -4212,6 +4360,7 @@ function AnalysisParameterPanel({
   onSliderChange: (name: string, value: number) => void;
   onExportAnalysis: () => void;
   parameters: string[];
+  precomputeRunning: boolean;
   running: boolean;
   samples: SweepSample[];
   selectedValues: Record<string, number>;
@@ -4311,16 +4460,18 @@ function AnalysisParameterPanel({
           <p className="sweep-summary" data-testid="sweep-running-message">
             Calculating selected sweep point...
           </p>
-        ) : validation.values.length > 0 ? (
+        ) : validation.totalCombinations > 0 ? (
           <p className="sweep-summary" data-testid="sweep-point-count">
-            {validation.values.length} slider combination
-            {validation.values.length === 1 ? "" : "s"} available, maximum{" "}
-            {MAX_SWEEP_POINTS}.
+            {validation.totalCombinations} slider combination
+            {validation.totalCombinations === 1 ? "" : "s"} available.
+            Background cache: up to {validation.precomputeLimit} nearby point
+            {validation.precomputeLimit === 1 ? "" : "s"}.
           </p>
         ) : null}
         {samples.length > 0 ? (
           <p className="sweep-summary" data-testid="sweep-result-summary">
-            Cached points: {samples.length}.
+            Cached points: {cachedSweepGridPointCount} / {validation.totalCombinations}.
+            {precomputeRunning ? " Precomputing..." : ""}
           </p>
         ) : null}
       </div>
@@ -4550,12 +4701,14 @@ function ModalAnalysisPlots({
   frequencyTestId = "frequency-mode-plot",
   frequencyTitle = "Mode frequencies",
   result,
+  yReferenceResults = [],
   zpfTestId = "zpf-mode-plot",
   zpfTitle = "JJ phase ZPF",
 }: {
   frequencyTestId?: string;
   frequencyTitle?: string;
   result: ModalAnalysisResult | null;
+  yReferenceResults?: ModalAnalysisResult[];
   zpfTestId?: string;
   zpfTitle?: string;
 }) {
@@ -4565,6 +4718,18 @@ function ModalAnalysisPlots({
 
   const frequencySeries = buildCurrentFrequencySeries(result);
   const zpfSeries = buildCurrentZpfSeries(result);
+  const yReferenceFrequencySeries = yReferenceResults.flatMap((entry, index) =>
+    buildCurrentFrequencySeries(entry).map((series) => ({
+      ...series,
+      key: `${series.key}_reference_${index}`,
+    })),
+  );
+  const yReferenceZpfSeries = yReferenceResults.flatMap((entry, index) =>
+    buildCurrentZpfSeries(entry).map((series) => ({
+      ...series,
+      key: `${series.key}_reference_${index}`,
+    })),
+  );
   if (frequencySeries.length === 0 && zpfSeries.length === 0) {
     return null;
   }
@@ -4577,6 +4742,7 @@ function ModalAnalysisPlots({
         title={frequencyTitle}
         xLabel="mode index"
         yLabel="frequency GHz"
+        yReferenceSeries={yReferenceFrequencySeries}
       />
       <AnalysisLineChart
         series={zpfSeries}
@@ -4584,6 +4750,7 @@ function ModalAnalysisPlots({
         title={zpfTitle}
         xLabel="mode index"
         yLabel="phase ZPF"
+        yReferenceSeries={yReferenceZpfSeries}
       />
     </div>
   );
@@ -4595,12 +4762,14 @@ function AnalysisLineChart({
   title,
   xLabel,
   yLabel,
+  yReferenceSeries = [],
 }: {
   series: ChartSeries[];
   testId: string;
   title: string;
   xLabel: string;
   yLabel: string;
+  yReferenceSeries?: ChartSeries[];
 }) {
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
   const [hoveredPoint, setHoveredPoint] = useState<{
@@ -4614,7 +4783,10 @@ function AnalysisLineChart({
   }
 
   const visibleSeries = populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
-  const bounds = chartBounds(visibleSeries.length > 0 ? visibleSeries : populatedSeries);
+  const bounds = chartBounds(
+    visibleSeries.length > 0 ? visibleSeries : populatedSeries,
+    yReferenceSeries,
+  );
   const xTicks = chartTicks(bounds.minX, bounds.maxX);
   const yTicks = chartTicks(bounds.minY, bounds.maxY);
   const viewWidth = 620;
@@ -4813,10 +4985,11 @@ function AnalysisLineChart({
   );
 }
 
-function chartBounds(series: ChartSeries[]) {
+function chartBounds(series: ChartSeries[], yReferenceSeries: ChartSeries[] = []) {
   const points = series.flatMap((entry) => entry.points);
+  const yReferencePoints = yReferenceSeries.flatMap((entry) => entry.points);
   const xValues = points.map((point) => point.x);
-  const yValues = points.map((point) => point.y);
+  const yValues = [...points, ...yReferencePoints].map((point) => point.y);
   let minX = Math.min(...xValues);
   let maxX = Math.max(...xValues);
   let minY = Math.min(...yValues);
@@ -4889,7 +5062,7 @@ function buildMultiSweepValues(
 ): MultiSweepValidation {
   const activeParameters = parameters.filter((name) => configs[name]?.enabled);
   const parameterValues: Record<string, number[]> = {};
-  const values: Record<string, number>[] = [{}];
+  let totalCombinations = activeParameters.length === 0 ? 0 : 1;
 
   for (const parameter of activeParameters) {
     const config = configs[parameter] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
@@ -4898,34 +5071,21 @@ function buildMultiSweepValues(
       return {
         error: `${parameter}: ${validation.error}`,
         parameterValues,
+        precomputeLimit: 0,
         parameters: activeParameters,
-        values: [],
+        totalCombinations: 0,
       };
     }
     parameterValues[parameter] = validation.values;
-    const currentCount = values.length * validation.values.length;
-    if (currentCount > maxPoints) {
-      return {
-        error: `Sweep is limited to ${maxPoints} points. Reduce one range or increase one step.`,
-        parameterValues,
-        parameters: activeParameters,
-        values: [],
-      };
-    }
-    const nextValues: Record<string, number>[] = [];
-    for (const existing of values) {
-      for (const value of validation.values) {
-        nextValues.push({ ...existing, [parameter]: value });
-      }
-    }
-    values.splice(0, values.length, ...nextValues);
+    totalCombinations *= validation.values.length;
   }
 
   return {
     error: null,
     parameterValues,
+    precomputeLimit: Math.min(maxPoints, totalCombinations),
     parameters: activeParameters,
-    values: activeParameters.length === 0 ? [] : values,
+    totalCombinations,
   };
 }
 
@@ -4945,6 +5105,21 @@ function selectedSampleForSweepValues(
       selectedNames.every((name) => sample.values?.[name] === selectedValues[name]),
     ) ?? null
   );
+}
+
+function countSweepGridSamples(
+  parameterValues: Record<string, number[]>,
+  samples: SweepSample[],
+  parameters: string[],
+): number {
+  if (samples.length === 0 || parameters.length === 0) {
+    return 0;
+  }
+  return samples.filter((sample) =>
+    parameters.every((parameter) =>
+      (parameterValues[parameter] ?? []).includes(sample.values?.[parameter] ?? NaN),
+    ),
+  ).length;
 }
 
 function selectedValuesForSweep(
@@ -4973,7 +5148,6 @@ function selectedValuesForSweep(
 }
 
 function selectedSweepGridPoint(
-  values: Record<string, number>[],
   selectedValues: Record<string, number>,
   parameters: string[],
 ): Record<string, number> | null {
@@ -4987,15 +5161,10 @@ function selectedSweepGridPoint(
   ) {
     return null;
   }
-  return (
-    values.find((value) =>
-      parameters.every((parameter) => value[parameter] === selectedValues[parameter]),
-    ) ??
-    parameters.reduce<Record<string, number>>((point, parameter) => {
-      point[parameter] = selectedValues[parameter] as number;
-      return point;
-    }, {})
-  );
+  return parameters.reduce<Record<string, number>>((point, parameter) => {
+    point[parameter] = selectedValues[parameter] as number;
+    return point;
+  }, {});
 }
 
 function nearestSweepValueIndex(values: number[], selectedValue: number): number {
@@ -5082,6 +5251,24 @@ function upsertSweepSample(samples: SweepSample[], sample: SweepSample): SweepSa
     );
   });
   return [...next, sample];
+}
+
+function scheduleIdleWork(callback: () => void): () => void {
+  const windowWithIdle = window as Window & {
+    cancelIdleCallback?: (handle: number) => void;
+    requestIdleCallback?: (
+      callback: () => void,
+      options?: { timeout: number },
+    ) => number;
+  };
+  if (typeof windowWithIdle.requestIdleCallback === "function") {
+    const handle = windowWithIdle.requestIdleCallback(callback, {
+      timeout: SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS,
+    });
+    return () => windowWithIdle.cancelIdleCallback?.(handle);
+  }
+  const handle = window.setTimeout(callback, SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS);
+  return () => window.clearTimeout(handle);
 }
 
 function formatModalNumber(value: number): string {

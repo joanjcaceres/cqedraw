@@ -61,11 +61,15 @@ import {
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
+  canStartSweepPrecompute,
   chartBounds,
+  referenceFrequencyYBounds,
+  referenceZpfYBounds,
   MAX_SWEEP_POINTS,
   type ChartBounds,
   type ChartPoint,
   type ChartSeries,
+  type ChartYBounds,
   type SweepSample,
   type SweepScale,
 } from "./analysis";
@@ -114,6 +118,8 @@ const MAX_SWEEP_CACHE_ENTRIES = 160;
 const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
 const OUTPUT_GENERATION_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
+const SWEEP_INTERACTION_IDLE_MS = 350;
+const SWEEP_SLIDER_COMMIT_DELAY_MS = 75;
 const SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS = 450;
 
 interface ViewBox {
@@ -304,6 +310,7 @@ export function App() {
   const [sweepConfig, setSweepConfig] = useState<ParameterSweepConfigs>({});
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
   const [sweepSliderValues, setSweepSliderValues] = useState<Record<string, number>>({});
+  const [sweepInteractionActive, setSweepInteractionActive] = useState(false);
   const [sweepRunning, setSweepRunning] = useState(false);
   const [sweepPrecomputeRunning, setSweepPrecomputeRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
@@ -345,6 +352,7 @@ export function App() {
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepPrecomputeContextRef = useRef(0);
   const sweepPrecomputeJobIdRef = useRef(0);
+  const sweepInteractionIdleTimerRef = useRef<number | null>(null);
   const sweepRequestIdRef = useRef(0);
   const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
     null,
@@ -570,6 +578,15 @@ export function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  useEffect(
+    () => () => {
+      if (sweepInteractionIdleTimerRef.current !== null) {
+        window.clearTimeout(sweepInteractionIdleTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!output) {
       analysisRequestIdRef.current += 1;
@@ -671,7 +688,11 @@ export function App() {
       sweepRequestIdRef.current += 1;
       setSweepRunning(false);
       setSweepError(null);
-      setSweepSamples((current) => upsertSweepSample(current, cachedSample));
+      setSweepSamples((current) =>
+        selectedSampleForSweepValues(current, selectedGridPoint)
+          ? current
+          : upsertSweepSample(current, cachedSample),
+      );
       setEngineStatus("Loaded cached sweep point.");
       return;
     }
@@ -743,17 +764,21 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (
-      !output ||
-      activeSweepParameters.length === 0 ||
-      sweepValidation.error ||
-      sweepValidation.totalCombinations === 0 ||
-      missingSweepFixedValues.length > 0 ||
-      sweepError ||
-      sweepRunning ||
-      sweepPrecomputeRunning ||
-      !selectedSweepSample
-    ) {
+    if (!canStartSweepPrecompute({
+      activeParameterCount: activeSweepParameters.length,
+      hasSelectedSample: Boolean(selectedSweepSample),
+      hasValidationError: Boolean(sweepValidation.error),
+      missingFixedValueCount: missingSweepFixedValues.length,
+      outputAvailable: Boolean(output),
+      precomputeRunning: sweepPrecomputeRunning,
+      sliderInteracting: sweepInteractionActive,
+      sweepError,
+      sweepRunning,
+      totalCombinations: sweepValidation.totalCombinations,
+    })) {
+      return;
+    }
+    if (!output) {
       return;
     }
 
@@ -849,6 +874,7 @@ export function App() {
     selectedSweepSample,
     selectedSweepValues,
     sweepError,
+    sweepInteractionActive,
     sweepPrecomputeRunning,
     sweepRunning,
     sweepSamples,
@@ -1042,11 +1068,30 @@ export function App() {
     sweepRequestIdRef.current += 1;
     sweepPrecomputeContextRef.current += 1;
     sweepPrecomputeJobIdRef.current += 1;
+    if (sweepInteractionIdleTimerRef.current !== null) {
+      window.clearTimeout(sweepInteractionIdleTimerRef.current);
+      sweepInteractionIdleTimerRef.current = null;
+    }
     setSweepSamples([]);
     setSweepSliderValues({});
+    setSweepInteractionActive(false);
     setSweepRunning(false);
     setSweepPrecomputeRunning(false);
     setSweepError(null);
+  }
+
+  function markSweepSliderInteraction() {
+    sweepPrecomputeContextRef.current += 1;
+    sweepPrecomputeJobIdRef.current += 1;
+    setSweepPrecomputeRunning(false);
+    setSweepInteractionActive(true);
+    if (sweepInteractionIdleTimerRef.current !== null) {
+      window.clearTimeout(sweepInteractionIdleTimerRef.current);
+    }
+    sweepInteractionIdleTimerRef.current = window.setTimeout(() => {
+      sweepInteractionIdleTimerRef.current = null;
+      setSweepInteractionActive(false);
+    }, SWEEP_INTERACTION_IDLE_MS);
   }
 
   function preserveOutputPanelScroll() {
@@ -2769,8 +2814,15 @@ export function App() {
                     onParameterChange={updateParameterValue}
                     onRangeChange={updateSweepConfig}
                     onSliderChange={(name, value) => {
+                      markSweepSliderInteraction();
                       preserveOutputPanelScroll();
-                      setSweepSliderValues((current) => ({ ...current, [name]: value }));
+                      setSweepSliderValues((current) =>
+                        current[name] === value ? current : { ...current, [name]: value },
+                      );
+                    }}
+                    onSliderInteraction={() => {
+                      markSweepSliderInteraction();
+                      preserveOutputPanelScroll();
                     }}
                     onExportAnalysis={exportAnalysisCsv}
                     parameters={outputParameters}
@@ -4335,6 +4387,7 @@ function AnalysisParameterPanel({
   onParameterChange,
   onRangeChange,
   onSliderChange,
+  onSliderInteraction,
   onExportAnalysis,
   parameters,
   precomputeRunning,
@@ -4356,6 +4409,7 @@ function AnalysisParameterPanel({
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
+  onSliderInteraction: () => void;
   onExportAnalysis: () => void;
   parameters: string[];
   precomputeRunning: boolean;
@@ -4437,6 +4491,7 @@ function AnalysisParameterPanel({
                 onParameterChange={onParameterChange}
                 onRangeChange={onRangeChange}
                 onSliderChange={onSliderChange}
+                onSliderInteraction={onSliderInteraction}
                 range={sweepValues[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG}
                 selectedSweepValue={selectedValues[name]}
                 sweepValues={validation.parameterValues[name] ?? []}
@@ -4484,6 +4539,7 @@ function ParameterControlRow({
   onParameterChange,
   onRangeChange,
   onSliderChange,
+  onSliderInteraction,
   range,
   selectedSweepValue,
   sweepValues,
@@ -4495,20 +4551,28 @@ function ParameterControlRow({
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
+  onSliderInteraction: () => void;
   range: ParameterSweepConfig;
   selectedSweepValue: number | undefined;
   sweepValues: number[];
   value: string;
 }) {
-  const displayedSweepValue = selectedSweepValue ?? sweepValues[0];
+  const [localSliderDraft, setLocalSliderDraft] = useState<{
+    index: number;
+    value: number;
+  } | null>(null);
+  const sliderCommitTimerRef = useRef<number | null>(null);
+  const displayedSweepValue =
+    localSliderDraft?.value ?? selectedSweepValue ?? sweepValues[0];
   const [manualSweepValueText, setManualSweepValueText] = useState(() =>
     displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
   );
   const [manualSweepValueFocused, setManualSweepValueFocused] = useState(false);
-  const selectedIndex =
-    displayedSweepValue === undefined
+  const committedSelectedIndex =
+    (selectedSweepValue ?? sweepValues[0]) === undefined
       ? 0
-      : nearestSweepValueIndex(sweepValues, displayedSweepValue);
+      : nearestSweepValueIndex(sweepValues, selectedSweepValue ?? sweepValues[0]);
+  const selectedIndex = localSliderDraft?.index ?? committedSelectedIndex;
   const previousFixedValue = value.trim();
   const sweepReferenceValue = previousFixedValue
     ? `Previous: ${previousFixedValue}`
@@ -4518,12 +4582,65 @@ function ParameterControlRow({
   const stepPlaceholder = sweepScale === "log" ? "points" : "step";
 
   useEffect(() => {
+    setLocalSliderDraft(null);
+  }, [selectedSweepValue, sweepValues]);
+
+  useEffect(() => {
     if (!manualSweepValueFocused) {
       setManualSweepValueText(
         displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
       );
     }
   }, [displayedSweepValue, manualSweepValueFocused]);
+
+  useEffect(
+    () => () => {
+      if (sliderCommitTimerRef.current !== null) {
+        window.clearTimeout(sliderCommitTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function clearScheduledSliderCommit() {
+    if (sliderCommitTimerRef.current !== null) {
+      window.clearTimeout(sliderCommitTimerRef.current);
+      sliderCommitTimerRef.current = null;
+    }
+  }
+
+  function commitSliderValue(nextValue: number) {
+    clearScheduledSliderCommit();
+    onSliderChange(name, nextValue);
+  }
+
+  function scheduleSliderCommit(nextValue: number) {
+    clearScheduledSliderCommit();
+    sliderCommitTimerRef.current = window.setTimeout(() => {
+      sliderCommitTimerRef.current = null;
+      onSliderChange(name, nextValue);
+    }, SWEEP_SLIDER_COMMIT_DELAY_MS);
+  }
+
+  function flushLocalSliderValue() {
+    if (!localSliderDraft) {
+      return;
+    }
+    commitSliderValue(localSliderDraft.value);
+  }
+
+  function handleSliderInput(nextIndex: number) {
+    const nextValue = sweepValues[nextIndex];
+    if (nextValue === undefined) {
+      return;
+    }
+    setLocalSliderDraft({ index: nextIndex, value: nextValue });
+    if (!manualSweepValueFocused) {
+      setManualSweepValueText(formatModalNumber(nextValue));
+    }
+    onSliderInteraction();
+    scheduleSliderCommit(nextValue);
+  }
 
   function commitManualSweepValue() {
     const parsedValue = Number(manualSweepValueText);
@@ -4533,7 +4650,8 @@ function ParameterControlRow({
       );
       return;
     }
-    onSliderChange(name, parsedValue);
+    setLocalSliderDraft(null);
+    commitSliderValue(parsedValue);
     setManualSweepValueText(formatModalNumber(parsedValue));
   }
 
@@ -4650,9 +4768,13 @@ function ParameterControlRow({
                 disabled={disabled}
                 max={sweepValues.length - 1}
                 min={0}
+                onBlur={flushLocalSliderValue}
                 onChange={(event) =>
-                  onSliderChange(name, sweepValues[Number(event.target.value)])
+                  handleSliderInput(Number(event.currentTarget.value))
                 }
+                onKeyUp={flushLocalSliderValue}
+                onPointerDown={onSliderInteraction}
+                onPointerUp={flushLocalSliderValue}
                 step={1}
                 type="range"
                 value={selectedIndex}
@@ -4672,12 +4794,15 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
-  const hasJosephsonRows = branches.length > 0;
+  const modeCount = Math.max(
+    frequencies.length,
+    ...branches.map((branch) => branch.phase_zpf.length),
+  );
   const collapseByDefault = branches.length > 6 || frequencies.length > 16;
-  const modeCountText = `${frequencies.length} mode${frequencies.length === 1 ? "" : "s"}`;
+  const modeCountText = `${modeCount} mode${modeCount === 1 ? "" : "s"}`;
   const branchCountText =
     branches.length > 0
-      ? `, ${branches.length} JJ row${branches.length === 1 ? "" : "s"}`
+      ? `, ${branches.length} JJ column${branches.length === 1 ? "" : "s"}`
       : "";
   return (
     <details
@@ -4703,31 +4828,37 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
         <table>
           <thead>
             <tr>
-              <th>Quantity</th>
-              {frequencies.map((_, index) => (
-                <th key={index}>mode {index}</th>
+              <th>Mode</th>
+              <th>frequency GHz</th>
+              {branches.map((branch, branchIndex) => (
+                <th key={branch.edge_id ?? branchIndex}>
+                  edge {branch.edge_id ?? branchIndex} phase{" "}
+                  {branch.phase_nodes[0] ?? "GND"} -{" "}
+                  {branch.phase_nodes[1] ?? "GND"}
+                  <span className="modal-analysis-branch-note">
+                    Ej {formatModalNumber(branch.E_j_GHz)} GHz
+                  </span>
+                </th>
               ))}
-              {hasJosephsonRows ? <th>Ej GHz</th> : null}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <th>frequency GHz</th>
-              {frequencies.map((frequency, index) => (
-                <td key={index}>{formatModalNumber(frequency)}</td>
-              ))}
-              {hasJosephsonRows ? <td /> : null}
-            </tr>
-            {branches.map((branch, branchIndex) => (
-              <tr key={branch.edge_id ?? branchIndex}>
-                <th>
-                  edge {branch.edge_id ?? branchIndex} phase{" "}
-                  {branch.phase_nodes[0] ?? "GND"} - {branch.phase_nodes[1] ?? "GND"}
-                </th>
-                {branch.phase_zpf.map((zpf, modeIndex) => (
-                  <td key={modeIndex}>{formatModalNumber(zpf)}</td>
-                ))}
-                <td>{formatModalNumber(branch.E_j_GHz)}</td>
+            {Array.from({ length: modeCount }, (_, modeIndex) => (
+              <tr key={modeIndex}>
+                <th>mode {modeIndex}</th>
+                <td>
+                  {frequencies[modeIndex] === undefined
+                    ? ""
+                    : formatModalNumber(frequencies[modeIndex])}
+                </td>
+                {branches.map((branch, branchIndex) => {
+                  const zpf = branch.phase_zpf[modeIndex];
+                  return (
+                    <td key={branch.edge_id ?? branchIndex}>
+                      {zpf === undefined ? "" : formatModalNumber(zpf)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -4752,64 +4883,111 @@ function ModalAnalysisPlots({
   zpfTestId?: string;
   zpfTitle?: string;
 }) {
+  type AnalysisPlotTab = "frequency" | "zpf";
+  const [activePlot, setActivePlot] = useState<AnalysisPlotTab>("frequency");
+  const frequencySeries = result?.available ? buildCurrentFrequencySeries(result) : [];
+  const zpfSeries = result?.available ? buildCurrentZpfSeries(result) : [];
+  const hasFrequencyPlot = frequencySeries.some((entry) => entry.points.length > 0);
+  const hasZpfPlot = zpfSeries.some((entry) => entry.points.length > 0);
+  const referenceResults = yReferenceResults.filter((entry) => entry.available);
+
+  useEffect(() => {
+    if (activePlot === "zpf" && !hasZpfPlot && hasFrequencyPlot) {
+      setActivePlot("frequency");
+    }
+    if (activePlot === "frequency" && !hasFrequencyPlot && hasZpfPlot) {
+      setActivePlot("zpf");
+    }
+  }, [activePlot, hasFrequencyPlot, hasZpfPlot]);
+
   if (!result?.available) {
     return null;
   }
 
-  const frequencySeries = buildCurrentFrequencySeries(result);
-  const zpfSeries = buildCurrentZpfSeries(result);
-  const yReferenceFrequencySeries = yReferenceResults.flatMap((entry, index) =>
-    buildCurrentFrequencySeries(entry).map((series) => ({
-      ...series,
-      key: `${series.key}_reference_${index}`,
-    })),
-  );
-  const yReferenceZpfSeries = yReferenceResults.flatMap((entry, index) =>
-    buildCurrentZpfSeries(entry).map((series) => ({
-      ...series,
-      key: `${series.key}_reference_${index}`,
-    })),
-  );
-  if (frequencySeries.length === 0 && zpfSeries.length === 0) {
+  if (!hasFrequencyPlot && !hasZpfPlot) {
     return null;
   }
 
+  const showPlotTabs = hasFrequencyPlot && hasZpfPlot;
+  const selectedPlot = activePlot === "zpf" && hasZpfPlot ? "zpf" : "frequency";
+
   return (
     <div className="analysis-plots" data-testid="modal-analysis-plots">
-      <AnalysisLineChart
-        series={frequencySeries}
-        testId={frequencyTestId}
-        title={frequencyTitle}
-        xLabel="mode index"
-        yLabel="frequency GHz"
-        yReferenceSeries={yReferenceFrequencySeries}
-      />
-      <AnalysisLineChart
-        series={zpfSeries}
-        testId={zpfTestId}
-        title={zpfTitle}
-        xLabel="mode index"
-        yLabel="phase ZPF"
-        yReferenceSeries={yReferenceZpfSeries}
-      />
+      {showPlotTabs ? (
+        <div
+          aria-label="Analysis plot"
+          className="analysis-plot-tabs"
+          data-testid="analysis-plot-tabs"
+          role="tablist"
+        >
+          <button
+            aria-controls={`${frequencyTestId}-panel`}
+            aria-selected={selectedPlot === "frequency"}
+            data-testid="analysis-plot-tab-frequency"
+            onClick={() => setActivePlot("frequency")}
+            role="tab"
+            type="button"
+          >
+            Frequencies
+          </button>
+          <button
+            aria-controls={`${zpfTestId}-panel`}
+            aria-selected={selectedPlot === "zpf"}
+            data-testid="analysis-plot-tab-zpf"
+            onClick={() => setActivePlot("zpf")}
+            role="tab"
+            type="button"
+          >
+            Phase ZPF
+          </button>
+        </div>
+      ) : null}
+      {selectedPlot === "frequency" && hasFrequencyPlot ? (
+        <div id={`${frequencyTestId}-panel`} role="tabpanel">
+          <AnalysisLineChart
+            referenceYBoundsForSeries={() =>
+              referenceFrequencyYBounds(referenceResults)
+            }
+            series={frequencySeries}
+            testId={frequencyTestId}
+            title={frequencyTitle}
+            xLabel="mode index"
+            yLabel="frequency GHz"
+          />
+        </div>
+      ) : null}
+      {selectedPlot === "zpf" && hasZpfPlot ? (
+        <div id={`${zpfTestId}-panel`} role="tabpanel">
+          <AnalysisLineChart
+            referenceYBoundsForSeries={(seriesKeys) =>
+              referenceZpfYBounds(referenceResults, seriesKeys)
+            }
+            series={zpfSeries}
+            testId={zpfTestId}
+            title={zpfTitle}
+            xLabel="mode index"
+            yLabel="phase ZPF"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function AnalysisLineChart({
+  referenceYBoundsForSeries,
   series,
   testId,
   title,
   xLabel,
   yLabel,
-  yReferenceSeries = [],
 }: {
+  referenceYBoundsForSeries?: (seriesKeys: string[]) => ChartYBounds | null;
   series: ChartSeries[];
   testId: string;
   title: string;
   xLabel: string;
   yLabel: string;
-  yReferenceSeries?: ChartSeries[];
 }) {
   type ChartAxisMode = "auto" | "fixed" | "manual";
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
@@ -4847,16 +5025,19 @@ function AnalysisLineChart({
       : populatedSeries.filter((entry) => entry.key === activeSelectedSeriesKey)
     : populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
   const plottedSeries = visibleSeries.length > 0 ? visibleSeries : populatedSeries;
-  const hasReferenceY = yReferenceSeries.some((entry) => entry.points.length > 0);
+  const visibleSeriesKeys = plottedSeries.map((entry) => entry.key);
+  const referenceYBounds = referenceYBoundsForSeries?.(visibleSeriesKeys) ?? null;
+  const hasReferenceY = Boolean(referenceYBounds);
   const effectiveYAxisMode =
     yAxisMode === "fixed" && !hasReferenceY ? "auto" : yAxisMode;
   const manualYBounds = parseManualChartYBounds(manualYMinText, manualYMaxText);
   const bounds = chartBounds(
     plottedSeries,
-    effectiveYAxisMode === "fixed" ? yReferenceSeries : [],
+    [],
     effectiveYAxisMode === "manual" && manualYBounds.bounds
       ? manualYBounds.bounds
       : undefined,
+    effectiveYAxisMode === "fixed" ? referenceYBounds : null,
   );
   const displayBounds = zoomDomain ?? bounds;
   const xTicks = chartTicks(displayBounds.minX, displayBounds.maxX);
@@ -5093,6 +5274,9 @@ function AnalysisLineChart({
         }}
         onPointerUp={() => setPanStart(null)}
         onWheel={(event) => {
+          if (!event.ctrlKey && !event.metaKey) {
+            return;
+          }
           event.preventDefault();
           const position = svgPositionFromClient(event.clientX, event.clientY);
           zoomChart(event.deltaY > 0 ? 1.18 : 0.86, position ?? undefined);

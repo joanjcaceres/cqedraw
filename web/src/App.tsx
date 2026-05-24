@@ -119,6 +119,7 @@ const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
 const OUTPUT_GENERATION_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
 const SWEEP_INTERACTION_IDLE_MS = 350;
+const SWEEP_SLIDER_COMMIT_DELAY_MS = 75;
 const SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS = 450;
 
 interface ViewBox {
@@ -2815,7 +2816,13 @@ export function App() {
                     onSliderChange={(name, value) => {
                       markSweepSliderInteraction();
                       preserveOutputPanelScroll();
-                      setSweepSliderValues((current) => ({ ...current, [name]: value }));
+                      setSweepSliderValues((current) =>
+                        current[name] === value ? current : { ...current, [name]: value },
+                      );
+                    }}
+                    onSliderInteraction={() => {
+                      markSweepSliderInteraction();
+                      preserveOutputPanelScroll();
                     }}
                     onExportAnalysis={exportAnalysisCsv}
                     parameters={outputParameters}
@@ -4380,6 +4387,7 @@ function AnalysisParameterPanel({
   onParameterChange,
   onRangeChange,
   onSliderChange,
+  onSliderInteraction,
   onExportAnalysis,
   parameters,
   precomputeRunning,
@@ -4401,6 +4409,7 @@ function AnalysisParameterPanel({
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
+  onSliderInteraction: () => void;
   onExportAnalysis: () => void;
   parameters: string[];
   precomputeRunning: boolean;
@@ -4482,6 +4491,7 @@ function AnalysisParameterPanel({
                 onParameterChange={onParameterChange}
                 onRangeChange={onRangeChange}
                 onSliderChange={onSliderChange}
+                onSliderInteraction={onSliderInteraction}
                 range={sweepValues[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG}
                 selectedSweepValue={selectedValues[name]}
                 sweepValues={validation.parameterValues[name] ?? []}
@@ -4529,6 +4539,7 @@ function ParameterControlRow({
   onParameterChange,
   onRangeChange,
   onSliderChange,
+  onSliderInteraction,
   range,
   selectedSweepValue,
   sweepValues,
@@ -4540,20 +4551,28 @@ function ParameterControlRow({
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
+  onSliderInteraction: () => void;
   range: ParameterSweepConfig;
   selectedSweepValue: number | undefined;
   sweepValues: number[];
   value: string;
 }) {
-  const displayedSweepValue = selectedSweepValue ?? sweepValues[0];
+  const [localSliderDraft, setLocalSliderDraft] = useState<{
+    index: number;
+    value: number;
+  } | null>(null);
+  const sliderCommitTimerRef = useRef<number | null>(null);
+  const displayedSweepValue =
+    localSliderDraft?.value ?? selectedSweepValue ?? sweepValues[0];
   const [manualSweepValueText, setManualSweepValueText] = useState(() =>
     displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
   );
   const [manualSweepValueFocused, setManualSweepValueFocused] = useState(false);
-  const selectedIndex =
-    displayedSweepValue === undefined
+  const committedSelectedIndex =
+    (selectedSweepValue ?? sweepValues[0]) === undefined
       ? 0
-      : nearestSweepValueIndex(sweepValues, displayedSweepValue);
+      : nearestSweepValueIndex(sweepValues, selectedSweepValue ?? sweepValues[0]);
+  const selectedIndex = localSliderDraft?.index ?? committedSelectedIndex;
   const previousFixedValue = value.trim();
   const sweepReferenceValue = previousFixedValue
     ? `Previous: ${previousFixedValue}`
@@ -4563,12 +4582,65 @@ function ParameterControlRow({
   const stepPlaceholder = sweepScale === "log" ? "points" : "step";
 
   useEffect(() => {
+    setLocalSliderDraft(null);
+  }, [selectedSweepValue, sweepValues]);
+
+  useEffect(() => {
     if (!manualSweepValueFocused) {
       setManualSweepValueText(
         displayedSweepValue === undefined ? "" : formatModalNumber(displayedSweepValue),
       );
     }
   }, [displayedSweepValue, manualSweepValueFocused]);
+
+  useEffect(
+    () => () => {
+      if (sliderCommitTimerRef.current !== null) {
+        window.clearTimeout(sliderCommitTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function clearScheduledSliderCommit() {
+    if (sliderCommitTimerRef.current !== null) {
+      window.clearTimeout(sliderCommitTimerRef.current);
+      sliderCommitTimerRef.current = null;
+    }
+  }
+
+  function commitSliderValue(nextValue: number) {
+    clearScheduledSliderCommit();
+    onSliderChange(name, nextValue);
+  }
+
+  function scheduleSliderCommit(nextValue: number) {
+    clearScheduledSliderCommit();
+    sliderCommitTimerRef.current = window.setTimeout(() => {
+      sliderCommitTimerRef.current = null;
+      onSliderChange(name, nextValue);
+    }, SWEEP_SLIDER_COMMIT_DELAY_MS);
+  }
+
+  function flushLocalSliderValue() {
+    if (!localSliderDraft) {
+      return;
+    }
+    commitSliderValue(localSliderDraft.value);
+  }
+
+  function handleSliderInput(nextIndex: number) {
+    const nextValue = sweepValues[nextIndex];
+    if (nextValue === undefined) {
+      return;
+    }
+    setLocalSliderDraft({ index: nextIndex, value: nextValue });
+    if (!manualSweepValueFocused) {
+      setManualSweepValueText(formatModalNumber(nextValue));
+    }
+    onSliderInteraction();
+    scheduleSliderCommit(nextValue);
+  }
 
   function commitManualSweepValue() {
     const parsedValue = Number(manualSweepValueText);
@@ -4578,7 +4650,8 @@ function ParameterControlRow({
       );
       return;
     }
-    onSliderChange(name, parsedValue);
+    setLocalSliderDraft(null);
+    commitSliderValue(parsedValue);
     setManualSweepValueText(formatModalNumber(parsedValue));
   }
 
@@ -4695,9 +4768,13 @@ function ParameterControlRow({
                 disabled={disabled}
                 max={sweepValues.length - 1}
                 min={0}
+                onBlur={flushLocalSliderValue}
                 onChange={(event) =>
-                  onSliderChange(name, sweepValues[Number(event.target.value)])
+                  handleSliderInput(Number(event.currentTarget.value))
                 }
+                onKeyUp={flushLocalSliderValue}
+                onPointerDown={onSliderInteraction}
+                onPointerUp={flushLocalSliderValue}
                 step={1}
                 type="range"
                 value={selectedIndex}

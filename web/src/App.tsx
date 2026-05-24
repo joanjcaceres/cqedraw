@@ -2780,7 +2780,12 @@ export function App() {
                   />
                 </div>
                 <div className="analysis-results" data-testid="analysis-results">
-                  <ModalAnalysisPlots result={displayedAnalysis} />
+                  <ModalAnalysisPlots
+                    result={displayedAnalysis}
+                    yReferenceResults={
+                      sweepModeActive ? sweepSamples.map((sample) => sample.analysis) : []
+                    }
+                  />
                   <ModalAnalysisTable result={displayedAnalysis} />
                 </div>
               </div>
@@ -4696,12 +4701,14 @@ function ModalAnalysisPlots({
   frequencyTestId = "frequency-mode-plot",
   frequencyTitle = "Mode frequencies",
   result,
+  yReferenceResults = [],
   zpfTestId = "zpf-mode-plot",
   zpfTitle = "JJ phase ZPF",
 }: {
   frequencyTestId?: string;
   frequencyTitle?: string;
   result: ModalAnalysisResult | null;
+  yReferenceResults?: ModalAnalysisResult[];
   zpfTestId?: string;
   zpfTitle?: string;
 }) {
@@ -4711,6 +4718,18 @@ function ModalAnalysisPlots({
 
   const frequencySeries = buildCurrentFrequencySeries(result);
   const zpfSeries = buildCurrentZpfSeries(result);
+  const yReferenceFrequencySeries = yReferenceResults.flatMap((entry, index) =>
+    buildCurrentFrequencySeries(entry).map((series) => ({
+      ...series,
+      key: `${series.key}_reference_${index}`,
+    })),
+  );
+  const yReferenceZpfSeries = yReferenceResults.flatMap((entry, index) =>
+    buildCurrentZpfSeries(entry).map((series) => ({
+      ...series,
+      key: `${series.key}_reference_${index}`,
+    })),
+  );
   if (frequencySeries.length === 0 && zpfSeries.length === 0) {
     return null;
   }
@@ -4723,6 +4742,7 @@ function ModalAnalysisPlots({
         title={frequencyTitle}
         xLabel="mode index"
         yLabel="frequency GHz"
+        yReferenceSeries={yReferenceFrequencySeries}
       />
       <AnalysisLineChart
         series={zpfSeries}
@@ -4730,6 +4750,7 @@ function ModalAnalysisPlots({
         title={zpfTitle}
         xLabel="mode index"
         yLabel="phase ZPF"
+        yReferenceSeries={yReferenceZpfSeries}
       />
     </div>
   );
@@ -4741,12 +4762,14 @@ function AnalysisLineChart({
   title,
   xLabel,
   yLabel,
+  yReferenceSeries = [],
 }: {
   series: ChartSeries[];
   testId: string;
   title: string;
   xLabel: string;
   yLabel: string;
+  yReferenceSeries?: ChartSeries[];
 }) {
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
   const [hoveredPoint, setHoveredPoint] = useState<{
@@ -4760,7 +4783,10 @@ function AnalysisLineChart({
   }
 
   const visibleSeries = populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
-  const bounds = chartBounds(visibleSeries.length > 0 ? visibleSeries : populatedSeries);
+  const bounds = chartBounds(
+    visibleSeries.length > 0 ? visibleSeries : populatedSeries,
+    yReferenceSeries,
+  );
   const xTicks = chartTicks(bounds.minX, bounds.maxX);
   const yTicks = chartTicks(bounds.minY, bounds.maxY);
   const viewWidth = 620;
@@ -4959,10 +4985,11 @@ function AnalysisLineChart({
   );
 }
 
-function chartBounds(series: ChartSeries[]) {
+function chartBounds(series: ChartSeries[], yReferenceSeries: ChartSeries[] = []) {
   const points = series.flatMap((entry) => entry.points);
+  const yReferencePoints = yReferenceSeries.flatMap((entry) => entry.points);
   const xValues = points.map((point) => point.x);
-  const yValues = points.map((point) => point.y);
+  const yValues = [...points, ...yReferencePoints].map((point) => point.y);
   let minX = Math.min(...xValues);
   let maxX = Math.max(...xValues);
   let minY = Math.min(...yValues);

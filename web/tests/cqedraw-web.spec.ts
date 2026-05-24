@@ -60,6 +60,16 @@ async function expectFrequencyPlotFitsInOutputPanel(page: Page) {
   );
 }
 
+async function expectAnalysisResultsUseDrawerScroll(page: Page) {
+  await expect
+    .poll(() =>
+      page
+        .getByTestId("analysis-results")
+        .evaluate((element) => getComputedStyle(element).overflowY),
+    )
+    .toBe("visible");
+}
+
 async function expectFrequencyChartInteractions(page: Page) {
   const chart = page.getByTestId("frequency-mode-plot");
   const fixedAxisButton = page.getByTestId("frequency-mode-plot-axis-fixed");
@@ -82,12 +92,28 @@ async function expectFrequencyChartInteractions(page: Page) {
   await expect(chart.locator(".analysis-chart-tooltip")).toBeVisible();
 
   await expect(resetButton).toBeDisabled();
+  const plotArea = page.getByTestId("frequency-mode-plot-plot-area");
+  await plotArea.dispatchEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    deltaY: -120,
+  });
+  await expect(resetButton).toBeDisabled();
+  await plotArea.dispatchEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    ctrlKey: true,
+    deltaY: -120,
+  });
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+  await expect(resetButton).toBeDisabled();
+
   await page.getByTestId("frequency-mode-plot-zoom-in").click();
   await expect(resetButton).toBeEnabled();
   await resetButton.click();
   await expect(resetButton).toBeDisabled();
 
-  const plotArea = page.getByTestId("frequency-mode-plot-plot-area");
   const plotBox = await plotArea.boundingBox();
   if (!plotBox) {
     throw new Error("Expected chart plot area to be available.");
@@ -101,6 +127,10 @@ async function expectFrequencyChartInteractions(page: Page) {
   await page.mouse.up();
   await expect(resetButton).toBeEnabled();
   await resetButton.click();
+}
+
+async function selectAnalysisPlotTab(page: Page, name: "Frequencies" | "Phase ZPF") {
+  await page.getByRole("tab", { exact: true, name }).click();
 }
 
 async function closeOutputDrawer(page: Page) {
@@ -838,6 +868,9 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByTestId("analysis-plot-tabs")).toBeVisible();
+  await expect(page.getByTestId("zpf-mode-plot")).toHaveCount(0);
+  await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
 
   await page.getByLabel("Sweep Lj").check();
@@ -869,9 +902,12 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
-  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await selectAnalysisPlotTab(page, "Frequencies");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
@@ -918,6 +954,10 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await page.getByLabel("Value for C").fill("80e-15");
   await page.getByLabel("Value for L").fill("8e-9");
 
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await selectAnalysisPlotTab(page, "Phase ZPF");
   const zpfChart = page.getByTestId("zpf-mode-plot");
   await expect(zpfChart).toBeVisible({ timeout: 60_000 });
   const modalTable = page.getByTestId("modal-analysis");
@@ -994,6 +1034,7 @@ test("keeps large Josephson sweep charts mounted", async ({ page }) => {
     { timeout: 60_000 },
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByText("cQEDraw")).toBeVisible();
 });
@@ -2117,6 +2158,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
     timeout: 60_000,
   });
   await expectFrequencyPlotFitsInOutputPanel(page);
+  await expectAnalysisResultsUseDrawerScroll(page);
   await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
 

@@ -8,7 +8,10 @@ import {
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
+  canStartSweepPrecompute,
   chartBounds,
+  referenceFrequencyYBounds,
+  referenceZpfYBounds,
   type SweepSample,
 } from "../analysis";
 
@@ -181,6 +184,56 @@ describe("analysis helpers", () => {
       maxX: 99,
       minX: 0,
     });
+  });
+
+  it("computes cached frequency bounds without building reference series", () => {
+    const results = Array.from({ length: 2000 }, (_, index) => ({
+      available: true,
+      branches: [],
+      frequencies_ghz: [index, index + 0.5],
+    }));
+
+    expect(referenceFrequencyYBounds(results)).toEqual({
+      maxY: 1999.5,
+      minY: 0,
+    });
+  });
+
+  it("computes cached phase ZPF bounds for selected traces only", () => {
+    const branchA = { ...jjBranch, edge_id: 7, phase_zpf: [-10, 10] };
+    const branchB = { ...jjBranch, edge_id: 8, phase_zpf: [-0.2, 0.4] };
+    const results = [
+      {
+        available: true,
+        branches: [branchA, branchB],
+        frequencies_ghz: [5, 7],
+      },
+    ];
+
+    expect(referenceZpfYBounds(results, ["edge_8"])).toEqual({
+      maxY: 0.4,
+      minY: -0.2,
+    });
+  });
+
+  it("blocks background sweep precompute while sliders are active", () => {
+    const readyState = {
+      activeParameterCount: 1,
+      hasSelectedSample: true,
+      hasValidationError: false,
+      missingFixedValueCount: 0,
+      outputAvailable: true,
+      precomputeRunning: false,
+      sliderInteracting: false,
+      sweepError: null,
+      sweepRunning: false,
+      totalCombinations: 5,
+    };
+
+    expect(canStartSweepPrecompute(readyState)).toBe(true);
+    expect(
+      canStartSweepPrecompute({ ...readyState, sliderInteracting: true }),
+    ).toBe(false);
   });
 
   it("builds sweep chart series", () => {

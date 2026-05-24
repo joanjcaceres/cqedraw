@@ -28,6 +28,24 @@ export interface ChartBounds {
   minY: number;
 }
 
+export interface ChartYBounds {
+  maxY: number;
+  minY: number;
+}
+
+export interface SweepPrecomputeReadiness {
+  activeParameterCount: number;
+  hasSelectedSample: boolean;
+  hasValidationError: boolean;
+  missingFixedValueCount: number;
+  outputAvailable: boolean;
+  precomputeRunning: boolean;
+  sliderInteracting: boolean;
+  sweepError: string | null;
+  sweepRunning: boolean;
+  totalCombinations: number;
+}
+
 function parseSweepNumber(text: string, label: string): string | number {
   if (text.trim() === "") {
     return `Enter sweep ${label}.`;
@@ -189,6 +207,7 @@ export function chartBounds(
   series: ChartSeries[],
   yReferenceSeries: ChartSeries[] = [],
   manualYBounds?: { maxY: number; minY: number },
+  yReferenceBounds?: ChartYBounds | null,
 ): ChartBounds {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -209,6 +228,11 @@ export function chartBounds(
       minY = Math.min(minY, point.y);
       maxY = Math.max(maxY, point.y);
     }
+  }
+
+  if (yReferenceBounds) {
+    minY = Math.min(minY, yReferenceBounds.minY);
+    maxY = Math.max(maxY, yReferenceBounds.maxY);
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
@@ -236,6 +260,66 @@ export function chartBounds(
     maxY += pad;
   }
   return { maxX, maxY, minX, minY };
+}
+
+export function referenceFrequencyYBounds(
+  results: ModalAnalysisResult[],
+): ChartYBounds | null {
+  let bounds: ChartYBounds | null = null;
+  for (const result of results) {
+    for (const frequency of result.frequencies_ghz ?? []) {
+      bounds = expandYBounds(bounds, frequency);
+    }
+  }
+  return bounds;
+}
+
+export function referenceZpfYBounds(
+  results: ModalAnalysisResult[],
+  traceKeys: string[],
+): ChartYBounds | null {
+  if (traceKeys.length === 0) {
+    return null;
+  }
+  const selectedTraceKeys = new Set(traceKeys);
+  let bounds: ChartYBounds | null = null;
+  for (const result of results) {
+    for (const [branchIndex, branch] of (result.branches ?? []).entries()) {
+      if (!selectedTraceKeys.has(zpfTraceKey(branch, branchIndex))) {
+        continue;
+      }
+      for (const zpf of branch.phase_zpf) {
+        bounds = expandYBounds(bounds, zpf);
+      }
+    }
+  }
+  return bounds;
+}
+
+export function canStartSweepPrecompute({
+  activeParameterCount,
+  hasSelectedSample,
+  hasValidationError,
+  missingFixedValueCount,
+  outputAvailable,
+  precomputeRunning,
+  sliderInteracting,
+  sweepError,
+  sweepRunning,
+  totalCombinations,
+}: SweepPrecomputeReadiness): boolean {
+  return (
+    outputAvailable &&
+    activeParameterCount > 0 &&
+    !hasValidationError &&
+    totalCombinations > 0 &&
+    missingFixedValueCount === 0 &&
+    !sweepError &&
+    !sweepRunning &&
+    !precomputeRunning &&
+    !sliderInteracting &&
+    hasSelectedSample
+  );
 }
 
 export function buildSweepFrequencySeries(samples: SweepSample[]): ChartSeries[] {
@@ -374,6 +458,19 @@ function maxFrequencyCount(samples: SweepSample[]): number {
 function referenceBranches(samples: SweepSample[]): ModalBranchRecord[] {
   return samples.find((sample) => (sample.analysis.branches?.length ?? 0) > 0)
     ?.analysis.branches ?? [];
+}
+
+function expandYBounds(bounds: ChartYBounds | null, value: number): ChartYBounds | null {
+  if (!Number.isFinite(value)) {
+    return bounds;
+  }
+  if (!bounds) {
+    return { maxY: value, minY: value };
+  }
+  return {
+    maxY: Math.max(bounds.maxY, value),
+    minY: Math.min(bounds.minY, value),
+  };
 }
 
 function zpfTraceKey(branch: ModalBranchRecord, index: number): string {

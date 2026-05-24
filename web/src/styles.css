@@ -877,11 +877,11 @@ textarea {
   align-content: start;
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 184px);
+  max-height: none;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
   overflow-anchor: none;
-  padding-right: 2px;
+  padding-right: 0;
 }
 
 .parameter-panel-heading {
@@ -1120,6 +1120,35 @@ textarea {
 .analysis-plots {
   display: grid;
   gap: 8px;
+}
+
+.analysis-plot-tabs {
+  align-items: center;
+  background: #eef4fa;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 4px;
+  justify-self: start;
+  padding: 3px;
+}
+
+.analysis-plot-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #26384e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 28px;
+  padding: 5px 10px;
+}
+
+.analysis-plot-tabs button[aria-selected="true"] {
+  background: #132640;
+  color: #ffffff;
 }
 
 .analysis-chart {

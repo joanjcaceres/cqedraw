@@ -61,11 +61,15 @@ import {
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
+  canStartSweepPrecompute,
   chartBounds,
+  referenceFrequencyYBounds,
+  referenceZpfYBounds,
   MAX_SWEEP_POINTS,
   type ChartBounds,
   type ChartPoint,
   type ChartSeries,
+  type ChartYBounds,
   type SweepSample,
   type SweepScale,
 } from "./analysis";
@@ -114,6 +118,7 @@ const MAX_SWEEP_CACHE_ENTRIES = 160;
 const MODAL_ANALYSIS_DEBOUNCE_MS = 250;
 const OUTPUT_GENERATION_DEBOUNCE_MS = 250;
 const SWEEP_ANALYSIS_DEBOUNCE_MS = 120;
+const SWEEP_INTERACTION_IDLE_MS = 350;
 const SWEEP_PRECOMPUTE_IDLE_TIMEOUT_MS = 450;
 
 interface ViewBox {
@@ -304,6 +309,7 @@ export function App() {
   const [sweepConfig, setSweepConfig] = useState<ParameterSweepConfigs>({});
   const [sweepSamples, setSweepSamples] = useState<SweepSample[]>([]);
   const [sweepSliderValues, setSweepSliderValues] = useState<Record<string, number>>({});
+  const [sweepInteractionActive, setSweepInteractionActive] = useState(false);
   const [sweepRunning, setSweepRunning] = useState(false);
   const [sweepPrecomputeRunning, setSweepPrecomputeRunning] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
@@ -345,6 +351,7 @@ export function App() {
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepPrecomputeContextRef = useRef(0);
   const sweepPrecomputeJobIdRef = useRef(0);
+  const sweepInteractionIdleTimerRef = useRef<number | null>(null);
   const sweepRequestIdRef = useRef(0);
   const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
     null,
@@ -570,6 +577,15 @@ export function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  useEffect(
+    () => () => {
+      if (sweepInteractionIdleTimerRef.current !== null) {
+        window.clearTimeout(sweepInteractionIdleTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!output) {
       analysisRequestIdRef.current += 1;
@@ -671,7 +687,11 @@ export function App() {
       sweepRequestIdRef.current += 1;
       setSweepRunning(false);
       setSweepError(null);
-      setSweepSamples((current) => upsertSweepSample(current, cachedSample));
+      setSweepSamples((current) =>
+        selectedSampleForSweepValues(current, selectedGridPoint)
+          ? current
+          : upsertSweepSample(current, cachedSample),
+      );
       setEngineStatus("Loaded cached sweep point.");
       return;
     }
@@ -743,17 +763,21 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (
-      !output ||
-      activeSweepParameters.length === 0 ||
-      sweepValidation.error ||
-      sweepValidation.totalCombinations === 0 ||
-      missingSweepFixedValues.length > 0 ||
-      sweepError ||
-      sweepRunning ||
-      sweepPrecomputeRunning ||
-      !selectedSweepSample
-    ) {
+    if (!canStartSweepPrecompute({
+      activeParameterCount: activeSweepParameters.length,
+      hasSelectedSample: Boolean(selectedSweepSample),
+      hasValidationError: Boolean(sweepValidation.error),
+      missingFixedValueCount: missingSweepFixedValues.length,
+      outputAvailable: Boolean(output),
+      precomputeRunning: sweepPrecomputeRunning,
+      sliderInteracting: sweepInteractionActive,
+      sweepError,
+      sweepRunning,
+      totalCombinations: sweepValidation.totalCombinations,
+    })) {
+      return;
+    }
+    if (!output) {
       return;
     }
 
@@ -849,6 +873,7 @@ export function App() {
     selectedSweepSample,
     selectedSweepValues,
     sweepError,
+    sweepInteractionActive,
     sweepPrecomputeRunning,
     sweepRunning,
     sweepSamples,
@@ -1042,11 +1067,30 @@ export function App() {
     sweepRequestIdRef.current += 1;
     sweepPrecomputeContextRef.current += 1;
     sweepPrecomputeJobIdRef.current += 1;
+    if (sweepInteractionIdleTimerRef.current !== null) {
+      window.clearTimeout(sweepInteractionIdleTimerRef.current);
+      sweepInteractionIdleTimerRef.current = null;
+    }
     setSweepSamples([]);
     setSweepSliderValues({});
+    setSweepInteractionActive(false);
     setSweepRunning(false);
     setSweepPrecomputeRunning(false);
     setSweepError(null);
+  }
+
+  function markSweepSliderInteraction() {
+    sweepPrecomputeContextRef.current += 1;
+    sweepPrecomputeJobIdRef.current += 1;
+    setSweepPrecomputeRunning(false);
+    setSweepInteractionActive(true);
+    if (sweepInteractionIdleTimerRef.current !== null) {
+      window.clearTimeout(sweepInteractionIdleTimerRef.current);
+    }
+    sweepInteractionIdleTimerRef.current = window.setTimeout(() => {
+      sweepInteractionIdleTimerRef.current = null;
+      setSweepInteractionActive(false);
+    }, SWEEP_INTERACTION_IDLE_MS);
   }
 
   function preserveOutputPanelScroll() {
@@ -2769,6 +2813,7 @@ export function App() {
                     onParameterChange={updateParameterValue}
                     onRangeChange={updateSweepConfig}
                     onSliderChange={(name, value) => {
+                      markSweepSliderInteraction();
                       preserveOutputPanelScroll();
                       setSweepSliderValues((current) => ({ ...current, [name]: value }));
                     }}
@@ -4752,64 +4797,111 @@ function ModalAnalysisPlots({
   zpfTestId?: string;
   zpfTitle?: string;
 }) {
+  type AnalysisPlotTab = "frequency" | "zpf";
+  const [activePlot, setActivePlot] = useState<AnalysisPlotTab>("frequency");
+  const frequencySeries = result?.available ? buildCurrentFrequencySeries(result) : [];
+  const zpfSeries = result?.available ? buildCurrentZpfSeries(result) : [];
+  const hasFrequencyPlot = frequencySeries.some((entry) => entry.points.length > 0);
+  const hasZpfPlot = zpfSeries.some((entry) => entry.points.length > 0);
+  const referenceResults = yReferenceResults.filter((entry) => entry.available);
+
+  useEffect(() => {
+    if (activePlot === "zpf" && !hasZpfPlot && hasFrequencyPlot) {
+      setActivePlot("frequency");
+    }
+    if (activePlot === "frequency" && !hasFrequencyPlot && hasZpfPlot) {
+      setActivePlot("zpf");
+    }
+  }, [activePlot, hasFrequencyPlot, hasZpfPlot]);
+
   if (!result?.available) {
     return null;
   }
 
-  const frequencySeries = buildCurrentFrequencySeries(result);
-  const zpfSeries = buildCurrentZpfSeries(result);
-  const yReferenceFrequencySeries = yReferenceResults.flatMap((entry, index) =>
-    buildCurrentFrequencySeries(entry).map((series) => ({
-      ...series,
-      key: `${series.key}_reference_${index}`,
-    })),
-  );
-  const yReferenceZpfSeries = yReferenceResults.flatMap((entry, index) =>
-    buildCurrentZpfSeries(entry).map((series) => ({
-      ...series,
-      key: `${series.key}_reference_${index}`,
-    })),
-  );
-  if (frequencySeries.length === 0 && zpfSeries.length === 0) {
+  if (!hasFrequencyPlot && !hasZpfPlot) {
     return null;
   }
 
+  const showPlotTabs = hasFrequencyPlot && hasZpfPlot;
+  const selectedPlot = activePlot === "zpf" && hasZpfPlot ? "zpf" : "frequency";
+
   return (
     <div className="analysis-plots" data-testid="modal-analysis-plots">
-      <AnalysisLineChart
-        series={frequencySeries}
-        testId={frequencyTestId}
-        title={frequencyTitle}
-        xLabel="mode index"
-        yLabel="frequency GHz"
-        yReferenceSeries={yReferenceFrequencySeries}
-      />
-      <AnalysisLineChart
-        series={zpfSeries}
-        testId={zpfTestId}
-        title={zpfTitle}
-        xLabel="mode index"
-        yLabel="phase ZPF"
-        yReferenceSeries={yReferenceZpfSeries}
-      />
+      {showPlotTabs ? (
+        <div
+          aria-label="Analysis plot"
+          className="analysis-plot-tabs"
+          data-testid="analysis-plot-tabs"
+          role="tablist"
+        >
+          <button
+            aria-controls={`${frequencyTestId}-panel`}
+            aria-selected={selectedPlot === "frequency"}
+            data-testid="analysis-plot-tab-frequency"
+            onClick={() => setActivePlot("frequency")}
+            role="tab"
+            type="button"
+          >
+            Frequencies
+          </button>
+          <button
+            aria-controls={`${zpfTestId}-panel`}
+            aria-selected={selectedPlot === "zpf"}
+            data-testid="analysis-plot-tab-zpf"
+            onClick={() => setActivePlot("zpf")}
+            role="tab"
+            type="button"
+          >
+            Phase ZPF
+          </button>
+        </div>
+      ) : null}
+      {selectedPlot === "frequency" && hasFrequencyPlot ? (
+        <div id={`${frequencyTestId}-panel`} role="tabpanel">
+          <AnalysisLineChart
+            referenceYBoundsForSeries={() =>
+              referenceFrequencyYBounds(referenceResults)
+            }
+            series={frequencySeries}
+            testId={frequencyTestId}
+            title={frequencyTitle}
+            xLabel="mode index"
+            yLabel="frequency GHz"
+          />
+        </div>
+      ) : null}
+      {selectedPlot === "zpf" && hasZpfPlot ? (
+        <div id={`${zpfTestId}-panel`} role="tabpanel">
+          <AnalysisLineChart
+            referenceYBoundsForSeries={(seriesKeys) =>
+              referenceZpfYBounds(referenceResults, seriesKeys)
+            }
+            series={zpfSeries}
+            testId={zpfTestId}
+            title={zpfTitle}
+            xLabel="mode index"
+            yLabel="phase ZPF"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function AnalysisLineChart({
+  referenceYBoundsForSeries,
   series,
   testId,
   title,
   xLabel,
   yLabel,
-  yReferenceSeries = [],
 }: {
+  referenceYBoundsForSeries?: (seriesKeys: string[]) => ChartYBounds | null;
   series: ChartSeries[];
   testId: string;
   title: string;
   xLabel: string;
   yLabel: string;
-  yReferenceSeries?: ChartSeries[];
 }) {
   type ChartAxisMode = "auto" | "fixed" | "manual";
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
@@ -4847,16 +4939,19 @@ function AnalysisLineChart({
       : populatedSeries.filter((entry) => entry.key === activeSelectedSeriesKey)
     : populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
   const plottedSeries = visibleSeries.length > 0 ? visibleSeries : populatedSeries;
-  const hasReferenceY = yReferenceSeries.some((entry) => entry.points.length > 0);
+  const visibleSeriesKeys = plottedSeries.map((entry) => entry.key);
+  const referenceYBounds = referenceYBoundsForSeries?.(visibleSeriesKeys) ?? null;
+  const hasReferenceY = Boolean(referenceYBounds);
   const effectiveYAxisMode =
     yAxisMode === "fixed" && !hasReferenceY ? "auto" : yAxisMode;
   const manualYBounds = parseManualChartYBounds(manualYMinText, manualYMaxText);
   const bounds = chartBounds(
     plottedSeries,
-    effectiveYAxisMode === "fixed" ? yReferenceSeries : [],
+    [],
     effectiveYAxisMode === "manual" && manualYBounds.bounds
       ? manualYBounds.bounds
       : undefined,
+    effectiveYAxisMode === "fixed" ? referenceYBounds : null,
   );
   const displayBounds = zoomDomain ?? bounds;
   const xTicks = chartTicks(displayBounds.minX, displayBounds.maxX);
@@ -5093,6 +5188,9 @@ function AnalysisLineChart({
         }}
         onPointerUp={() => setPanStart(null)}
         onWheel={(event) => {
+          if (!event.ctrlKey && !event.metaKey) {
+            return;
+          }
           event.preventDefault();
           const position = svgPositionFromClient(event.clientX, event.clientY);
           zoomChart(event.deltaY > 0 ? 1.18 : 0.86, position ?? undefined);

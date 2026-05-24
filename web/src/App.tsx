@@ -4778,6 +4778,7 @@ function AnalysisLineChart({
     x: number;
     y: number;
   } | null>(null);
+  const [selectedSeriesKey, setSelectedSeriesKey] = useState<string>("__first__");
   const [yAxisMode, setYAxisMode] = useState<ChartAxisMode>("fixed");
   const [zoomDomain, setZoomDomain] = useState<ChartBounds | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -4786,7 +4787,18 @@ function AnalysisLineChart({
     return null;
   }
 
-  const visibleSeries = populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
+  const useSeriesSelect = populatedSeries.length > 6;
+  const activeSelectedSeriesKey =
+    selectedSeriesKey === "all"
+      ? "all"
+      : populatedSeries.some((entry) => entry.key === selectedSeriesKey)
+        ? selectedSeriesKey
+        : populatedSeries[0].key;
+  const visibleSeries = useSeriesSelect
+    ? activeSelectedSeriesKey === "all"
+      ? populatedSeries
+      : populatedSeries.filter((entry) => entry.key === activeSelectedSeriesKey)
+    : populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
   const plottedSeries = visibleSeries.length > 0 ? visibleSeries : populatedSeries;
   const hasReferenceY = yReferenceSeries.some((entry) => entry.points.length > 0);
   const effectiveYAxisMode =
@@ -4836,6 +4848,12 @@ function AnalysisLineChart({
       }
       return next;
     });
+  }
+
+  function selectSeries(key: string) {
+    setSelectedSeriesKey(key);
+    setHoveredPoint(null);
+    setZoomDomain(null);
   }
 
   function changeYAxisMode(mode: ChartAxisMode) {
@@ -5194,26 +5212,45 @@ function AnalysisLineChart({
         ) : null}
       </svg>
       {populatedSeries.length > 1 ? (
-        <div className="analysis-chart-legend">
-          {populatedSeries.map((entry, index) => {
-            const hidden = hiddenKeys.has(entry.key);
-            return (
-              <button
-                key={entry.key}
-                aria-pressed={!hidden}
-                className={hidden ? "muted" : ""}
-                onClick={() => toggleSeries(entry.key)}
-                type="button"
-              >
-                <span
-                  className="analysis-chart-swatch"
-                  style={{ backgroundColor: chartColor(index) }}
-                />
-                {entry.label}
-              </button>
-            );
-          })}
-        </div>
+        useSeriesSelect ? (
+          <label className="analysis-chart-series-select">
+            <span>Trace</span>
+            <select
+              aria-label={`${title} trace`}
+              data-testid={`${testId}-trace-select`}
+              onChange={(event) => selectSeries(event.target.value)}
+              value={activeSelectedSeriesKey}
+            >
+              <option value="all">All traces</option>
+              {populatedSeries.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="analysis-chart-legend">
+            {populatedSeries.map((entry, index) => {
+              const hidden = hiddenKeys.has(entry.key);
+              return (
+                <button
+                  key={entry.key}
+                  aria-pressed={!hidden}
+                  className={hidden ? "muted" : ""}
+                  onClick={() => toggleSeries(entry.key)}
+                  type="button"
+                >
+                  <span
+                    className="analysis-chart-swatch"
+                    style={{ backgroundColor: chartColor(index) }}
+                  />
+                  {entry.label}
+                </button>
+              );
+            })}
+          </div>
+        )
       ) : null}
     </div>
   );

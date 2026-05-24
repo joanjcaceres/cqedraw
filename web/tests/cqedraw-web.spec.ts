@@ -872,6 +872,58 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 });
 
+test("uses a trace selector for many Josephson phase ZPF traces", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "many-jj-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 2,
+        state: {
+          edge_counter: 7,
+          node_counter: 7,
+          nodes: Array.from({ length: 7 }, (_, index) => ({
+            identifier: index,
+            name: `N${index + 1}`,
+            x: 180 + index * 80,
+            y: 220,
+          })),
+          edges: Array.from({ length: 7 }, (_, index) => ({
+            identifier: index,
+            nodes: [index, -1],
+            capacitance_text: "C",
+            inductance_text: null,
+            josephson_inductance_text: "L",
+            josephson_phase_sign: 1,
+            is_ground: true,
+            ground_offset_x: 0,
+            ground_offset_y: 104,
+          })),
+        },
+      }),
+    ),
+  });
+
+  await clickBuildMatrices(page);
+  await expect(page.getByTestId("output-status")).toContainText("Generated 7 x 7");
+  await page.getByLabel("Value for C").fill("80e-15");
+  await page.getByLabel("Value for L").fill("8e-9");
+
+  const zpfChart = page.getByTestId("zpf-mode-plot");
+  await expect(zpfChart).toBeVisible({ timeout: 60_000 });
+  const traceSelect = page.getByTestId("zpf-mode-plot-trace-select");
+  await expect(traceSelect).toBeVisible();
+  await expect(traceSelect).not.toHaveValue("all");
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(1);
+
+  await traceSelect.selectOption("all");
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(7);
+});
+
 test("moves ground branches without changing generated output", async ({ page }) => {
   await page.goto("/");
 

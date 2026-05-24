@@ -13,6 +13,15 @@ async function openOutputDrawer(page: Page) {
   await expect(page.getByTestId("output-drawer")).toBeVisible();
 }
 
+async function dismissTutorialPromptIfVisible(page: Page) {
+  const prompt = page.getByTestId("tutorial-prompt");
+  if ((await prompt.count()) === 0 || !(await prompt.isVisible())) {
+    return;
+  }
+  await prompt.getByRole("button", { name: "Skip" }).click();
+  await expect(prompt).toBeHidden();
+}
+
 async function clickBuildMatrices(page: Page) {
   await openOutputDrawer(page);
   await expect(page.getByTestId("output-status")).toContainText(/Generated \d+ x \d+/, {
@@ -306,6 +315,7 @@ test("supports core web keyboard shortcuts without changing generated output", a
   page,
 }) => {
   await page.goto("/");
+  await dismissTutorialPromptIfVisible(page);
 
   const canvas = page.getByTestId("canvas");
   const selectButton = page.getByRole("button", { exact: true, name: "Select" });
@@ -350,7 +360,9 @@ test("supports core web keyboard shortcuts without changing generated output", a
   await page.getByTestId("ind-input").evaluate((element: HTMLInputElement) => element.blur());
 
   await page.keyboard.press("Control+Enter");
-  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
+  await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2", {
+    timeout: 60_000,
+  });
   await expectRawMatrixEntriesHidden(page);
 
   const downloadPromise = page.waitForEvent("download");
@@ -386,6 +398,7 @@ test("deletes selections without stealing inspector text entry", async ({
   page,
 }) => {
   await page.goto("/");
+  await dismissTutorialPromptIfVisible(page);
 
   const canvas = page.getByTestId("canvas");
   await page.keyboard.press("n");

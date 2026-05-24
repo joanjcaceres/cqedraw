@@ -943,6 +943,61 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(7);
 });
 
+test("keeps large Josephson sweep charts mounted", async ({ page }) => {
+  await page.goto("/");
+
+  const nodeCount = 100;
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "large-jj-sweep-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 2,
+        state: {
+          edge_counter: nodeCount,
+          node_counter: nodeCount,
+          nodes: Array.from({ length: nodeCount }, (_, index) => ({
+            identifier: index,
+            name: `N${index + 1}`,
+            x: 180 + index * 80,
+            y: 220,
+          })),
+          edges: Array.from({ length: nodeCount }, (_, index) => ({
+            identifier: index,
+            nodes: [index, -1],
+            capacitance_text: "C",
+            inductance_text: null,
+            josephson_inductance_text: "L",
+            josephson_phase_sign: 1,
+            is_ground: true,
+            ground_offset_x: 0,
+            ground_offset_y: 104,
+          })),
+        },
+      }),
+    ),
+  });
+
+  await clickBuildMatrices(page);
+  await page.getByRole("textbox", { exact: true, name: "Value for C" }).fill("25e-15");
+  await page.getByRole("textbox", { exact: true, name: "Value for L" }).fill("3e-9");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByLabel("Sweep C").check();
+  await page.getByLabel("Sweep min for C").fill("1e-15");
+  await page.getByLabel("Sweep max for C").fill("5e-15");
+  await page.getByLabel("Sweep step for C").fill("1e-15");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 5 / 5",
+    { timeout: 60_000 },
+  );
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expect(page.getByText("cQEDraw")).toBeVisible();
+});
+
 test("moves ground branches without changing generated output", async ({ page }) => {
   await page.goto("/");
 

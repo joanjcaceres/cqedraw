@@ -21,6 +21,13 @@ export interface ChartSeries {
   points: ChartPoint[];
 }
 
+export interface ChartBounds {
+  maxX: number;
+  maxY: number;
+  minX: number;
+  minY: number;
+}
+
 function parseSweepNumber(text: string, label: string): string | number {
   if (text.trim() === "") {
     return `Enter sweep ${label}.`;
@@ -176,6 +183,59 @@ export function buildCurrentZpfSeries(
     label: branchTraceLabel(branch, index),
     points: branch.phase_zpf.map((zpf, modeIndex) => ({ x: modeIndex, y: zpf })),
   }));
+}
+
+export function chartBounds(
+  series: ChartSeries[],
+  yReferenceSeries: ChartSeries[] = [],
+  manualYBounds?: { maxY: number; minY: number },
+): ChartBounds {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const entry of series) {
+    for (const point of entry.points) {
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+  }
+
+  for (const entry of yReferenceSeries) {
+    for (const point of entry.points) {
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+    return { maxX: 1, maxY: 1, minX: 0, minY: 0 };
+  }
+  if (manualYBounds) {
+    minY = manualYBounds.minY;
+    maxY = manualYBounds.maxY;
+  }
+  if (minX === maxX) {
+    const pad = Math.max(1, Math.abs(minX) * 0.1);
+    minX -= pad;
+    maxX += pad;
+  }
+  if (manualYBounds) {
+    return { maxX, maxY, minX, minY };
+  }
+  if (minY === maxY) {
+    const pad = Math.max(1, Math.abs(minY) * 0.1);
+    minY -= pad;
+    maxY += pad;
+  } else {
+    const pad = (maxY - minY) * 0.08;
+    minY -= pad;
+    maxY += pad;
+  }
+  return { maxX, maxY, minX, minY };
 }
 
 export function buildSweepFrequencySeries(samples: SweepSample[]): ChartSeries[] {

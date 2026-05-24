@@ -61,7 +61,9 @@ import {
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
+  chartBounds,
   MAX_SWEEP_POINTS,
+  type ChartBounds,
   type ChartPoint,
   type ChartSeries,
   type SweepSample,
@@ -5299,50 +5301,6 @@ function AnalysisLineChart({
       ) : null}
     </div>
   );
-}
-
-interface ChartBounds {
-  maxX: number;
-  maxY: number;
-  minX: number;
-  minY: number;
-}
-
-function chartBounds(
-  series: ChartSeries[],
-  yReferenceSeries: ChartSeries[] = [],
-  manualYBounds?: { maxY: number; minY: number },
-): ChartBounds {
-  const points = series.flatMap((entry) => entry.points);
-  const yReferencePoints = yReferenceSeries.flatMap((entry) => entry.points);
-  const xValues = points.map((point) => point.x);
-  const yValues = [...points, ...yReferencePoints].map((point) => point.y);
-  let minX = Math.min(...xValues);
-  let maxX = Math.max(...xValues);
-  let minY = Math.min(...yValues);
-  let maxY = Math.max(...yValues);
-  if (manualYBounds) {
-    minY = manualYBounds.minY;
-    maxY = manualYBounds.maxY;
-  }
-  if (minX === maxX) {
-    const pad = Math.max(1, Math.abs(minX) * 0.1);
-    minX -= pad;
-    maxX += pad;
-  }
-  if (manualYBounds) {
-    return { maxX, maxY, minX, minY };
-  }
-  if (minY === maxY) {
-    const pad = Math.max(1, Math.abs(minY) * 0.1);
-    minY -= pad;
-    maxY += pad;
-  } else {
-    const pad = (maxY - minY) * 0.08;
-    minY -= pad;
-    maxY += pad;
-  }
-  return { maxX, maxY, minX, minY };
 }
 
 function parseManualChartYBounds(

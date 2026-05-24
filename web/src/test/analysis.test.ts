@@ -8,6 +8,7 @@ import {
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
+  chartBounds,
   type SweepSample,
 } from "../analysis";
 
@@ -154,6 +155,32 @@ describe("analysis helpers", () => {
         ],
       },
     ]);
+  });
+
+  it("computes bounds for large reference datasets without stack overflow", () => {
+    const series = [
+      {
+        key: "current",
+        label: "current",
+        points: Array.from({ length: 100 }, (_, index) => ({
+          x: index,
+          y: index,
+        })),
+      },
+    ];
+    const yReferenceSeries = Array.from({ length: 3000 }, (_, seriesIndex) => ({
+      key: `reference-${seriesIndex}`,
+      label: `reference ${seriesIndex}`,
+      points: Array.from({ length: 100 }, (_, pointIndex) => ({
+        x: pointIndex,
+        y: seriesIndex + pointIndex,
+      })),
+    }));
+
+    expect(chartBounds(series, yReferenceSeries)).toMatchObject({
+      maxX: 99,
+      minX: 0,
+    });
   });
 
   it("builds sweep chart series", () => {

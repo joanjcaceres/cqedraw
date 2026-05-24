@@ -61,10 +61,13 @@ import {
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
+  chartBounds,
   MAX_SWEEP_POINTS,
+  type ChartBounds,
   type ChartPoint,
   type ChartSeries,
   type SweepSample,
+  type SweepScale,
 } from "./analysis";
 import { PyodideBridgeClient } from "./pyodideClient";
 import {
@@ -240,6 +243,7 @@ interface ParameterSweepConfig {
   enabled: boolean;
   max: string;
   min: string;
+  scale: SweepScale;
   step: string;
 }
 
@@ -263,6 +267,7 @@ const INITIAL_PARAMETER_SWEEP_CONFIG: ParameterSweepConfig = {
   enabled: false,
   max: "",
   min: "",
+  scale: "linear",
   step: "",
 };
 
@@ -2742,7 +2747,7 @@ export function App() {
                   </button>
                 </div>
               </div>
-              <JosephsonBranchList branches={output?.josephson_branches ?? []} />
+              <JosephsonBranchSummary branches={output?.josephson_branches ?? []} />
             </div>
             <div className="output-section output-section-analysis">
               <div className="output-section-heading">
@@ -4302,7 +4307,7 @@ function ConcatenatePreview({
   );
 }
 
-function JosephsonBranchList({
+function JosephsonBranchSummary({
   branches,
 }: {
   branches: OutputResult["josephson_branches"];
@@ -4312,17 +4317,10 @@ function JosephsonBranchList({
   }
 
   return (
-    <div className="entries">
-      <h3>Josephson branches</h3>
-      <ol data-testid="jj-branches">
-        {branches.map((branch) => (
-          <li key={branch.edge_id ?? `${branch.project_nodes[0]}-${branch.project_nodes[1]}`}>
-            edge {branch.edge_id}: phase index {branch.phase_positive_index ?? "GND"} -{" "}
-            {branch.phase_negative_index ?? "GND"}, LJ = {branch.inductance_expr}
-          </li>
-        ))}
-      </ol>
-    </div>
+    <p className="jj-branch-summary" data-testid="jj-branches">
+      {branches.length} Josephson branch{branches.length === 1 ? "" : "es"} included
+      in the copied Python snippet.
+    </p>
   );
 }
 
@@ -4515,6 +4513,9 @@ function ParameterControlRow({
   const sweepReferenceValue = previousFixedValue
     ? `Previous: ${previousFixedValue}`
     : "Controlled by sweep";
+  const sweepScale = range.scale ?? "linear";
+  const stepLabel = sweepScale === "log" ? "Points/decade" : "Step";
+  const stepPlaceholder = sweepScale === "log" ? "points" : "step";
 
   useEffect(() => {
     if (!manualSweepValueFocused) {
@@ -4570,6 +4571,22 @@ function ParameterControlRow({
         <>
           <div className="sweep-grid parameter-range-grid">
             <label>
+              <span>Scale</span>
+              <select
+                aria-label={`Sweep scale for ${name}`}
+                disabled={disabled}
+                onChange={(event) =>
+                  onRangeChange(name, {
+                    scale: event.target.value as SweepScale,
+                  })
+                }
+                value={sweepScale}
+              >
+                <option value="linear">Linear</option>
+                <option value="log">Log</option>
+              </select>
+            </label>
+            <label>
               <span>Min</span>
               <input
                 aria-label={`Sweep min for ${name}`}
@@ -4592,13 +4609,13 @@ function ParameterControlRow({
               />
             </label>
             <label>
-              <span>Step</span>
+              <span>{stepLabel}</span>
               <input
                 aria-label={`Sweep step for ${name}`}
                 disabled={disabled}
                 inputMode="decimal"
                 onChange={(event) => onRangeChange(name, { step: event.target.value })}
-                placeholder="step"
+                placeholder={stepPlaceholder}
                 value={range.step}
               />
             </label>
@@ -4656,9 +4673,32 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
   const frequencies = result.frequencies_ghz ?? [];
   const branches = result.branches ?? [];
   const hasJosephsonRows = branches.length > 0;
+  const collapseByDefault = branches.length > 6 || frequencies.length > 16;
+  const modeCountText = `${frequencies.length} mode${frequencies.length === 1 ? "" : "s"}`;
+  const branchCountText =
+    branches.length > 0
+      ? `, ${branches.length} JJ row${branches.length === 1 ? "" : "s"}`
+      : "";
   return (
-    <div className="modal-analysis" data-testid="modal-analysis">
-      <h3>BBQ modal results</h3>
+    <details
+      className="modal-analysis"
+      data-testid="modal-analysis"
+      open={!collapseByDefault}
+    >
+      <summary className="modal-analysis-summary">
+        <span className="modal-analysis-summary-title">
+          <h3>BBQ modal results</h3>
+          {collapseByDefault ? (
+            <span className="modal-analysis-summary-note">
+              Large result; use Export CSV for the full table.
+            </span>
+          ) : null}
+        </span>
+        <span className="modal-analysis-summary-meta">
+          {modeCountText}
+          {branchCountText}
+        </span>
+      </summary>
       <div className="modal-analysis-table-wrap">
         <table>
           <thead>
@@ -4693,7 +4733,7 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -4771,38 +4811,79 @@ function AnalysisLineChart({
   yLabel: string;
   yReferenceSeries?: ChartSeries[];
 }) {
+  type ChartAxisMode = "auto" | "fixed" | "manual";
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
   const [hoveredPoint, setHoveredPoint] = useState<{
     color: string;
     point: ChartPoint;
     seriesLabel: string;
   } | null>(null);
+  const [manualYMaxText, setManualYMaxText] = useState("");
+  const [manualYMinText, setManualYMinText] = useState("");
+  const [panStart, setPanStart] = useState<{
+    domain: ChartBounds;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectedSeriesKey, setSelectedSeriesKey] = useState<string>("__first__");
+  const [yAxisMode, setYAxisMode] = useState<ChartAxisMode>("fixed");
+  const [zoomDomain, setZoomDomain] = useState<ChartBounds | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const populatedSeries = series.filter((entry) => entry.points.length > 0);
   if (populatedSeries.length === 0) {
     return null;
   }
 
-  const visibleSeries = populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
+  const useSeriesSelect = populatedSeries.length > 6;
+  const activeSelectedSeriesKey =
+    selectedSeriesKey === "all"
+      ? "all"
+      : populatedSeries.some((entry) => entry.key === selectedSeriesKey)
+        ? selectedSeriesKey
+        : populatedSeries[0].key;
+  const visibleSeries = useSeriesSelect
+    ? activeSelectedSeriesKey === "all"
+      ? populatedSeries
+      : populatedSeries.filter((entry) => entry.key === activeSelectedSeriesKey)
+    : populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
+  const plottedSeries = visibleSeries.length > 0 ? visibleSeries : populatedSeries;
+  const hasReferenceY = yReferenceSeries.some((entry) => entry.points.length > 0);
+  const effectiveYAxisMode =
+    yAxisMode === "fixed" && !hasReferenceY ? "auto" : yAxisMode;
+  const manualYBounds = parseManualChartYBounds(manualYMinText, manualYMaxText);
   const bounds = chartBounds(
-    visibleSeries.length > 0 ? visibleSeries : populatedSeries,
-    yReferenceSeries,
+    plottedSeries,
+    effectiveYAxisMode === "fixed" ? yReferenceSeries : [],
+    effectiveYAxisMode === "manual" && manualYBounds.bounds
+      ? manualYBounds.bounds
+      : undefined,
   );
-  const xTicks = chartTicks(bounds.minX, bounds.maxX);
-  const yTicks = chartTicks(bounds.minY, bounds.maxY);
-  const viewWidth = 620;
-  const viewHeight = 300;
+  const displayBounds = zoomDomain ?? bounds;
+  const xTicks = chartTicks(displayBounds.minX, displayBounds.maxX);
+  const yTicks = chartTicks(displayBounds.minY, displayBounds.maxY);
+  const viewWidth = 760;
+  const viewHeight = 370;
   const plot = {
-    bottom: 258,
-    left: 70,
-    right: 600,
-    top: 18,
+    bottom: 320,
+    left: 78,
+    right: 736,
+    top: 22,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
   const xScale = (value: number) =>
-    plot.left + ((value - bounds.minX) / (bounds.maxX - bounds.minX)) * plotWidth;
+    plot.left +
+    ((value - displayBounds.minX) / (displayBounds.maxX - displayBounds.minX)) *
+      plotWidth;
   const yScale = (value: number) =>
-    plot.bottom - ((value - bounds.minY) / (bounds.maxY - bounds.minY)) * plotHeight;
+    plot.bottom -
+    ((value - displayBounds.minY) / (displayBounds.maxY - displayBounds.minY)) *
+      plotHeight;
+  const clipPathId = `${testId}-clip`;
+  const manualAxisMessage =
+    effectiveYAxisMode === "manual" && manualYBounds.error
+      ? manualYBounds.error
+      : "";
 
   function toggleSeries(key: string) {
     setHiddenKeys((current) => {
@@ -4816,19 +4897,235 @@ function AnalysisLineChart({
     });
   }
 
+  function selectSeries(key: string) {
+    setSelectedSeriesKey(key);
+    setHoveredPoint(null);
+    setZoomDomain(null);
+  }
+
+  function changeYAxisMode(mode: ChartAxisMode) {
+    setYAxisMode(mode);
+    setZoomDomain(null);
+  }
+
+  function updateManualYMin(value: string) {
+    setManualYMinText(value);
+    setZoomDomain(null);
+  }
+
+  function updateManualYMax(value: string) {
+    setManualYMaxText(value);
+    setZoomDomain(null);
+  }
+
+  function svgPositionFromClient(clientX: number, clientY: number) {
+    const svg = svgRef.current;
+    if (!svg) {
+      return null;
+    }
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+    return {
+      x: ((clientX - rect.left) / rect.width) * viewWidth,
+      y: ((clientY - rect.top) / rect.height) * viewHeight,
+    };
+  }
+
+  function chartDataPointFromSvgPosition(
+    position: { x: number; y: number },
+    domain: ChartBounds,
+  ) {
+    return {
+      x:
+        domain.minX +
+        ((position.x - plot.left) / plotWidth) * (domain.maxX - domain.minX),
+      y:
+        domain.minY +
+        ((plot.bottom - position.y) / plotHeight) * (domain.maxY - domain.minY),
+    };
+  }
+
+  function zoomChart(factor: number, center?: { x: number; y: number }) {
+    const currentDomain = zoomDomain ?? displayBounds;
+    const centerPoint = center
+      ? chartDataPointFromSvgPosition(center, currentDomain)
+      : {
+          x: (currentDomain.minX + currentDomain.maxX) / 2,
+          y: (currentDomain.minY + currentDomain.maxY) / 2,
+        };
+    setZoomDomain(zoomChartBounds(currentDomain, centerPoint, factor));
+  }
+
   return (
     <div className="analysis-chart" data-testid={testId}>
       <div className="analysis-chart-heading">
         <h3>{title}</h3>
+        <div className="analysis-chart-toolbar">
+          <div
+            aria-label={`${title} y-axis scale`}
+            className="analysis-chart-axis-mode"
+            role="group"
+          >
+            <button
+              aria-pressed={effectiveYAxisMode === "auto"}
+              data-testid={`${testId}-axis-auto`}
+              onClick={() => changeYAxisMode("auto")}
+              type="button"
+            >
+              Auto
+            </button>
+            <button
+              aria-pressed={effectiveYAxisMode === "fixed"}
+              data-testid={`${testId}-axis-fixed`}
+              disabled={!hasReferenceY}
+              onClick={() => changeYAxisMode("fixed")}
+              title={
+                hasReferenceY
+                  ? "Use cached sweep points for the y-axis"
+                  : "Run a sweep to use cached points for the y-axis"
+              }
+              type="button"
+            >
+              Fixed
+            </button>
+            <button
+              aria-pressed={effectiveYAxisMode === "manual"}
+              data-testid={`${testId}-axis-manual`}
+              onClick={() => changeYAxisMode("manual")}
+              type="button"
+            >
+              Manual
+            </button>
+          </div>
+          <div className="analysis-chart-nav">
+            <button
+              aria-label={`${title} zoom in`}
+              data-testid={`${testId}-zoom-in`}
+              onClick={() => zoomChart(0.72)}
+              type="button"
+            >
+              <ZoomIn size={14} />
+            </button>
+            <button
+              aria-label={`${title} zoom out`}
+              data-testid={`${testId}-zoom-out`}
+              onClick={() => zoomChart(1.32)}
+              type="button"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              aria-label={`${title} reset view`}
+              data-testid={`${testId}-reset-view`}
+              disabled={!zoomDomain}
+              onClick={() => setZoomDomain(null)}
+              type="button"
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
+        </div>
       </div>
+      {effectiveYAxisMode === "manual" ? (
+        <div className="analysis-chart-manual-axis">
+          <label>
+            <span>Y min</span>
+            <input
+              aria-label={`${title} y min`}
+              data-testid={`${testId}-y-min`}
+              inputMode="decimal"
+              onChange={(event) => updateManualYMin(event.target.value)}
+              placeholder="auto"
+              value={manualYMinText}
+            />
+          </label>
+          <label>
+            <span>Y max</span>
+            <input
+              aria-label={`${title} y max`}
+              data-testid={`${testId}-y-max`}
+              inputMode="decimal"
+              onChange={(event) => updateManualYMax(event.target.value)}
+              placeholder="auto"
+              value={manualYMaxText}
+            />
+          </label>
+          {manualAxisMessage ? (
+            <span
+              className="analysis-chart-axis-warning"
+              data-testid={`${testId}-axis-message`}
+            >
+              {manualAxisMessage}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <svg
         aria-label={title}
+        className={panStart ? "analysis-chart-panning" : undefined}
+        onPointerMove={(event) => {
+          if (!panStart) {
+            return;
+          }
+          const position = svgPositionFromClient(event.clientX, event.clientY);
+          if (!position) {
+            return;
+          }
+          const xRange = panStart.domain.maxX - panStart.domain.minX;
+          const yRange = panStart.domain.maxY - panStart.domain.minY;
+          const dx = ((position.x - panStart.x) / plotWidth) * xRange;
+          const dy = ((position.y - panStart.y) / plotHeight) * yRange;
+          setZoomDomain({
+            maxX: panStart.domain.maxX - dx,
+            maxY: panStart.domain.maxY + dy,
+            minX: panStart.domain.minX - dx,
+            minY: panStart.domain.minY + dy,
+          });
+        }}
         role="img"
+        ref={svgRef}
         viewBox={`0 0 ${viewWidth} ${viewHeight}`}
-        onPointerLeave={() => setHoveredPoint(null)}
+        onPointerLeave={() => {
+          setHoveredPoint(null);
+          setPanStart(null);
+        }}
+        onPointerUp={() => setPanStart(null)}
+        onWheel={(event) => {
+          event.preventDefault();
+          const position = svgPositionFromClient(event.clientX, event.clientY);
+          zoomChart(event.deltaY > 0 ? 1.18 : 0.86, position ?? undefined);
+        }}
       >
+        <defs>
+          <clipPath id={clipPathId}>
+            <rect
+              x={plot.left}
+              y={plot.top}
+              width={plotWidth}
+              height={plotHeight}
+            />
+          </clipPath>
+        </defs>
         <rect
           className="analysis-chart-plot-bg"
+          data-testid={`${testId}-plot-area`}
+          onPointerDown={(event) => {
+            if (event.button !== 0) {
+              return;
+            }
+            const position = svgPositionFromClient(event.clientX, event.clientY);
+            if (!position) {
+              return;
+            }
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setPanStart({
+              domain: zoomDomain ?? displayBounds,
+              x: position.x,
+              y: position.y,
+            });
+          }}
           x={plot.left}
           y={plot.top}
           width={plotWidth}
@@ -4907,6 +5204,7 @@ function AnalysisLineChart({
         >
           {yLabel}
         </text>
+        <g clipPath={`url(#${clipPathId})`}>
         {visibleSeries.map((entry, seriesIndex) => {
           const color = chartColor(seriesIndex);
           const scaledPoints = entry.points.map((point) => ({
@@ -4943,6 +5241,7 @@ function AnalysisLineChart({
             </g>
           );
         })}
+        </g>
         {hoveredPoint ? (
           <g className="analysis-chart-tooltip" transform="translate(438 30)">
             <rect width="158" height="58" rx="6" />
@@ -4960,55 +5259,83 @@ function AnalysisLineChart({
         ) : null}
       </svg>
       {populatedSeries.length > 1 ? (
-        <div className="analysis-chart-legend">
-          {populatedSeries.map((entry, index) => {
-            const hidden = hiddenKeys.has(entry.key);
-            return (
-              <button
-                key={entry.key}
-                aria-pressed={!hidden}
-                className={hidden ? "muted" : ""}
-                onClick={() => toggleSeries(entry.key)}
-                type="button"
-              >
-                <span
-                  className="analysis-chart-swatch"
-                  style={{ backgroundColor: chartColor(index) }}
-                />
-                {entry.label}
-              </button>
-            );
-          })}
-        </div>
+        useSeriesSelect ? (
+          <label className="analysis-chart-series-select">
+            <span>Trace</span>
+            <select
+              aria-label={`${title} trace`}
+              data-testid={`${testId}-trace-select`}
+              onChange={(event) => selectSeries(event.target.value)}
+              value={activeSelectedSeriesKey}
+            >
+              <option value="all">All traces</option>
+              {populatedSeries.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="analysis-chart-legend">
+            {populatedSeries.map((entry, index) => {
+              const hidden = hiddenKeys.has(entry.key);
+              return (
+                <button
+                  key={entry.key}
+                  aria-pressed={!hidden}
+                  className={hidden ? "muted" : ""}
+                  onClick={() => toggleSeries(entry.key)}
+                  type="button"
+                >
+                  <span
+                    className="analysis-chart-swatch"
+                    style={{ backgroundColor: chartColor(index) }}
+                  />
+                  {entry.label}
+                </button>
+              );
+            })}
+          </div>
+        )
       ) : null}
     </div>
   );
 }
 
-function chartBounds(series: ChartSeries[], yReferenceSeries: ChartSeries[] = []) {
-  const points = series.flatMap((entry) => entry.points);
-  const yReferencePoints = yReferenceSeries.flatMap((entry) => entry.points);
-  const xValues = points.map((point) => point.x);
-  const yValues = [...points, ...yReferencePoints].map((point) => point.y);
-  let minX = Math.min(...xValues);
-  let maxX = Math.max(...xValues);
-  let minY = Math.min(...yValues);
-  let maxY = Math.max(...yValues);
-  if (minX === maxX) {
-    const pad = Math.max(1, Math.abs(minX) * 0.1);
-    minX -= pad;
-    maxX += pad;
+function parseManualChartYBounds(
+  minText: string,
+  maxText: string,
+): { bounds?: { maxY: number; minY: number }; error: string | null } {
+  if (minText.trim() === "" || maxText.trim() === "") {
+    return { error: "Enter both y-axis limits." };
   }
-  if (minY === maxY) {
-    const pad = Math.max(1, Math.abs(minY) * 0.1);
-    minY -= pad;
-    maxY += pad;
-  } else {
-    const pad = (maxY - minY) * 0.08;
-    minY -= pad;
-    maxY += pad;
+  const minY = Number(minText);
+  const maxY = Number(maxText);
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    return { error: "Y-axis limits must be finite numbers." };
   }
-  return { maxX, maxY, minX, minY };
+  if (maxY <= minY) {
+    return { error: "Y max must be greater than y min." };
+  }
+  return { bounds: { maxY, minY }, error: null };
+}
+
+function zoomChartBounds(
+  bounds: ChartBounds,
+  center: { x: number; y: number },
+  factor: number,
+): ChartBounds {
+  const nextWidth = (bounds.maxX - bounds.minX) * factor;
+  const nextHeight = (bounds.maxY - bounds.minY) * factor;
+  const minX = center.x - (center.x - bounds.minX) * factor;
+  const minY = center.y - (center.y - bounds.minY) * factor;
+  return {
+    maxX: minX + nextWidth,
+    maxY: minY + nextHeight,
+    minX,
+    minY,
+  };
 }
 
 function chartTicks(min: number, max: number, count = 5): number[] {
@@ -5066,7 +5393,13 @@ function buildMultiSweepValues(
 
   for (const parameter of activeParameters) {
     const config = configs[parameter] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
-    const validation = buildSweepValues(config.min, config.max, config.step, maxPoints);
+    const validation = buildSweepValues(
+      config.min,
+      config.max,
+      config.step,
+      maxPoints,
+      config.scale ?? "linear",
+    );
     if (validation.error) {
       return {
         error: `${parameter}: ${validation.error}`,

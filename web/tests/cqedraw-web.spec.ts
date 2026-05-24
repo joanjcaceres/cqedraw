@@ -60,6 +60,49 @@ async function expectFrequencyPlotFitsInOutputPanel(page: Page) {
   );
 }
 
+async function expectFrequencyChartInteractions(page: Page) {
+  const chart = page.getByTestId("frequency-mode-plot");
+  const fixedAxisButton = page.getByTestId("frequency-mode-plot-axis-fixed");
+  const manualAxisButton = page.getByTestId("frequency-mode-plot-axis-manual");
+  const resetButton = page.getByTestId("frequency-mode-plot-reset-view");
+
+  await expect(fixedAxisButton).toBeEnabled();
+  await fixedAxisButton.click();
+  await expect(fixedAxisButton).toHaveAttribute("aria-pressed", "true");
+
+  await manualAxisButton.click();
+  await expect(manualAxisButton).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Mode frequencies y min").fill("0");
+  await page.getByLabel("Mode frequencies y max").fill("100");
+  await expect(page.getByTestId("frequency-mode-plot-axis-message")).toHaveCount(0);
+  await fixedAxisButton.click();
+  await expect(fixedAxisButton).toHaveAttribute("aria-pressed", "true");
+
+  await chart.locator(".analysis-chart-point").nth(1).hover();
+  await expect(chart.locator(".analysis-chart-tooltip")).toBeVisible();
+
+  await expect(resetButton).toBeDisabled();
+  await page.getByTestId("frequency-mode-plot-zoom-in").click();
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+  await expect(resetButton).toBeDisabled();
+
+  const plotArea = page.getByTestId("frequency-mode-plot-plot-area");
+  const plotBox = await plotArea.boundingBox();
+  if (!plotBox) {
+    throw new Error("Expected chart plot area to be available.");
+  }
+  await page.mouse.move(plotBox.x + plotBox.width / 2, plotBox.y + plotBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    plotBox.x + plotBox.width / 2 + 40,
+    plotBox.y + plotBox.height / 2 + 20,
+  );
+  await page.mouse.up();
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+}
+
 async function closeOutputDrawer(page: Page) {
   if ((await page.getByTestId("output-drawer").count()) > 0) {
     await page.getByRole("button", { exact: true, name: "Close output" }).click();
@@ -730,10 +773,7 @@ test("exports Josephson junction branch metadata and phase direction", async ({
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("jj-branches")).toContainText(
-    "edge 0: phase index 0 - 1, LJ = Lj",
-  );
-  await expect(page.getByTestId("jj-branches")).toContainText(
-    "edge 1: phase index 1 - GND, LJ = Lground_j",
+    "2 Josephson branches included in the copied Python snippet.",
   );
   await expect(page.getByTestId("matrix-nodes")).toHaveCount(0);
 
@@ -802,17 +842,22 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
 
   await page.getByLabel("Sweep Lj").check();
   await expect(page.getByLabel("Value for Lj")).toHaveValue("Previous: 8e-9");
-  await page.getByLabel("Sweep min for Lj").fill("6e-9");
-  await page.getByLabel("Sweep max for Lj").fill("1e-8");
-  await page.getByLabel("Sweep step for Lj").fill("2e-9");
+  await page.getByLabel("Sweep scale for Lj").selectOption("log");
+  await expect(page.getByText("Points/decade")).toBeVisible();
+  await page.getByLabel("Sweep min for Lj").fill("1e-9");
+  await page.getByLabel("Sweep max for Lj").fill("1e-7");
+  await page.getByLabel("Sweep step for Lj").fill("2");
   await expect(page.getByTestId("sweep-sample-slider-Lj")).toBeVisible();
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await setRangeInputValue(page.getByTestId("sweep-sample-slider-Lj"), "1");
+  await expect(page.getByLabel("Selected sweep value for Lj")).toHaveValue(
+    "3.1623e-9",
+  );
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await page.getByLabel("Selected sweep value for Lj").fill("7e-9");
@@ -821,7 +866,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     "7.0000e-9",
   );
   await expect(page.getByTestId("sweep-result-summary")).toContainText(
-    "Cached points: 3 / 3",
+    "Cached points: 5 / 5",
     { timeout: 60_000 },
   );
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
@@ -830,6 +875,127 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
+});
+
+test("uses a trace selector for many Josephson phase ZPF traces", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "many-jj-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 2,
+        state: {
+          edge_counter: 7,
+          node_counter: 7,
+          nodes: Array.from({ length: 7 }, (_, index) => ({
+            identifier: index,
+            name: `N${index + 1}`,
+            x: 180 + index * 80,
+            y: 220,
+          })),
+          edges: Array.from({ length: 7 }, (_, index) => ({
+            identifier: index,
+            nodes: [index, -1],
+            capacitance_text: "C",
+            inductance_text: null,
+            josephson_inductance_text: "L",
+            josephson_phase_sign: 1,
+            is_ground: true,
+            ground_offset_x: 0,
+            ground_offset_y: 104,
+          })),
+        },
+      }),
+    ),
+  });
+
+  await clickBuildMatrices(page);
+  await expect(page.getByTestId("output-status")).toContainText("Generated 7 x 7");
+  await page.getByLabel("Value for C").fill("80e-15");
+  await page.getByLabel("Value for L").fill("8e-9");
+
+  const zpfChart = page.getByTestId("zpf-mode-plot");
+  await expect(zpfChart).toBeVisible({ timeout: 60_000 });
+  const modalTable = page.getByTestId("modal-analysis");
+  await expect(modalTable.locator("summary")).toContainText("7 modes");
+  await expect(modalTable.locator("summary")).toContainText("7 JJ rows");
+  await expect
+    .poll(() =>
+      modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(false);
+  await modalTable.locator("summary").click();
+  await expect
+    .poll(() =>
+      modalTable.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
+  const traceSelect = page.getByTestId("zpf-mode-plot-trace-select");
+  await expect(traceSelect).toBeVisible();
+  await expect(traceSelect).not.toHaveValue("all");
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(1);
+
+  await traceSelect.selectOption("all");
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(7);
+});
+
+test("keeps large Josephson sweep charts mounted", async ({ page }) => {
+  await page.goto("/");
+
+  const nodeCount = 100;
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "large-jj-sweep-project.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 2,
+        state: {
+          edge_counter: nodeCount,
+          node_counter: nodeCount,
+          nodes: Array.from({ length: nodeCount }, (_, index) => ({
+            identifier: index,
+            name: `N${index + 1}`,
+            x: 180 + index * 80,
+            y: 220,
+          })),
+          edges: Array.from({ length: nodeCount }, (_, index) => ({
+            identifier: index,
+            nodes: [index, -1],
+            capacitance_text: "C",
+            inductance_text: null,
+            josephson_inductance_text: "L",
+            josephson_phase_sign: 1,
+            is_ground: true,
+            ground_offset_x: 0,
+            ground_offset_y: 104,
+          })),
+        },
+      }),
+    ),
+  });
+
+  await clickBuildMatrices(page);
+  await page.getByRole("textbox", { exact: true, name: "Value for C" }).fill("25e-15");
+  await page.getByRole("textbox", { exact: true, name: "Value for L" }).fill("3e-9");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByLabel("Sweep C").check();
+  await page.getByLabel("Sweep min for C").fill("1e-15");
+  await page.getByLabel("Sweep max for C").fill("5e-15");
+  await page.getByLabel("Sweep step for C").fill("1e-15");
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points: 5 / 5",
+    { timeout: 60_000 },
+  );
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expect(page.getByText("cQEDraw")).toBeVisible();
 });
 
 test("moves ground branches without changing generated output", async ({ page }) => {
@@ -1989,6 +2155,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
     timeout: 60_000,
   });
   await expectAnalysisResultsRightOfControls(page);
+  await expectFrequencyChartInteractions(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 
   await page.getByLabel("Sweep max for C12").fill("10e-15");

@@ -8,6 +8,7 @@ import {
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
+  chartBounds,
   type SweepSample,
 } from "../analysis";
 
@@ -37,6 +38,19 @@ describe("analysis helpers", () => {
     });
   });
 
+  it("builds logarithmic sweep values from points per decade", () => {
+    expect(buildSweepValues("1e-15", "1e-13", "2", 101, "log")).toEqual({
+      error: null,
+      values: [
+        1e-15,
+        3.16227766016838e-15,
+        1e-14,
+        3.16227766016838e-14,
+        1e-13,
+      ],
+    });
+  });
+
   it("rejects invalid sweep ranges and overly dense sweeps", () => {
     expect(buildSweepValues("", "1", "0.1").error).toBe("Enter sweep min.");
     expect(buildSweepValues("2", "1", "0.1").error).toBe(
@@ -47,6 +61,12 @@ describe("analysis helpers", () => {
     );
     expect(buildSweepValues("0", "1", "0.001").error).toContain(
       "limited to 101 points",
+    );
+    expect(buildSweepValues("0", "1", "4", 101, "log").error).toBe(
+      "Log sweep min and max must be positive.",
+    );
+    expect(buildSweepValues("1", "10", "0.5", 101, "log").error).toBe(
+      "Log sweep points per decade must be at least 1.",
     );
   });
 
@@ -135,6 +155,32 @@ describe("analysis helpers", () => {
         ],
       },
     ]);
+  });
+
+  it("computes bounds for large reference datasets without stack overflow", () => {
+    const series = [
+      {
+        key: "current",
+        label: "current",
+        points: Array.from({ length: 100 }, (_, index) => ({
+          x: index,
+          y: index,
+        })),
+      },
+    ];
+    const yReferenceSeries = Array.from({ length: 3000 }, (_, seriesIndex) => ({
+      key: `reference-${seriesIndex}`,
+      label: `reference ${seriesIndex}`,
+      points: Array.from({ length: 100 }, (_, pointIndex) => ({
+        x: pointIndex,
+        y: seriesIndex + pointIndex,
+      })),
+    }));
+
+    expect(chartBounds(series, yReferenceSeries)).toMatchObject({
+      maxX: 99,
+      minX: 0,
+    });
   });
 
   it("builds sweep chart series", () => {

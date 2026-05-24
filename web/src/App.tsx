@@ -59,7 +59,7 @@ import {
 import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
-  buildSweepPrecomputeQueue,
+  buildSweepPrecomputeQueueFromParameters,
   buildSweepValues,
   MAX_SWEEP_POINTS,
   type ChartPoint,
@@ -248,8 +248,9 @@ type ParameterSweepConfigs = Record<string, ParameterSweepConfig>;
 interface MultiSweepValidation {
   error: string | null;
   parameterValues: Record<string, number[]>;
+  precomputeLimit: number;
   parameters: string[];
-  values: Record<string, number>[];
+  totalCombinations: number;
 }
 
 const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
@@ -504,16 +505,16 @@ export function App() {
   const cachedSweepGridPointCount = useMemo(
     () =>
       countSweepGridSamples(
-        sweepValidation.values,
+        sweepValidation.parameterValues,
         sweepSamples,
         activeSweepParameters,
       ),
-    [activeSweepParameters, sweepSamples, sweepValidation.values],
+    [activeSweepParameters, sweepSamples, sweepValidation.parameterValues],
   );
   const sweepModeActive =
     activeSweepParameters.length > 0 &&
     !sweepValidation.error &&
-    sweepValidation.values.length > 0;
+    sweepValidation.totalCombinations > 0;
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
@@ -629,7 +630,7 @@ export function App() {
       !output ||
       activeSweepParameters.length === 0 ||
       sweepValidation.error ||
-      sweepValidation.values.length === 0 ||
+      sweepValidation.totalCombinations === 0 ||
       missingSweepFixedValues.length > 0
     ) {
       sweepRequestIdRef.current += 1;
@@ -638,7 +639,6 @@ export function App() {
     }
 
     const selectedGridPoint = selectedSweepGridPoint(
-      sweepValidation.values,
       selectedSweepValues,
       activeSweepParameters,
     );
@@ -734,7 +734,7 @@ export function App() {
     parameterValues,
     selectedSweepValues,
     sweepValidation.error,
-    sweepValidation.values,
+    sweepValidation.totalCombinations,
   ]);
 
   useEffect(() => {
@@ -742,7 +742,7 @@ export function App() {
       !output ||
       activeSweepParameters.length === 0 ||
       sweepValidation.error ||
-      sweepValidation.values.length === 0 ||
+      sweepValidation.totalCombinations === 0 ||
       missingSweepFixedValues.length > 0 ||
       sweepError ||
       sweepRunning ||
@@ -752,12 +752,12 @@ export function App() {
       return;
     }
 
-    const queuedPoints = buildSweepPrecomputeQueue(
-      sweepValidation.values,
+    const queuedPoints = buildSweepPrecomputeQueueFromParameters(
+      sweepValidation.parameterValues,
       selectedSweepValues,
       activeSweepParameters,
       sweepSamples.map((sample) => sample.values ?? {}),
-      Math.min(MAX_SWEEP_CACHE_ENTRIES, sweepValidation.values.length),
+      sweepValidation.precomputeLimit,
     );
     const nextPoint = queuedPoints[0];
     if (!nextPoint) {
@@ -848,7 +848,9 @@ export function App() {
     sweepRunning,
     sweepSamples,
     sweepValidation.error,
-    sweepValidation.values,
+    sweepValidation.parameterValues,
+    sweepValidation.precomputeLimit,
+    sweepValidation.totalCombinations,
   ]);
 
   useEffect(() => {
@@ -4453,16 +4455,17 @@ function AnalysisParameterPanel({
           <p className="sweep-summary" data-testid="sweep-running-message">
             Calculating selected sweep point...
           </p>
-        ) : validation.values.length > 0 ? (
+        ) : validation.totalCombinations > 0 ? (
           <p className="sweep-summary" data-testid="sweep-point-count">
-            {validation.values.length} slider combination
-            {validation.values.length === 1 ? "" : "s"} available, maximum{" "}
-            {MAX_SWEEP_POINTS}.
+            {validation.totalCombinations} slider combination
+            {validation.totalCombinations === 1 ? "" : "s"} available.
+            Background cache: up to {validation.precomputeLimit} nearby point
+            {validation.precomputeLimit === 1 ? "" : "s"}.
           </p>
         ) : null}
         {samples.length > 0 ? (
           <p className="sweep-summary" data-testid="sweep-result-summary">
-            Cached points: {cachedSweepGridPointCount} / {validation.values.length}.
+            Cached points: {cachedSweepGridPointCount} / {validation.totalCombinations}.
             {precomputeRunning ? " Precomputing..." : ""}
           </p>
         ) : null}
@@ -5032,7 +5035,7 @@ function buildMultiSweepValues(
 ): MultiSweepValidation {
   const activeParameters = parameters.filter((name) => configs[name]?.enabled);
   const parameterValues: Record<string, number[]> = {};
-  const values: Record<string, number>[] = [{}];
+  let totalCombinations = activeParameters.length === 0 ? 0 : 1;
 
   for (const parameter of activeParameters) {
     const config = configs[parameter] ?? INITIAL_PARAMETER_SWEEP_CONFIG;
@@ -5041,34 +5044,21 @@ function buildMultiSweepValues(
       return {
         error: `${parameter}: ${validation.error}`,
         parameterValues,
+        precomputeLimit: 0,
         parameters: activeParameters,
-        values: [],
+        totalCombinations: 0,
       };
     }
     parameterValues[parameter] = validation.values;
-    const currentCount = values.length * validation.values.length;
-    if (currentCount > maxPoints) {
-      return {
-        error: `Sweep is limited to ${maxPoints} points. Reduce one range or increase one step.`,
-        parameterValues,
-        parameters: activeParameters,
-        values: [],
-      };
-    }
-    const nextValues: Record<string, number>[] = [];
-    for (const existing of values) {
-      for (const value of validation.values) {
-        nextValues.push({ ...existing, [parameter]: value });
-      }
-    }
-    values.splice(0, values.length, ...nextValues);
+    totalCombinations *= validation.values.length;
   }
 
   return {
     error: null,
     parameterValues,
+    precomputeLimit: Math.min(maxPoints, totalCombinations),
     parameters: activeParameters,
-    values: activeParameters.length === 0 ? [] : values,
+    totalCombinations,
   };
 }
 
@@ -5091,26 +5081,18 @@ function selectedSampleForSweepValues(
 }
 
 function countSweepGridSamples(
-  values: Record<string, number>[],
+  parameterValues: Record<string, number[]>,
   samples: SweepSample[],
   parameters: string[],
 ): number {
-  if (values.length === 0 || samples.length === 0 || parameters.length === 0) {
+  if (samples.length === 0 || parameters.length === 0) {
     return 0;
   }
-  const sampleKeys = new Set(
-    samples.map((sample) => sweepSampleValueKey(sample.values ?? {}, parameters)),
-  );
-  return values.filter((value) =>
-    sampleKeys.has(sweepSampleValueKey(value, parameters)),
+  return samples.filter((sample) =>
+    parameters.every((parameter) =>
+      (parameterValues[parameter] ?? []).includes(sample.values?.[parameter] ?? NaN),
+    ),
   ).length;
-}
-
-function sweepSampleValueKey(
-  value: Record<string, number>,
-  parameters: string[],
-): string {
-  return JSON.stringify(parameters.map((parameter) => [parameter, value[parameter]]));
 }
 
 function selectedValuesForSweep(
@@ -5139,7 +5121,6 @@ function selectedValuesForSweep(
 }
 
 function selectedSweepGridPoint(
-  values: Record<string, number>[],
   selectedValues: Record<string, number>,
   parameters: string[],
 ): Record<string, number> | null {
@@ -5153,15 +5134,10 @@ function selectedSweepGridPoint(
   ) {
     return null;
   }
-  return (
-    values.find((value) =>
-      parameters.every((parameter) => value[parameter] === selectedValues[parameter]),
-    ) ??
-    parameters.reduce<Record<string, number>>((point, parameter) => {
-      point[parameter] = selectedValues[parameter] as number;
-      return point;
-    }, {})
-  );
+  return parameters.reduce<Record<string, number>>((point, parameter) => {
+    point[parameter] = selectedValues[parameter] as number;
+    return point;
+  }, {});
 }
 
 function nearestSweepValueIndex(values: number[], selectedValue: number): number {

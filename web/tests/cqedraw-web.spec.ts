@@ -1991,6 +1991,30 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expectAnalysisResultsRightOfControls(page);
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 
+  await page.getByLabel("Sweep max for C12").fill("10e-15");
+  await page.getByLabel("Sweep step for C12").fill("1e-15");
+  await page.getByLabel("Sweep max for L12_inv").fill("20e9");
+  await page.getByLabel("Sweep step for L12_inv").fill("1e9");
+  await expect(page.getByTestId("sweep-validation-message")).toHaveCount(0);
+  await expect(page.getByTestId("sweep-point-count")).toContainText(
+    "200 slider combinations",
+  );
+  await expect(page.getByTestId("sweep-point-count")).toContainText(
+    "up to 101 nearby points",
+  );
+  await expect(page.getByTestId("sweep-result-summary")).toContainText(
+    "Cached points:",
+    { timeout: 60_000 },
+  );
+  await expect(page.getByText("Sweep is limited to 101 points")).toHaveCount(0);
+  const analysisBeforeLargeSweepMove = await page
+    .getByTestId("modal-analysis")
+    .innerText();
+  await setRangeInputValue(page.getByTestId("sweep-sample-slider-C12"), "9");
+  await expect.poll(async () => page.getByTestId("modal-analysis").innerText(), {
+    timeout: 60_000,
+  }).not.toBe(analysisBeforeLargeSweepMove);
+
   const exportPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const exported = await exportPromise;

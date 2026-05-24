@@ -4,6 +4,7 @@ import {
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueue,
+  buildSweepPrecomputeQueueFromParameters,
   buildSweepFrequencySeries,
   buildSweepValues,
   buildSweepZpfSeries,
@@ -79,6 +80,31 @@ describe("analysis helpers", () => {
       { C: 1, L: 20 },
       { C: 2, L: 10 },
       { C: 2, L: 20 },
+    ]);
+  });
+
+  it("orders large multi-parameter background work without materializing the full grid", () => {
+    const parameterValues = {
+      C: [1, 2, 3, 4, 5],
+      Cg: [10, 20, 30, 40, 50],
+      L: [100, 200, 300, 400, 500],
+    };
+
+    expect(
+      buildSweepPrecomputeQueueFromParameters(
+        parameterValues,
+        { C: 3, Cg: 30, L: 300 },
+        ["C", "Cg", "L"],
+        [{ C: 3, Cg: 30, L: 300 }],
+        6,
+      ),
+    ).toEqual([
+      { C: 2, Cg: 30, L: 300 },
+      { C: 3, Cg: 20, L: 300 },
+      { C: 3, Cg: 30, L: 200 },
+      { C: 3, Cg: 30, L: 400 },
+      { C: 3, Cg: 40, L: 300 },
+      { C: 4, Cg: 30, L: 300 },
     ]);
   });
 

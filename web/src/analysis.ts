@@ -177,6 +177,73 @@ export function buildSweepPrecomputeQueue(
     .map((entry) => entry.value);
 }
 
+export function buildSweepPrecomputeQueueFromParameters(
+  parameterValues: Record<string, number[]>,
+  selectedValues: Record<string, number>,
+  parameters: string[],
+  cachedValues: Record<string, number>[],
+  maxPoints: number,
+): Record<string, number>[] {
+  if (parameters.length === 0 || maxPoints <= 0) {
+    return [];
+  }
+  const valueLists = parameters.map((parameter) => parameterValues[parameter] ?? []);
+  if (valueLists.some((values) => values.length === 0)) {
+    return [];
+  }
+
+  const cachedKeys = new Set(
+    cachedValues.map((value) => sweepPointKey(value, parameters)),
+  );
+  const selectedIndexes = valueLists.map((values, index) =>
+    nearestValueIndex(values, selectedValues[parameters[index]] ?? values[0]),
+  );
+  const queue: SweepQueueEntry[] = [
+    sweepQueueEntry(selectedIndexes, selectedIndexes),
+  ];
+  const queuedKeys = new Set([sweepIndexKey(selectedIndexes)]);
+  const results: Record<string, number>[] = [];
+
+  while (queue.length > 0 && results.length < maxPoints) {
+    queue.sort(
+      (left, right) =>
+        left.distance - right.distance || left.key.localeCompare(right.key),
+    );
+    const current = queue.shift()!;
+    const point = Object.fromEntries(
+      parameters.map((parameter, index) => [
+        parameter,
+        valueLists[index][current.indexes[index]],
+      ]),
+    );
+    const pointKey = sweepPointKey(point, parameters);
+    if (!cachedKeys.has(pointKey)) {
+      results.push(point);
+    }
+
+    for (let dimension = 0; dimension < parameters.length; dimension += 1) {
+      for (const direction of [-1, 1]) {
+        const indexes = [...current.indexes];
+        indexes[dimension] += direction;
+        if (
+          indexes[dimension] < 0 ||
+          indexes[dimension] >= valueLists[dimension].length
+        ) {
+          continue;
+        }
+        const indexKey = sweepIndexKey(indexes);
+        if (queuedKeys.has(indexKey)) {
+          continue;
+        }
+        queuedKeys.add(indexKey);
+        queue.push(sweepQueueEntry(indexes, selectedIndexes));
+      }
+    }
+  }
+
+  return results;
+}
+
 function maxFrequencyCount(samples: SweepSample[]): number {
   return Math.max(
     0,
@@ -203,6 +270,12 @@ function branchTraceLabel(branch: ModalBranchRecord, index: number): string {
 interface SweepValueIndex {
   indexes: Map<number, number>;
   values: number[];
+}
+
+interface SweepQueueEntry {
+  distance: number;
+  indexes: number[];
+  key: string;
 }
 
 function sweepValueIndexMaps(
@@ -272,4 +345,19 @@ function sweepPointKey(
   parameters: string[],
 ): string {
   return JSON.stringify(parameters.map((parameter) => [parameter, value[parameter]]));
+}
+
+function sweepQueueEntry(indexes: number[], selectedIndexes: number[]): SweepQueueEntry {
+  return {
+    distance: indexes.reduce(
+      (total, index, dimension) => total + Math.abs(index - selectedIndexes[dimension]),
+      0,
+    ),
+    indexes,
+    key: sweepIndexKey(indexes),
+  };
+}
+
+function sweepIndexKey(indexes: number[]): string {
+  return indexes.join(",");
 }

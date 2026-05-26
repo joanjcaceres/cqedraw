@@ -1023,7 +1023,7 @@ textarea {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .parameter-control-main label:first-child {
@@ -1047,6 +1047,39 @@ textarea {
   min-height: auto;
   padding: 0;
   width: auto;
+}
+
+.parameter-unit-toggle {
+  align-items: center;
+  background: #eef4fa;
+  border: 1px solid #d5e1ed;
+  border-radius: 7px;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.parameter-panel .parameter-unit-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #516277;
+  min-height: 30px;
+  padding: 6px 8px;
+}
+
+.parameter-panel .parameter-unit-toggle button[aria-pressed="true"] {
+  background: #132640;
+  color: #ffffff;
+}
+
+.parameter-panel .parameter-unit-toggle button:disabled {
+  background: transparent;
+  color: #8fa0b2;
+}
+
+.parameter-panel .parameter-unit-toggle button[aria-pressed="true"]:disabled {
+  background: #d6dee8;
+  color: #6d7d8f;
 }
 
 .modal-analysis-table-wrap {
@@ -1113,6 +1146,13 @@ textarea {
   display: grid;
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr);
+}
+
+.sweep-manual-value small {
+  color: #516277;
+  display: block;
+  font-size: 10px;
+  line-height: 1.1;
 }
 
 .sweep-grid span,

@@ -981,6 +981,45 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("sweep-frequency-plot")).toHaveCount(0);
 });
 
+test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 240, y: 220 } });
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("cap-input").fill("Cj");
+  await page.getByTestId("jj-ind-input").fill("Lj");
+
+  await clickBuildMatrices(page);
+  await page
+    .getByRole("group", { name: "Input representation for Cj" })
+    .getByRole("button", { name: "E_C" })
+    .click();
+  await page
+    .getByRole("group", { name: "Input representation for Lj" })
+    .getByRole("button", { name: "E_J" })
+    .click();
+  await expect(page.getByLabel("Value for Cj")).toHaveAttribute(
+    "placeholder",
+    "E_C/h in GHz",
+  );
+  await expect(page.getByLabel("Value for Lj")).toHaveAttribute(
+    "placeholder",
+    "E_J/h in GHz",
+  );
+
+  await page.getByLabel("Value for Cj").fill("0.25");
+  await page.getByLabel("Value for Lj").fill("20");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await selectAnalysisPlotTab(page, "Phase ZPF");
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+});
+
 test("uses a trace selector for many Josephson phase ZPF traces", async ({
   page,
 }) => {

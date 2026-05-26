@@ -1,0 +1,94 @@
+@media (max-width: 980px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbar.actions {
+    margin-left: 0;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .side-pane {
+    border-left: 0;
+    border-top: 1px solid #d7e1ea;
+  }
+
+  .circuit-canvas {
+    max-height: none;
+  }
+
+  .output-drawer {
+    width: calc(100vw - 24px);
+  }
+
+  .output-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .port-pair-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .port-pair-to {
+    display: none;
+  }
+
+  .tutorial-prompt,
+  .tutorial-callout {
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    top: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .output-drawer {
+    max-width: 100vw;
+    width: 100vw;
+  }
+
+  .output-section-analysis {
+    min-height: auto;
+  }
+
+  .analysis-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-controls {
+    position: static;
+  }
+
+  .analysis-results {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .analysis-chart-heading,
+  .analysis-chart-manual-axis,
+  .analysis-chart-trace-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-chart-heading {
+    flex-direction: column;
+  }
+
+  .analysis-chart-toolbar {
+    justify-content: flex-start;
+  }
+
+  .sweep-grid {
+    grid-template-columns: 1fr;
+  }
+}

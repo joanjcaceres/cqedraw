@@ -1,0 +1,194 @@
+.dialog-backdrop {
+  align-items: center;
+  background: rgba(7, 19, 39, 0.45);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 10;
+}
+
+.help-dialog {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(7, 19, 39, 0.28);
+  color: #172033;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  max-width: 560px;
+  padding: 18px;
+  width: min(100%, 560px);
+}
+
+.help-dialog header {
+  align-items: center;
+  flex: 0 0 auto;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.help-dialog h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.help-dialog p {
+  color: #40536b;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
+.help-dialog form {
+  margin: 0;
+}
+
+.dialog-drag-header {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.draggable-dialog.dragging .dialog-drag-header {
+  cursor: grabbing;
+}
+
+.dialog-drag-handle {
+  align-items: center;
+  color: #66778c;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+}
+
+.dialog-field span {
+  color: #40536b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dialog-field input,
+.port-pair-row select {
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  font: inherit;
+  min-height: 38px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.dialog-field input:focus,
+.port-pair-row select:focus {
+  border-color: #1fbad6;
+  box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
+  outline: none;
+}
+
+.port-pairings {
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  margin: 16px 0 0;
+  padding: 12px;
+}
+
+.port-pairings legend {
+  color: #40536b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 5px;
+}
+
+.port-pairings p {
+  margin: 0;
+}
+
+.port-pair-list {
+  display: grid;
+  gap: 10px;
+}
+
+.port-pair-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.port-pair-row.disabled {
+  opacity: 0.62;
+}
+
+.port-pair-row label {
+  display: grid;
+  gap: 5px;
+}
+
+.port-pair-row span {
+  color: #40536b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.port-pair-row .port-pair-toggle {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-height: 38px;
+}
+
+.port-pair-toggle input {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.port-pair-to {
+  align-self: center;
+  padding-top: 17px;
+}
+
+.dialog-error {
+  color: #b42318;
+  font-size: 13px;
+}
+
+.help-dialog button {
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.help-dialog button:hover {
+  background: #1a3150;
+}
+
+.dialog-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.help-dialog ol {
+  overflow: auto;
+  margin: 16px 0 0;
+  padding-left: 22px;
+}
+
+.help-dialog li {
+  margin: 8px 0;
+}

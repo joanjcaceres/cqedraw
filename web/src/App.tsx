@@ -1,28 +1,5 @@
 import {
-  Check,
-  ClipboardCopy,
-  ClipboardPaste,
-  BoxSelect,
-  Circle,
-  CircleHelp,
-  Copy,
-  Download,
-  SquarePlus,
-  GitBranch,
-  Merge,
-  Menu,
-  MousePointer2,
-  Redo2,
-  Repeat2,
-  Trash2,
-  Undo2,
-  Upload,
-  X,
-} from "lucide-react";
-import {
   PointerEvent,
-  ReactNode,
-  Ref,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -60,7 +37,6 @@ import {
   convertParameterDisplayValue,
   type ParameterInputMode,
 } from "./parameterUnits";
-import { PyodideBridgeClient } from "./pyodideClient";
 import {
   CircuitEdge,
   CircuitNode,
@@ -74,8 +50,6 @@ import {
   DEFAULT_VIEW_BOX,
   WHEEL_DELTA_LIMIT,
   WHEEL_ZOOM_SENSITIVITY,
-  ZOOM_IN_FACTOR,
-  ZOOM_OUT_FACTOR,
   clamp,
   clampNodeDragDeltaToView,
   fitProjectView,
@@ -99,7 +73,6 @@ import {
   projectsMatch,
   selectionStatusMessage,
   serializeProjectForDirtyCheck,
-  shouldIgnoreAppShortcut,
   type ProjectHistory,
   type SelectionClipboard,
 } from "./projectState";
@@ -123,33 +96,30 @@ import {
 } from "./sweepState";
 import { downloadCsv } from "./csvExport";
 import {
-  AnalysisParameterPanel,
-  JosephsonBranchSummary,
-  ModalAnalysisTable,
-} from "./AnalysisParameterPanel";
-import {
   ConcatenateDialog,
   HelpDialog,
   NewProjectDialog,
   TutorialResetDialog,
 } from "./AppDialogs";
+import { AppToolbar } from "./AppToolbar";
 import { CircuitCanvas } from "./CircuitCanvas";
-import { ModalAnalysisPlots } from "./ModalAnalysisPlots";
 import {
   inlineEdgeEditorPosition,
   type InlineEdgeEditorPosition,
-  josephsonPhaseLabel,
   matrixNodeLabelMap,
 } from "./CircuitEdgeShape";
+import { InspectorPanel } from "./InspectorPanel";
+import { OutputDrawer } from "./OutputDrawer";
+import { TutorialOverlay } from "./TutorialOverlay";
 import {
-  TUTORIAL_STEPS,
   isTutorialDismissed,
   nextTutorialStep,
   rememberTutorialDismissed,
-  tutorialPlacement,
-  type TutorialPlacement,
   type TutorialStep,
 } from "./tutorialFlow";
+import { useAppShortcuts } from "./useAppShortcuts";
+import { useEngineWarmup } from "./useEngineWarmup";
+import { useOutputPanelScroll } from "./useOutputPanelScroll";
 
 const COPY_MATRICES_STATUS =
   "Copied matrices to clipboard. Paste them into Python or a notebook.";
@@ -189,20 +159,6 @@ interface MarqueeState {
 interface PastePreviewState {
   anchor: Point;
 }
-
-type WarmupPhase = "idle" | "warming" | "ready" | "error";
-
-interface EngineWarmupState {
-  base: WarmupPhase;
-  analysis: WarmupPhase;
-  error: string | null;
-}
-
-const INITIAL_ENGINE_WARMUP: EngineWarmupState = {
-  base: "idle",
-  analysis: "idle",
-  error: null,
-};
 
 export function App() {
   const [project, setProject] = useState<CircuitProject>(() => emptyProject());
@@ -246,9 +202,7 @@ export function App() {
   const [sweepError, setSweepError] = useState<string | null>(null);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
-  const [engineWarmup, setEngineWarmup] = useState<EngineWarmupState>(
-    INITIAL_ENGINE_WARMUP,
-  );
+  const { clientRef, engineWarmup, setEngineWarmup } = useEngineWarmup();
   const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
     useState<number | null>(null);
   const [inlineValueEditorPosition, setInlineValueEditorPosition] =
@@ -273,8 +227,6 @@ export function App() {
   const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
-  const outputPanelRef = useRef<HTMLElement | null>(null);
-  const clientRef = useRef<PyodideBridgeClient | null>(null);
   const analysisRequestIdRef = useRef(0);
   const outputGenerationPromiseRef = useRef<Promise<OutputResult | null> | null>(
     null,
@@ -284,67 +236,8 @@ export function App() {
   const sweepPrecomputeJobIdRef = useRef(0);
   const sweepInteractionIdleTimerRef = useRef<number | null>(null);
   const sweepRequestIdRef = useRef(0);
-  const outputScrollRestoreRef = useRef<{ expiresAt: number; top: number } | null>(
-    null,
-  );
   const projectRef = useRef<CircuitProject>(project);
   const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
-
-  useEffect(() => {
-    const client = new PyodideBridgeClient();
-    clientRef.current = client;
-    let cancelled = false;
-    let analysisWarmupTimer: number | null = null;
-
-    setEngineWarmup({ base: "warming", analysis: "idle", error: null });
-    client
-      .prewarmBase()
-      .then(() => {
-        if (cancelled) {
-          return;
-        }
-        setEngineWarmup({ base: "ready", analysis: "warming", error: null });
-        analysisWarmupTimer = window.setTimeout(() => {
-          client
-            .prewarmAnalysis()
-            .then(() => {
-              if (!cancelled) {
-                setEngineWarmup({
-                  base: "ready",
-                  analysis: "ready",
-                  error: null,
-                });
-              }
-            })
-            .catch((error) => {
-              if (!cancelled) {
-                setEngineWarmup({
-                  base: "ready",
-                  analysis: "error",
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              }
-            });
-        }, 300);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setEngineWarmup({
-            base: "error",
-            analysis: "idle",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      if (analysisWarmupTimer !== null) {
-        window.clearTimeout(analysisWarmupTimer);
-      }
-      client.dispose();
-    };
-  }, []);
 
   useEffect(() => {
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
@@ -490,32 +383,7 @@ export function App() {
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
-
-  useLayoutEffect(() => {
-    const restore = outputScrollRestoreRef.current;
-    const panel = outputPanelRef.current;
-    if (!restore || !panel) {
-      return;
-    }
-    if (performance.now() > restore.expiresAt) {
-      outputScrollRestoreRef.current = null;
-      return;
-    }
-
-    panel.scrollTop = restore.top;
-    const animationFrame = window.requestAnimationFrame(() => {
-      const activeRestore = outputScrollRestoreRef.current;
-      if (!activeRestore || !outputPanelRef.current) {
-        return;
-      }
-      if (performance.now() > activeRestore.expiresAt) {
-        outputScrollRestoreRef.current = null;
-        return;
-      }
-      outputPanelRef.current.scrollTop = activeRestore.top;
-    });
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [
+  const { outputPanelRef, preserveOutputPanelScroll } = useOutputPanelScroll([
     displayedAnalysis,
     engineStatus,
     sweepPrecomputeRunning,
@@ -1090,17 +958,6 @@ export function App() {
       sweepInteractionIdleTimerRef.current = null;
       setSweepInteractionActive(false);
     }, SWEEP_INTERACTION_IDLE_MS);
-  }
-
-  function preserveOutputPanelScroll() {
-    const panel = outputPanelRef.current;
-    if (!panel) {
-      return;
-    }
-    outputScrollRestoreRef.current = {
-      expiresAt: performance.now() + 2200,
-      top: panel.scrollTop,
-    };
   }
 
   function commitProjectChange(
@@ -2197,148 +2054,31 @@ export function App() {
     setViewBox(fitProjectView(project));
   }
 
-  useEffect(() => {
-    function handleAppKeyDown(event: globalThis.KeyboardEvent) {
-      if (
-        event.defaultPrevented ||
-        shouldIgnoreAppShortcut(
-          event.target,
-          helpOpen ||
-            tutorialResetOpen ||
-            concatenateDialogOpen ||
-            newProjectDialogOpen,
-        )
-      ) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      const hasSystemModifier = event.metaKey || event.ctrlKey;
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (!pastePreview && pendingEdgeNodeId !== null) {
-          setEngineStatus("Edge cancelled.");
-        }
-        setModeAndReset("select");
-        return;
-      }
-
-      if (hasSystemModifier && !event.altKey) {
-        if (key === "z") {
-          event.preventDefault();
-          if (event.shiftKey) {
-            redoProjectChange();
-          } else {
-            undoProjectChange();
-          }
-          return;
-        }
-
-        if (key === "y") {
-          event.preventDefault();
-          redoProjectChange();
-          return;
-        }
-
-        if (key === "c" && !event.shiftKey) {
-          event.preventDefault();
-          copySelectedGraphElements();
-          return;
-        }
-
-        if (key === "v" && !event.shiftKey) {
-          event.preventDefault();
-          startPastePreview();
-          return;
-        }
-
-        if (key === "s" && !event.shiftKey) {
-          event.preventDefault();
-          saveProject();
-          return;
-        }
-
-        if (key === "o" && !event.shiftKey) {
-          event.preventDefault();
-          fileInputRef.current?.click();
-          return;
-        }
-
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void generateOutput();
-        }
-        return;
-      }
-
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-
-      if (key === "+" || key === "=") {
-        event.preventDefault();
-        zoomCanvas(ZOOM_IN_FACTOR);
-        return;
-      }
-      if (key === "-") {
-        event.preventDefault();
-        zoomCanvas(ZOOM_OUT_FACTOR);
-        return;
-      }
-      if (key === "0") {
-        event.preventDefault();
-        fitCanvasView();
-        return;
-      }
-
-      if (
-        (event.key === "Delete" || event.key === "Backspace") &&
-        (selectedEdgeId !== null ||
-          selectedNodeId !== null ||
-          selectedNodeIds.length > 0)
-      ) {
-        event.preventDefault();
-        deleteSelection();
-        return;
-      }
-
-      if (event.shiftKey) {
-        return;
-      }
-
-      if (key === "m") {
-        mergeSelectedNodes();
-        return;
-      }
-      if (key === "d") {
-        event.preventDefault();
-        openConcatenateDialog();
-        return;
-      }
-      if (key === "v") {
-        setModeAndReset("select");
-        return;
-      }
-      if (key === "b") {
-        setModeAndReset("box-select");
-        return;
-      }
-      if (key === "n") {
-        setModeAndReset("node");
-        return;
-      }
-      if (key === "e") {
-        setModeAndReset("edge");
-        return;
-      }
-      if (key === "g") {
-        setModeAndReset("ground");
-      }
-    }
-
-    window.addEventListener("keydown", handleAppKeyDown);
-    return () => window.removeEventListener("keydown", handleAppKeyDown);
+  useAppShortcuts({
+    copySelectedGraphElements,
+    deleteSelection,
+    dialogOpen:
+      helpOpen ||
+      tutorialResetOpen ||
+      concatenateDialogOpen ||
+      newProjectDialogOpen,
+    fileInputRef,
+    fitCanvasView,
+    generateOutput,
+    mergeSelectedNodes,
+    openConcatenateDialog,
+    pastePreviewActive: Boolean(pastePreview),
+    pendingEdgeNodeId,
+    redoProjectChange,
+    saveProject,
+    selectedEdgeId,
+    selectedNodeCount: selectedNodeIds.length,
+    selectedNodeId,
+    setEngineStatus,
+    setModeAndReset,
+    startPastePreview,
+    undoProjectChange,
+    zoomCanvas,
   });
 
   const selectedEdgeLabel = selectedEdge
@@ -2368,153 +2108,34 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" />
-          <div>
-            <strong>cQEDraw</strong>
-            <span>Web</span>
-          </div>
-        </div>
-        <div className="toolbar" aria-label="Tools">
-          <ToolButton
-            active={mode === "select"}
-            icon={<MousePointer2 size={17} />}
-            label="Select"
-            shortcut="V"
-            onClick={() => setModeAndReset("select")}
-          />
-          <ToolButton
-            active={mode === "box-select"}
-            icon={<BoxSelect size={17} />}
-            label="Box Select"
-            shortcut="B"
-            onClick={() => setModeAndReset("box-select")}
-          />
-          <ToolButton
-            active={mode === "node"}
-            buttonRef={nodeButtonRef}
-            highlight={tutorialStep === "first-node" || tutorialStep === "second-node"}
-            icon={<Circle size={17} />}
-            label="Node"
-            shortcut="N"
-            onClick={() => setModeAndReset("node")}
-          />
-          <ToolButton
-            active={mode === "edge"}
-            highlight={tutorialStep === "edge-mode"}
-            icon={<GitBranch size={17} />}
-            label="Edge"
-            shortcut="E"
-            onClick={() => setModeAndReset("edge")}
-          />
-          <ToolButton
-            active={mode === "ground"}
-            highlight={tutorialStep === "ground-mode"}
-            icon={<GroundIcon size={17} />}
-            label="Ground"
-            shortcut="G"
-            onClick={() => setModeAndReset("ground")}
-          />
-          <ToolButton
-            disabled={selectedNodeIds.length < 2}
-            icon={<Merge size={17} />}
-            label="Merge"
-            shortcut="M"
-            onClick={mergeSelectedNodes}
-          />
-          <ToolButton
-            icon={<ClipboardCopy size={17} />}
-            label="Copy Selection"
-            shortcut="Ctrl/Cmd+C"
-            onClick={copySelectedGraphElements}
-          />
-          <ToolButton
-            icon={<ClipboardPaste size={17} />}
-            label="Paste"
-            shortcut="Ctrl/Cmd+V"
-            onClick={startPastePreview}
-          />
-          <ToolButton
-            buttonRef={concatenateButtonRef}
-            disabled={selectedNodeIds.length === 0}
-            icon={<Repeat2 size={17} />}
-            label="Concatenate"
-            shortcut="D"
-            onClick={openConcatenateDialog}
-          />
-          <ToolButton
-            icon={<Trash2 size={17} />}
-            label="Delete"
-            shortcut="Del/Backspace"
-            onClick={deleteSelection}
-          />
-          <ToolButton
-            disabled={!canUndo}
-            icon={<Undo2 size={17} />}
-            label="Undo"
-            shortcut="Ctrl/Cmd+Z"
-            onClick={undoProjectChange}
-          />
-          <ToolButton
-            disabled={!canRedo}
-            icon={<Redo2 size={17} />}
-            label="Redo"
-            shortcut="Ctrl/Cmd+Y"
-            onClick={redoProjectChange}
-          />
-        </div>
-        <div className="toolbar actions" aria-label="Project actions">
-          <ToolButton
-            buttonRef={newProjectButtonRef}
-            disabled={!canStartNewProject}
-            icon={<SquarePlus size={17} />}
-            label="New project"
-            onClick={requestNewProject}
-          />
-          <ToolButton
-            active={outputDrawerOpen}
-            icon={<Menu size={17} />}
-            iconOnly={false}
-            label="Output"
-            onClick={() => setOutputDrawerOpen((open) => !open)}
-          />
-          <ToolButton
-            icon={<Download size={17} />}
-            label="Save"
-            shortcut="Ctrl/Cmd+S"
-            onClick={saveProject}
-          />
-          <span aria-live="polite" data-testid="save-status">
-            {hasUnsavedChanges ? "Unsaved changes" : "Saved"}
-          </span>
-          <ToolButton
-            icon={<Upload size={17} />}
-            label="Load"
-            shortcut="Ctrl/Cmd+O"
-            onClick={() => fileInputRef.current?.click()}
-          />
-          <ToolButton
-            buttonRef={helpButtonRef}
-            icon={<CircleHelp size={17} />}
-            label="Help"
-            onClick={() => setHelpOpen(true)}
-          />
-        </div>
-        <input
-          ref={fileInputRef}
-          className="hidden-file"
-          type="file"
-          accept="application/json,.json"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file) {
-              void loadProject(file);
-            }
-            event.currentTarget.value = "";
-          }}
-        />
-      </header>
+      <AppToolbar
+        canRedo={canRedo}
+        canStartNewProject={canStartNewProject}
+        canUndo={canUndo}
+        concatenateButtonRef={concatenateButtonRef}
+        fileInputRef={fileInputRef}
+        hasUnsavedChanges={hasUnsavedChanges}
+        helpButtonRef={helpButtonRef}
+        mode={mode}
+        newProjectButtonRef={newProjectButtonRef}
+        nodeButtonRef={nodeButtonRef}
+        onCopySelection={copySelectedGraphElements}
+        onDeleteSelection={deleteSelection}
+        onHelpOpen={() => setHelpOpen(true)}
+        onLoadProject={(file) => void loadProject(file)}
+        onMergeSelectedNodes={mergeSelectedNodes}
+        onNewProject={requestNewProject}
+        onOpenConcatenateDialog={openConcatenateDialog}
+        onOutputToggle={() => setOutputDrawerOpen((open) => !open)}
+        onPaste={startPastePreview}
+        onRedo={redoProjectChange}
+        onSaveProject={saveProject}
+        onSetMode={setModeAndReset}
+        onUndo={undoProjectChange}
+        outputDrawerOpen={outputDrawerOpen}
+        selectedNodeCount={selectedNodeIds.length}
+        tutorialStep={tutorialStep}
+      />
 
       <section className="workspace">
         <CircuitCanvas
@@ -2557,261 +2178,80 @@ export function App() {
         />
 
         <aside className="side-pane">
-          <section className="panel">
-            <h2>Inspector</h2>
-            {selectedEdge ? (
-              <div className="form-grid">
-                <label>
-                  <span>Edge</span>
-                  <input
-                    value={selectedEdgeLabel ?? ""}
-                    readOnly
-                    onFocus={() => setInlineValueEditorEdgeId(null)}
-                  />
-                </label>
-                <label>
-                  <span>Capacitance</span>
-                  <input
-                    className={
-                      tutorialStep === "edge-values" || tutorialStep === "ground-values"
-                        ? "tutorial-highlight-control"
-                        : undefined
-                    }
-                    data-testid="cap-input"
-                    value={selectedEdge.capacitance_text ?? ""}
-                    onFocus={() => setInlineValueEditorEdgeId(null)}
-                    onChange={(event) => {
-                      updateEdgeValueText(selectedEdge.identifier, {
-                        capacitanceText: event.target.value,
-                      });
-                    }}
-                  />
-                </label>
-                <label>
-                  <span>Linear inductance</span>
-                  <input
-                    className={
-                      tutorialStep === "edge-values"
-                        ? "tutorial-highlight-control"
-                        : undefined
-                    }
-                    data-testid="ind-input"
-                    value={selectedEdge.inductance_text ?? ""}
-                    onFocus={() => setInlineValueEditorEdgeId(null)}
-                    onChange={(event) => {
-                      updateEdgeValueText(selectedEdge.identifier, {
-                        inductanceText: event.target.value,
-                      });
-                    }}
-                  />
-                </label>
-                <label>
-                  <span>Josephson inductance</span>
-                  <input
-                    data-testid="jj-ind-input"
-                    value={selectedEdge.josephson_inductance_text ?? ""}
-                    onFocus={() => setInlineValueEditorEdgeId(null)}
-                    onChange={(event) => {
-                      updateEdgeValueText(selectedEdge.identifier, {
-                        josephsonInductanceText: event.target.value,
-                      });
-                    }}
-                  />
-                </label>
-                {selectedEdge.josephson_inductance_text?.trim() ? (
-                  <div className="phase-control" data-testid="jj-phase-control">
-                    <span data-testid="jj-phase-label">
-                      {josephsonPhaseLabel(selectedEdge, matrixNodeLabels)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateEdgeValueText(selectedEdge.identifier, {
-                          josephsonPhaseSign:
-                            selectedEdge.josephson_phase_sign === -1 ? 1 : -1,
-                        })
-                      }
-                    >
-                      Reverse
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : selectedNode ? (
-              <div className="form-grid">
-                <label>
-                  <span>Matrix index</span>
-                  <input
-                    data-testid="node-matrix-index-input"
-                    readOnly
-                    value={matrixNodeLabels.get(selectedNode.identifier) ?? ""}
-                  />
-                </label>
-                <label>
-                  <span>Name</span>
-                  <input
-                    data-testid="node-name-input"
-                    value={selectedNode.name}
-                    onChange={(event) =>
-                      commitProjectChange((current) =>
-                        renameNode(current, selectedNode.identifier, event.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            ) : selectedNodeIds.length > 1 ? (
-              <div className="metrics">
-                <span data-testid="merge-target-summary">
-                  Merge keeps {mergeTargetLabel}
-                </span>
-              </div>
-            ) : (
-              <div className="metrics">
-                <span>{project.state.nodes.length} nodes</span>
-                <span>{project.state.edges.length} edges</span>
-              </div>
-            )}
-          </section>
-
+          <InspectorPanel
+            edgeCount={project.state.edges.length}
+            matrixNodeLabels={matrixNodeLabels}
+            mergeTargetLabel={mergeTargetLabel}
+            nodeCount={project.state.nodes.length}
+            onCloseInlineValueEditor={() => setInlineValueEditorEdgeId(null)}
+            onEdgeValueTextChange={updateEdgeValueText}
+            onNodeNameChange={(nodeId, name) =>
+              commitProjectChange((current) => renameNode(current, nodeId, name))
+            }
+            selectedEdge={selectedEdge}
+            selectedEdgeLabel={selectedEdgeLabel}
+            selectedNode={selectedNode}
+            selectedNodeIds={selectedNodeIds}
+            tutorialStep={tutorialStep}
+          />
         </aside>
       </section>
       {outputDrawerOpen ? (
-        <aside
-          aria-label="Output"
-          className="output-drawer"
-          data-testid="output-drawer"
-        >
-          <section
-            className="panel output-panel"
-            data-testid="output-panel"
-            ref={outputPanelRef}
-          >
-            <div className="output-panel-heading">
-              <h2>Output</h2>
-              <div className="output-panel-actions">
-                <button
-                  aria-label="Close output"
-                  className="output-drawer-close"
-                  onClick={() => setOutputDrawerOpen(false)}
-                  title="Close output"
-                  type="button"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-            <div className="output-section output-section-matrices">
-              <div className="output-section-heading">
-                <div>
-                  <h3>Matrices for Python</h3>
-                  <p>Matrices are prepared automatically; copy the Python snippet when needed.</p>
-                </div>
-                <div className="output-panel-actions">
-                  <button
-                    aria-label="Copy matrices"
-                    className={[
-                      "output-action-button",
-                      "output-copy-button",
-                      tutorialStep === "copy" ? "tutorial-highlight-control" : "",
-                    ].join(" ")}
-                    disabled={!hasProjectContent}
-                    onClick={copySnippet}
-                    title={
-                      hasGeneratedSnippet
-                        ? "Copy matrices"
-                        : "Prepare matrices and copy when ready"
-                    }
-                    type="button"
-                  >
-                    {snippetCopied ? <Check size={14} /> : <Copy size={14} />}
-                    Copy matrices
-                    {snippetCopied ? (
-                      <span className="output-action-confirmation">Copied</span>
-                    ) : null}
-                  </button>
-                </div>
-              </div>
-              <JosephsonBranchSummary branches={output?.josephson_branches ?? []} />
-            </div>
-            <div className="output-section output-section-analysis">
-              <div className="output-section-heading">
-                <div>
-                  <h3>Frequencies and phase ZPF</h3>
-                  <p>Analysis runs automatically when parameter values are complete.</p>
-                </div>
-              </div>
-              <div className="analysis-workspace" data-testid="analysis-workspace">
-                <div className="analysis-controls">
-                  <AnalysisParameterPanel
-                    activeSweepParameters={activeSweepParameters}
-                    analysisRunning={analysisRunning}
-                    cachedSweepGridPointCount={cachedSweepGridPointCount}
-                    disabled={!output}
-                    fixedMissingParameters={missingSweepFixedValues}
-                    inputError={parameterInputError}
-                    inputModes={parameterInputModes}
-                    missingParameters={missingParameterValues}
-                    onAnalyze={runModalAnalysis}
-                    onInputModeChange={updateParameterInputMode}
-                    onParameterChange={updateParameterValue}
-                    onRangeChange={updateSweepConfig}
-                    onSliderChange={(name, value) => {
-                      markSweepSliderInteraction();
-                      preserveOutputPanelScroll();
-                      setSweepSliderValues((current) =>
-                        current[name] === value ? current : { ...current, [name]: value },
-                      );
-                    }}
-                    onSliderInteraction={() => {
-                      markSweepSliderInteraction();
-                      preserveOutputPanelScroll();
-                    }}
-                    parameters={outputParameters}
-                    parameterSpecs={parameterInputSpecs}
-                    precomputeRunning={sweepPrecomputeRunning}
-                    running={sweepRunning}
-                    samples={sweepSamples}
-                    selectedValues={sweepSliderValues}
-                    sweepError={sweepError}
-                    validation={sweepValidation}
-                    values={parameterValues}
-                    sweepValues={sweepConfig}
-                  />
-                </div>
-                <div className="analysis-results" data-testid="analysis-results">
-                  <ModalAnalysisPlots
-                    placeholderAvailable={Boolean(output && outputParameters.length > 0)}
-                    placeholderZpfAvailable={
-                      Boolean(output?.josephson_branches?.length)
-                    }
-                    result={displayedAnalysis}
-                    yReferenceResults={
-                      sweepModeActive ? sweepSamples.map((sample) => sample.analysis) : []
-                    }
-                  />
-                  <ModalAnalysisTable
-                    result={displayedAnalysis}
-                    onExportAnalysis={exportAnalysisCsv}
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-        </aside>
-      ) : null}
-      {tutorialPromptOpen && tutorialStep === null && project.state.nodes.length === 0 ? (
-        <TutorialPrompt onSkip={dismissTutorial} onStart={beginTutorial} />
-      ) : null}
-      {tutorialStep ? (
-        <TutorialCallout
-          step={tutorialStep}
-          placement={tutorialPlacement(tutorialStep)}
-          onFinish={finishTutorial}
-          onNext={() => setTutorialStep("first-node")}
-          onSkip={dismissTutorial}
+        <OutputDrawer
+          activeSweepParameters={activeSweepParameters}
+          analysisRunning={analysisRunning}
+          cachedSweepGridPointCount={cachedSweepGridPointCount}
+          displayedAnalysis={displayedAnalysis}
+          hasGeneratedSnippet={hasGeneratedSnippet}
+          hasProjectContent={hasProjectContent}
+          missingParameterValues={missingParameterValues}
+          missingSweepFixedValues={missingSweepFixedValues}
+          onClose={() => setOutputDrawerOpen(false)}
+          onCopySnippet={copySnippet}
+          onExportAnalysisCsv={exportAnalysisCsv}
+          onParameterInputModeChange={updateParameterInputMode}
+          onParameterValueChange={updateParameterValue}
+          onRunModalAnalysis={runModalAnalysis}
+          onSweepConfigChange={updateSweepConfig}
+          onSweepSliderChange={(name, value) => {
+            markSweepSliderInteraction();
+            preserveOutputPanelScroll();
+            setSweepSliderValues((current) =>
+              current[name] === value ? current : { ...current, [name]: value },
+            );
+          }}
+          onSweepSliderInteraction={() => {
+            markSweepSliderInteraction();
+            preserveOutputPanelScroll();
+          }}
+          output={output}
+          outputPanelRef={outputPanelRef}
+          outputParameters={outputParameters}
+          parameterInputError={parameterInputError}
+          parameterInputModes={parameterInputModes}
+          parameterInputSpecs={parameterInputSpecs}
+          parameterValues={parameterValues}
+          snippetCopied={snippetCopied}
+          sweepConfig={sweepConfig}
+          sweepError={sweepError}
+          sweepModeActive={sweepModeActive}
+          sweepPrecomputeRunning={sweepPrecomputeRunning}
+          sweepRunning={sweepRunning}
+          sweepSamples={sweepSamples}
+          sweepSliderValues={sweepSliderValues}
+          sweepValidation={sweepValidation}
+          tutorialStep={tutorialStep}
         />
       ) : null}
+      <TutorialOverlay
+        nodeCount={project.state.nodes.length}
+        onFinish={finishTutorial}
+        onNext={() => setTutorialStep("first-node")}
+        onSkip={dismissTutorial}
+        onStart={beginTutorial}
+        promptOpen={tutorialPromptOpen}
+        step={tutorialStep}
+      />
       {tutorialResetOpen ? (
         <TutorialResetDialog
           onCancel={closeTutorialReset}
@@ -2837,153 +2277,5 @@ export function App() {
       ) : null}
       {helpOpen ? <HelpDialog onClose={closeHelp} onStartTutorial={requestTutorialStart} /> : null}
     </main>
-  );
-}
-
-function TutorialPrompt({
-  onSkip,
-  onStart,
-}: {
-  onSkip: () => void;
-  onStart: () => void;
-}) {
-  return (
-    <aside
-      aria-label="Tutorial prompt"
-      className="tutorial-prompt"
-      data-testid="tutorial-prompt"
-    >
-      <strong>New to cQEDraw?</strong>
-      <p>Follow a short tutorial to create a small circuit and copy the matrix snippet.</p>
-      <div>
-        <button type="button" onClick={onStart}>
-          Start tutorial
-        </button>
-        <button type="button" onClick={onSkip}>
-          Skip
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-function TutorialCallout({
-  onFinish,
-  onNext,
-  onSkip,
-  placement,
-  step,
-}: {
-  onFinish: () => void;
-  onNext: () => void;
-  onSkip: () => void;
-  placement: TutorialPlacement;
-  step: TutorialStep;
-}) {
-  const details = TUTORIAL_STEPS[step];
-  const isWelcome = step === "welcome";
-  const isFinish = step === "finish";
-
-  return (
-    <aside
-      aria-live="polite"
-      className={`tutorial-callout tutorial-callout-${placement}`}
-      data-testid="tutorial-callout"
-    >
-      <span>{details.progress}</span>
-      <h2>{details.title}</h2>
-      <p>{details.body}</p>
-      <div>
-        {isWelcome ? (
-          <button type="button" onClick={onNext}>
-            Start
-          </button>
-        ) : null}
-        {isFinish ? (
-          <button type="button" onClick={onFinish}>
-            Done
-          </button>
-        ) : (
-          <button type="button" onClick={onSkip}>
-            Skip
-          </button>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-function GroundIcon({ size = 17 }: { size?: number }) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      height={size}
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      width={size}
-    >
-      <path d="M12 4v7" />
-      <path d="M6 11h12" />
-      <path d="M8 15h8" />
-      <path d="M10 19h4" />
-    </svg>
-  );
-}
-
-function ToolButton({
-  active = false,
-  buttonRef,
-  confirmation,
-  disabled = false,
-  highlight = false,
-  icon,
-  iconOnly = true,
-  label,
-  onClick,
-  shortcut,
-}: {
-  active?: boolean;
-  buttonRef?: Ref<HTMLButtonElement>;
-  confirmation?: string;
-  disabled?: boolean;
-  highlight?: boolean;
-  icon?: ReactNode;
-  iconOnly?: boolean;
-  label: string;
-  onClick: () => void;
-  shortcut?: string;
-}) {
-  const tooltipLabel = shortcut ? `${label} (${shortcut})` : label;
-
-  return (
-    <button
-      aria-label={label}
-      className={[
-        "tool-button",
-        iconOnly ? "tool-button-icon-only" : "tool-button-with-label",
-        active ? "active" : "",
-        highlight ? "tutorial-highlight" : "",
-      ].join(" ")}
-      disabled={disabled}
-      ref={buttonRef}
-      title={tooltipLabel}
-      type="button"
-      onClick={onClick}
-    >
-      {icon}
-      <span className={iconOnly ? "sr-only" : "tool-button-label"}>{label}</span>
-      {confirmation ? (
-        <span aria-hidden="true" className="tool-button-confirmation">
-          {confirmation}
-        </span>
-      ) : null}
-      <span aria-hidden="true" className="tool-button-tooltip">
-        {tooltipLabel}
-      </span>
-    </button>
   );
 }

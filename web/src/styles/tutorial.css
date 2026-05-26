@@ -1,0 +1,91 @@
+.tutorial-prompt,
+.tutorial-callout {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(7, 19, 39, 0.22);
+  color: #172033;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 14px;
+  position: fixed;
+  z-index: 8;
+}
+
+.tutorial-prompt {
+  bottom: 18px;
+  left: 18px;
+}
+
+.tutorial-prompt strong {
+  display: block;
+  font-size: 15px;
+}
+
+.tutorial-prompt p,
+.tutorial-callout p {
+  color: #40536b;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
+.tutorial-prompt div,
+.tutorial-callout div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tutorial-prompt button,
+.tutorial-callout button {
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.tutorial-prompt button:hover,
+.tutorial-callout button:hover {
+  background: #1a3150;
+}
+
+.tutorial-callout {
+  z-index: 9;
+}
+
+.tutorial-callout-canvas {
+  bottom: 18px;
+  left: 18px;
+}
+
+.tutorial-callout-tools {
+  left: 216px;
+  top: 76px;
+}
+
+.tutorial-callout-actions {
+  right: 18px;
+  top: 76px;
+}
+
+.tutorial-callout-inspector {
+  right: 374px;
+  top: 92px;
+}
+
+.tutorial-callout span {
+  color: #66778c;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tutorial-callout h2 {
+  font-size: 17px;
+  margin: 5px 0 0;
+}

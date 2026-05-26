@@ -1,0 +1,261 @@
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.topbar {
+  align-items: center;
+  background: #071327;
+  color: #f7fbff;
+  display: flex;
+  gap: 14px;
+  min-height: 64px;
+  padding: 10px 16px;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 156px;
+}
+
+.brand img {
+  border-radius: 10px;
+  height: 38px;
+  width: 38px;
+}
+
+.brand strong,
+.brand span {
+  display: block;
+  line-height: 1.1;
+}
+
+.brand span {
+  color: #8fb4d8;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolbar.actions {
+  margin-left: auto;
+}
+
+.tool-button {
+  align-items: center;
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #f7fbff;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 11px;
+  position: relative;
+}
+
+.tool-button:hover {
+  background: #1a3150;
+}
+
+.tool-button:disabled {
+  color: #7890a8;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.tool-button:disabled:hover {
+  background: #132640;
+}
+
+.tool-button.active {
+  background: #0aa6c2;
+  border-color: #6de4f0;
+  color: #001018;
+}
+
+.tool-button.tutorial-highlight {
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 5px #f6c343;
+}
+
+.tool-button-icon-only {
+  gap: 0;
+  height: 38px;
+  justify-content: center;
+  min-width: 38px;
+  padding: 0;
+  width: 38px;
+}
+
+.tool-button-with-label {
+  font-weight: 700;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.tool-button-label {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tool-button-confirmation {
+  color: #9bdad3;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tool-button svg {
+  flex: 0 0 auto;
+}
+
+.tool-button-tooltip {
+  background: #f8fafc;
+  border: 1px solid #bdcbd8;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(7, 19, 39, 0.24);
+  color: #172033;
+  font-size: 12px;
+  font-weight: 600;
+  left: 50%;
+  line-height: 1;
+  opacity: 0;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  transform: translate(-50%, -2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+  visibility: hidden;
+  white-space: nowrap;
+  z-index: 12;
+}
+
+.tool-button:hover .tool-button-tooltip,
+.tool-button:focus-visible .tool-button-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.toolbar.actions .tool-button-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.toolbar.actions .tool-button:hover .tool-button-tooltip,
+.toolbar.actions .tool-button:focus-visible .tool-button-tooltip {
+  transform: translateY(0);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.side-pane {
+  background: #f8fafc;
+  border-left: 1px solid #d7e1ea;
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel {
+  border-bottom: 1px solid #d7e1ea;
+  padding: 16px;
+}
+
+.panel h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.form-grid span {
+  color: #516277;
+  font-size: 12px;
+}
+
+.form-grid input {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  min-height: 36px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.form-grid input.tutorial-highlight-control {
+  border-color: #c28a00;
+  box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+}
+
+.phase-control {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.phase-control span {
+  color: #40536b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.phase-control button {
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  cursor: pointer;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.phase-control button:hover {
+  background: #e6eef6;
+}
+
+.metrics {
+  display: flex;
+  gap: 12px;
+}
+
+.metrics span {
+  background: #e6eef6;
+  border-radius: 7px;
+  color: #26384e;
+  padding: 7px 9px;
+}

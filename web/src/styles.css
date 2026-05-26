@@ -854,6 +854,30 @@ textarea {
   white-space: nowrap;
 }
 
+.modal-analysis-summary-right {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal-analysis-export-button {
+  align-items: center;
+  background: #132640;
+  border: 1px solid #254567;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
 .analysis-workspace {
   align-items: start;
   display: grid;
@@ -1193,6 +1217,7 @@ textarea {
 }
 
 .analysis-chart-axis-mode,
+.analysis-chart-value-mode,
 .analysis-chart-nav {
   align-items: center;
   display: inline-flex;
@@ -1200,6 +1225,7 @@ textarea {
 }
 
 .analysis-chart-axis-mode button,
+.analysis-chart-value-mode button,
 .analysis-chart-nav button {
   align-items: center;
   background: #ffffff;
@@ -1214,19 +1240,23 @@ textarea {
   padding: 4px 7px;
 }
 
-.analysis-chart-axis-mode button:first-child {
+.analysis-chart-axis-mode button:first-child,
+.analysis-chart-value-mode button:first-child {
   border-radius: 7px 0 0 7px;
 }
 
-.analysis-chart-axis-mode button:not(:first-child) {
+.analysis-chart-axis-mode button:not(:first-child),
+.analysis-chart-value-mode button:not(:first-child) {
   margin-left: -1px;
 }
 
-.analysis-chart-axis-mode button:last-child {
+.analysis-chart-axis-mode button:last-child,
+.analysis-chart-value-mode button:last-child {
   border-radius: 0 7px 7px 0;
 }
 
-.analysis-chart-axis-mode button[aria-pressed="true"] {
+.analysis-chart-axis-mode button[aria-pressed="true"],
+.analysis-chart-value-mode button[aria-pressed="true"] {
   background: #132640;
   border-color: #254567;
   color: #ffffff;
@@ -1297,13 +1327,24 @@ textarea {
   padding: 6px 8px;
 }
 
-.analysis-chart svg {
+.analysis-chart > svg {
   background: #ffffff;
   border: 1px solid #d7e1ea;
   border-radius: 8px;
   display: block;
   height: auto;
   width: 100%;
+}
+
+.analysis-chart-placeholder .analysis-chart-plot-bg {
+  cursor: default;
+  fill: #fbfdff;
+}
+
+.analysis-chart-placeholder .analysis-chart-grid,
+.analysis-chart-placeholder .analysis-chart-axis,
+.analysis-chart-placeholder .analysis-chart-axis-label {
+  opacity: 0.66;
 }
 
 .analysis-chart-plot-bg {
@@ -1345,9 +1386,16 @@ textarea {
 
 .analysis-chart-grid,
 .analysis-chart-axis,
+.analysis-chart-zero-line,
 .analysis-chart-axis-label,
 .analysis-chart-tick {
   pointer-events: none;
+}
+
+.analysis-chart-zero-line {
+  stroke: #0f7285;
+  stroke-dasharray: 6 5;
+  stroke-width: 1.4;
 }
 
 .analysis-chart-line {
@@ -1411,6 +1459,57 @@ textarea {
   border-color: #1fbad6;
   box-shadow: 0 0 0 3px rgba(31, 186, 214, 0.18);
   outline: none;
+}
+
+.analysis-chart-trace-controls {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 1.2fr);
+  padding: 7px 8px;
+}
+
+.analysis-chart-trace-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.analysis-chart-trace-actions button,
+.analysis-chart-trace-chips button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #bdcbd8;
+  border-radius: 7px;
+  color: #172033;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.analysis-chart-trace-actions button:hover,
+.analysis-chart-trace-chips button:hover {
+  border-color: #7e95ad;
+}
+
+.analysis-chart-trace-summary {
+  color: #516277;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.analysis-chart-trace-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
 }
 
 .analysis-chart-legend button {
@@ -1814,7 +1913,8 @@ textarea {
   }
 
   .analysis-chart-heading,
-  .analysis-chart-manual-axis {
+  .analysis-chart-manual-axis,
+  .analysis-chart-trace-controls {
     align-items: stretch;
     grid-template-columns: 1fr;
   }

@@ -97,8 +97,17 @@ async function expectFrequencyChartInteractions(page: Page) {
   await fixedAxisButton.click();
   await expect(fixedAxisButton).toHaveAttribute("aria-pressed", "true");
 
-  await chart.locator(".analysis-chart-point").nth(1).hover();
-  await expect(chart.locator(".analysis-chart-tooltip")).toBeVisible();
+  const hoveredChartPoint = chart.locator(".analysis-chart-point").first();
+  await hoveredChartPoint.hover({ force: true });
+  const chartTooltip = page.getByTestId("frequency-mode-plot-tooltip");
+  await expect(chartTooltip).toBeVisible();
+  const hoveredPointBox = await hoveredChartPoint.boundingBox();
+  const tooltipBox = await chartTooltip.boundingBox();
+  if (!hoveredPointBox || !tooltipBox) {
+    throw new Error("Expected hovered chart point and tooltip boxes.");
+  }
+  expect(Math.abs(tooltipBox.x - hoveredPointBox.x)).toBeLessThan(220);
+  expect(Math.abs(tooltipBox.y - hoveredPointBox.y)).toBeLessThan(140);
 
   await expect(resetButton).toBeDisabled();
   const plotArea = page.getByTestId("frequency-mode-plot-plot-area");
@@ -908,10 +917,28 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const frequencyModeTicks = await page
+    .getByTestId("frequency-mode-plot")
+    .locator('[data-axis="x"]')
+    .allTextContents();
+  expect(frequencyModeTicks.length).toBeGreaterThan(0);
+  expect(frequencyModeTicks.every((tick) => /^-?\d+$/.test(tick.trim()))).toBe(
+    true,
+  );
   await expect(page.getByTestId("analysis-plot-tabs")).toBeVisible();
   await expect(page.getByTestId("zpf-mode-plot")).toHaveCount(0);
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await expect(page.getByTestId("zpf-mode-plot-zero-line")).toHaveCount(1);
+  await expect(page.getByTestId("zpf-mode-plot-signed-values")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByTestId("zpf-mode-plot-absolute-values").click();
+  await expect(page.getByTestId("zpf-mode-plot-absolute-values")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expectChartRegionZoom(page, "zpf-mode-plot");
 
   await page.getByLabel("Sweep Lj").check();
@@ -1020,7 +1047,14 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await expect(traceSelect).not.toHaveValue("all");
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(1);
 
-  await traceSelect.selectOption("all");
+  await traceSelect.selectOption("edge_1");
+  await page.getByTestId("zpf-mode-plot-add-trace").click();
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
+
+  await page.getByTestId("zpf-mode-plot-absolute-values").click();
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
+
+  await page.getByTestId("zpf-mode-plot-all-traces").click();
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(7);
 });
 
@@ -2217,8 +2251,11 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
     "Enter values for: C12, Cg, L12_inv, Lg_inv",
   );
   await expect(page.getByRole("button", { name: "Refresh" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
+  await expect(page.getByTestId("frequency-mode-plot-placeholder")).toBeVisible();
+  await expect(page.getByTestId("frequency-mode-plot")).toHaveCount(0);
+  await expectAnalysisResultsRightOfControls(page);
 
   await page.getByLabel("Value for C12").fill("2e-15");
   await page.getByLabel("Value for Cg").fill("5e-15");
@@ -2229,10 +2266,15 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByTestId("frequency-mode-plot-placeholder")).toHaveCount(0);
+  await expect(page.getByTestId("frequency-mode-plot-zero-line")).toHaveCount(1);
   await expectFrequencyPlotFitsInOutputPanel(page);
   await expectAnalysisResultsUseDrawerScroll(page);
   await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  const analysisExportButton = page
+    .getByTestId("modal-analysis")
+    .getByRole("button", { name: "Export CSV" });
+  await expect(analysisExportButton).toBeEnabled();
 
   await page.getByLabel("Sweep C12").check();
   await expect(page.getByLabel("Value for C12")).toHaveValue("Previous: 2e-15");
@@ -2297,7 +2339,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   }).not.toBe(analysisBeforeLargeSweepMove);
 
   const exportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export CSV" }).click();
+  await analysisExportButton.click();
   const exported = await exportPromise;
   expect(exported.suggestedFilename()).toBe("cqedraw-analysis-table.csv");
   const exportedPath = await exported.path();

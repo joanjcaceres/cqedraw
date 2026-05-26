@@ -203,11 +203,19 @@ export function buildCurrentZpfSeries(
   }));
 }
 
+export function absoluteChartSeries(series: ChartSeries[]): ChartSeries[] {
+  return series.map((entry) => ({
+    ...entry,
+    points: entry.points.map((point) => ({ ...point, y: Math.abs(point.y) })),
+  }));
+}
+
 export function chartBounds(
   series: ChartSeries[],
   yReferenceSeries: ChartSeries[] = [],
   manualYBounds?: { maxY: number; minY: number },
   yReferenceBounds?: ChartYBounds | null,
+  includeZeroY = false,
 ): ChartBounds {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -241,6 +249,9 @@ export function chartBounds(
   if (manualYBounds) {
     minY = manualYBounds.minY;
     maxY = manualYBounds.maxY;
+  } else if (includeZeroY) {
+    minY = Math.min(minY, 0);
+    maxY = Math.max(maxY, 0);
   }
   if (minX === maxX) {
     const pad = Math.max(1, Math.abs(minX) * 0.1);
@@ -277,6 +288,7 @@ export function referenceFrequencyYBounds(
 export function referenceZpfYBounds(
   results: ModalAnalysisResult[],
   traceKeys: string[],
+  absolute = false,
 ): ChartYBounds | null {
   if (traceKeys.length === 0) {
     return null;
@@ -289,7 +301,7 @@ export function referenceZpfYBounds(
         continue;
       }
       for (const zpf of branch.phase_zpf) {
-        bounds = expandYBounds(bounds, zpf);
+        bounds = expandYBounds(bounds, absolute ? Math.abs(zpf) : zpf);
       }
     }
   }

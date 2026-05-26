@@ -57,6 +57,7 @@ import {
   type ConcatenateSelectionAnalysis,
 } from "./graph";
 import {
+  absoluteChartSeries,
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueueFromParameters,
@@ -2824,7 +2825,6 @@ export function App() {
                       markSweepSliderInteraction();
                       preserveOutputPanelScroll();
                     }}
-                    onExportAnalysis={exportAnalysisCsv}
                     parameters={outputParameters}
                     precomputeRunning={sweepPrecomputeRunning}
                     running={sweepRunning}
@@ -2838,12 +2838,19 @@ export function App() {
                 </div>
                 <div className="analysis-results" data-testid="analysis-results">
                   <ModalAnalysisPlots
+                    placeholderAvailable={Boolean(output && outputParameters.length > 0)}
+                    placeholderZpfAvailable={
+                      Boolean(output?.josephson_branches?.length)
+                    }
                     result={displayedAnalysis}
                     yReferenceResults={
                       sweepModeActive ? sweepSamples.map((sample) => sample.analysis) : []
                     }
                   />
-                  <ModalAnalysisTable result={displayedAnalysis} />
+                  <ModalAnalysisTable
+                    result={displayedAnalysis}
+                    onExportAnalysis={exportAnalysisCsv}
+                  />
                 </div>
               </div>
             </div>
@@ -4391,7 +4398,6 @@ function AnalysisParameterPanel({
   onRangeChange,
   onSliderChange,
   onSliderInteraction,
-  onExportAnalysis,
   parameters,
   precomputeRunning,
   running,
@@ -4413,7 +4419,6 @@ function AnalysisParameterPanel({
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
   onSliderInteraction: () => void;
-  onExportAnalysis: () => void;
   parameters: string[];
   precomputeRunning: boolean;
   running: boolean;
@@ -4458,15 +4463,6 @@ function AnalysisParameterPanel({
           >
             <Repeat2 size={14} />
             {analysisRunning ? "Analyzing..." : "Refresh"}
-          </button>
-          <button
-            disabled={actionDisabled || analysisRunning}
-            onClick={onExportAnalysis}
-            title={missingMessage}
-            type="button"
-          >
-            <Download size={14} />
-            Export CSV
           </button>
         </div>
       </div>
@@ -4790,7 +4786,13 @@ function ParameterControlRow({
   );
 }
 
-function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) {
+function ModalAnalysisTable({
+  onExportAnalysis,
+  result,
+}: {
+  onExportAnalysis: () => void;
+  result: ModalAnalysisResult | null;
+}) {
   if (!result?.available) {
     return null;
   }
@@ -4822,9 +4824,23 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
             </span>
           ) : null}
         </span>
-        <span className="modal-analysis-summary-meta">
-          {modeCountText}
-          {branchCountText}
+        <span className="modal-analysis-summary-right">
+          <span className="modal-analysis-summary-meta">
+            {modeCountText}
+            {branchCountText}
+          </span>
+          <button
+            className="modal-analysis-export-button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onExportAnalysis();
+            }}
+            type="button"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
         </span>
       </summary>
       <div className="modal-analysis-table-wrap">
@@ -4874,6 +4890,8 @@ function ModalAnalysisTable({ result }: { result: ModalAnalysisResult | null }) 
 function ModalAnalysisPlots({
   frequencyTestId = "frequency-mode-plot",
   frequencyTitle = "Mode frequencies",
+  placeholderAvailable = false,
+  placeholderZpfAvailable = false,
   result,
   yReferenceResults = [],
   zpfTestId = "zpf-mode-plot",
@@ -4881,15 +4899,22 @@ function ModalAnalysisPlots({
 }: {
   frequencyTestId?: string;
   frequencyTitle?: string;
+  placeholderAvailable?: boolean;
+  placeholderZpfAvailable?: boolean;
   result: ModalAnalysisResult | null;
   yReferenceResults?: ModalAnalysisResult[];
   zpfTestId?: string;
   zpfTitle?: string;
 }) {
   type AnalysisPlotTab = "frequency" | "zpf";
+  type ZpfValueMode = "signed" | "absolute";
   const [activePlot, setActivePlot] = useState<AnalysisPlotTab>("frequency");
+  const [zpfValueMode, setZpfValueMode] =
+    useState<ZpfValueMode>("signed");
   const frequencySeries = result?.available ? buildCurrentFrequencySeries(result) : [];
   const zpfSeries = result?.available ? buildCurrentZpfSeries(result) : [];
+  const displayedZpfSeries =
+    zpfValueMode === "absolute" ? absoluteChartSeries(zpfSeries) : zpfSeries;
   const hasFrequencyPlot = frequencySeries.some((entry) => entry.points.length > 0);
   const hasZpfPlot = zpfSeries.some((entry) => entry.points.length > 0);
   const referenceResults = yReferenceResults.filter((entry) => entry.available);
@@ -4904,7 +4929,63 @@ function ModalAnalysisPlots({
   }, [activePlot, hasFrequencyPlot, hasZpfPlot]);
 
   if (!result?.available) {
-    return null;
+    if (!placeholderAvailable) {
+      return null;
+    }
+    const selectedPlaceholder =
+      activePlot === "zpf" && placeholderZpfAvailable ? "zpf" : "frequency";
+    return (
+      <div className="analysis-plots" data-testid="modal-analysis-plots">
+        {placeholderZpfAvailable ? (
+          <div
+            aria-label="Analysis plot"
+            className="analysis-plot-tabs"
+            data-testid="analysis-plot-tabs"
+            role="tablist"
+          >
+            <button
+              aria-controls={`${frequencyTestId}-placeholder-panel`}
+              aria-selected={selectedPlaceholder === "frequency"}
+              data-testid="analysis-plot-tab-frequency"
+              onClick={() => setActivePlot("frequency")}
+              role="tab"
+              type="button"
+            >
+              Frequencies
+            </button>
+            <button
+              aria-controls={`${zpfTestId}-placeholder-panel`}
+              aria-selected={selectedPlaceholder === "zpf"}
+              data-testid="analysis-plot-tab-zpf"
+              onClick={() => setActivePlot("zpf")}
+              role="tab"
+              type="button"
+            >
+              Phase ZPF
+            </button>
+          </div>
+        ) : null}
+        {selectedPlaceholder === "frequency" ? (
+          <div id={`${frequencyTestId}-placeholder-panel`} role="tabpanel">
+            <AnalysisChartPlaceholder
+              testId={`${frequencyTestId}-placeholder`}
+              title={frequencyTitle}
+              xLabel="mode index"
+              yLabel="frequency GHz"
+            />
+          </div>
+        ) : (
+          <div id={`${zpfTestId}-placeholder-panel`} role="tabpanel">
+            <AnalysisChartPlaceholder
+              testId={`${zpfTestId}-placeholder`}
+              title={zpfTitle}
+              xLabel="mode index"
+              yLabel="phase ZPF"
+            />
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (!hasFrequencyPlot && !hasZpfPlot) {
@@ -4963,16 +5044,158 @@ function ModalAnalysisPlots({
         <div id={`${zpfTestId}-panel`} role="tabpanel">
           <AnalysisLineChart
             referenceYBoundsForSeries={(seriesKeys) =>
-              referenceZpfYBounds(referenceResults, seriesKeys)
+              referenceZpfYBounds(
+                referenceResults,
+                seriesKeys,
+                zpfValueMode === "absolute",
+              )
             }
-            series={zpfSeries}
+            series={displayedZpfSeries}
             testId={zpfTestId}
             title={zpfTitle}
             xLabel="mode index"
-            yLabel="phase ZPF"
+            valueModeControl={
+              <div
+                aria-label={`${zpfTitle} value mode`}
+                className="analysis-chart-value-mode"
+                role="group"
+              >
+                <button
+                  aria-pressed={zpfValueMode === "signed"}
+                  data-testid={`${zpfTestId}-signed-values`}
+                  onClick={() => setZpfValueMode("signed")}
+                  type="button"
+                >
+                  Signed
+                </button>
+                <button
+                  aria-pressed={zpfValueMode === "absolute"}
+                  data-testid={`${zpfTestId}-absolute-values`}
+                  onClick={() => setZpfValueMode("absolute")}
+                  type="button"
+                >
+                  Abs
+                </button>
+              </div>
+            }
+            yLabel={zpfValueMode === "absolute" ? "|phase ZPF|" : "phase ZPF"}
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function AnalysisChartPlaceholder({
+  testId,
+  title,
+  xLabel,
+  yLabel,
+}: {
+  testId: string;
+  title: string;
+  xLabel: string;
+  yLabel: string;
+}) {
+  const viewWidth = 760;
+  const viewHeight = 370;
+  const plot = {
+    bottom: 320,
+    left: 96,
+    right: 736,
+    top: 22,
+  };
+  const xTicks = [0, 25, 50, 75, 100];
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const plotWidth = plot.right - plot.left;
+  const plotHeight = plot.bottom - plot.top;
+  const xScale = (value: number) => plot.left + (value / 100) * plotWidth;
+  const yScale = (value: number) => plot.bottom - value * plotHeight;
+
+  return (
+    <div
+      className="analysis-chart analysis-chart-placeholder"
+      data-testid={testId}
+    >
+      <div className="analysis-chart-heading">
+        <h3>{title}</h3>
+      </div>
+      <svg
+        aria-label={`${title} placeholder`}
+        role="img"
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+      >
+        <rect
+          className="analysis-chart-plot-bg"
+          height={plotHeight}
+          rx="4"
+          width={plotWidth}
+          x={plot.left}
+          y={plot.top}
+        />
+        {xTicks.map((tick) => {
+          const x = xScale(tick);
+          return (
+            <line
+              className="analysis-chart-grid"
+              key={`x-${tick}`}
+              x1={x}
+              x2={x}
+              y1={plot.top}
+              y2={plot.bottom}
+            />
+          );
+        })}
+        {yTicks.map((tick) => {
+          const y = yScale(tick);
+          return (
+            <line
+              className="analysis-chart-grid"
+              key={`y-${tick}`}
+              x1={plot.left}
+              x2={plot.right}
+              y1={y}
+              y2={y}
+            />
+          );
+        })}
+        <line
+          className="analysis-chart-zero-line"
+          x1={plot.left}
+          x2={plot.right}
+          y1={yScale(0)}
+          y2={yScale(0)}
+        />
+        <line
+          className="analysis-chart-axis"
+          x1={plot.left}
+          x2={plot.right}
+          y1={plot.bottom}
+          y2={plot.bottom}
+        />
+        <line
+          className="analysis-chart-axis"
+          x1={plot.left}
+          x2={plot.left}
+          y1={plot.top}
+          y2={plot.bottom}
+        />
+        <text
+          className="analysis-chart-axis-label"
+          textAnchor="middle"
+          x={(plot.left + plot.right) / 2}
+          y={354}
+        >
+          {xLabel}
+        </text>
+        <text
+          className="analysis-chart-axis-label"
+          textAnchor="middle"
+          transform={`translate(22 ${(plot.top + plot.bottom) / 2}) rotate(-90)`}
+        >
+          {yLabel}
+        </text>
+      </svg>
     </div>
   );
 }
@@ -4982,6 +5205,7 @@ function AnalysisLineChart({
   series,
   testId,
   title,
+  valueModeControl,
   xLabel,
   yLabel,
 }: {
@@ -4989,6 +5213,7 @@ function AnalysisLineChart({
   series: ChartSeries[];
   testId: string;
   title: string;
+  valueModeControl?: ReactNode;
   xLabel: string;
   yLabel: string;
 }) {
@@ -5017,7 +5242,11 @@ function AnalysisLineChart({
     x: number;
     y: number;
   } | null>(null);
+  const [comparisonSeriesKeys, setComparisonSeriesKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [selectedSeriesKey, setSelectedSeriesKey] = useState<string>("__first__");
+  const [showAllSeries, setShowAllSeries] = useState(false);
   const [yAxisMode, setYAxisMode] = useState<ChartAxisMode>("fixed");
   const [zoomDomain, setZoomDomain] = useState<ChartBounds | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -5026,17 +5255,23 @@ function AnalysisLineChart({
     return null;
   }
 
-  const useSeriesSelect = populatedSeries.length > 6;
+  const useSeriesSelect = testId.includes("zpf")
+    ? populatedSeries.length > 1
+    : populatedSeries.length > 6;
   const activeSelectedSeriesKey =
-    selectedSeriesKey === "all"
-      ? "all"
-      : populatedSeries.some((entry) => entry.key === selectedSeriesKey)
-        ? selectedSeriesKey
-        : populatedSeries[0].key;
+    populatedSeries.some((entry) => entry.key === selectedSeriesKey)
+      ? selectedSeriesKey
+      : populatedSeries[0].key;
+  const populatedSeriesKeys = new Set(populatedSeries.map((entry) => entry.key));
+  const comparisonKeys = Array.from(comparisonSeriesKeys).filter((key) =>
+    populatedSeriesKeys.has(key),
+  );
+  const activeComparisonKeys =
+    comparisonKeys.length > 0 ? comparisonKeys : [activeSelectedSeriesKey];
   const visibleSeries = useSeriesSelect
-    ? activeSelectedSeriesKey === "all"
+    ? showAllSeries
       ? populatedSeries
-      : populatedSeries.filter((entry) => entry.key === activeSelectedSeriesKey)
+      : populatedSeries.filter((entry) => activeComparisonKeys.includes(entry.key))
     : populatedSeries.filter((entry) => !hiddenKeys.has(entry.key));
   const plottedSeries = visibleSeries.length > 0 ? visibleSeries : populatedSeries;
   const visibleSeriesKeys = plottedSeries.map((entry) => entry.key);
@@ -5052,15 +5287,19 @@ function AnalysisLineChart({
       ? manualYBounds.bounds
       : undefined,
     effectiveYAxisMode === "fixed" ? referenceYBounds : null,
+    true,
   );
   const displayBounds = zoomDomain ?? bounds;
-  const xTicks = chartTicks(displayBounds.minX, displayBounds.maxX);
+  const xTicks =
+    xLabel === "mode index"
+      ? integerChartTicks(displayBounds.minX, displayBounds.maxX)
+      : chartTicks(displayBounds.minX, displayBounds.maxX);
   const yTicks = chartTicks(displayBounds.minY, displayBounds.maxY);
   const viewWidth = 760;
   const viewHeight = 370;
   const plot = {
     bottom: 320,
-    left: 78,
+    left: 96,
     right: 736,
     top: 22,
   };
@@ -5079,6 +5318,7 @@ function AnalysisLineChart({
     effectiveYAxisMode === "manual" && manualYBounds.error
       ? manualYBounds.error
       : "";
+  const zeroLineVisible = displayBounds.minY <= 0 && displayBounds.maxY >= 0;
 
   function toggleSeries(key: string) {
     setHiddenKeys((current) => {
@@ -5092,8 +5332,51 @@ function AnalysisLineChart({
     });
   }
 
-  function selectSeries(key: string) {
+  function focusSeries(key: string) {
+    setComparisonSeriesKeys((current) => {
+      if (showAllSeries || current.size > 0) {
+        return current;
+      }
+      return new Set([activeSelectedSeriesKey]);
+    });
     setSelectedSeriesKey(key);
+    setHoveredPoint(null);
+  }
+
+  function showFocusedSeries() {
+    setShowAllSeries(false);
+    setComparisonSeriesKeys(new Set([activeSelectedSeriesKey]));
+    setHoveredPoint(null);
+    setZoomDomain(null);
+  }
+
+  function addFocusedSeries() {
+    setShowAllSeries(false);
+    setComparisonSeriesKeys((current) => {
+      const next = new Set(current);
+      next.add(activeSelectedSeriesKey);
+      return next;
+    });
+    setHoveredPoint(null);
+    setZoomDomain(null);
+  }
+
+  function showAllTraces() {
+    setShowAllSeries(true);
+    setHoveredPoint(null);
+    setZoomDomain(null);
+  }
+
+  function removeComparisonSeries(key: string) {
+    setShowAllSeries(false);
+    setComparisonSeriesKeys((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      if (next.size === 0) {
+        next.add(activeSelectedSeriesKey);
+      }
+      return next;
+    });
     setHoveredPoint(null);
     setZoomDomain(null);
   }
@@ -5221,12 +5504,92 @@ function AnalysisLineChart({
   ]
     .filter(Boolean)
     .join(" ");
+  const seriesControls =
+    populatedSeries.length > 1 && useSeriesSelect ? (
+      <div className="analysis-chart-trace-controls">
+        <label className="analysis-chart-series-select">
+          <span>Trace</span>
+          <select
+            aria-label={`${title} trace`}
+            data-testid={`${testId}-trace-select`}
+            onChange={(event) => focusSeries(event.target.value)}
+            value={activeSelectedSeriesKey}
+          >
+            {populatedSeries.map((entry) => (
+              <option key={entry.key} value={entry.key}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="analysis-chart-trace-actions">
+          <button
+            data-testid={`${testId}-show-trace`}
+            onClick={showFocusedSeries}
+            type="button"
+          >
+            Show
+          </button>
+          <button
+            data-testid={`${testId}-add-trace`}
+            onClick={addFocusedSeries}
+            type="button"
+          >
+            Add
+          </button>
+          <button
+            data-testid={`${testId}-all-traces`}
+            onClick={showAllTraces}
+            type="button"
+          >
+            All
+          </button>
+        </div>
+        {showAllSeries ? (
+          <span className="analysis-chart-trace-summary">All traces</span>
+        ) : (
+          <div className="analysis-chart-trace-chips">
+            {activeComparisonKeys.map((key) => {
+              const entry = populatedSeries.find(
+                (seriesEntry) => seriesEntry.key === key,
+              );
+              if (!entry) {
+                return null;
+              }
+              return (
+                <button
+                  key={key}
+                  onClick={() => removeComparisonSeries(key)}
+                  title={`Remove ${entry.label}`}
+                  type="button"
+                >
+                  {entry.label}
+                  <X size={12} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    ) : null;
+  const tooltipSize = { height: 58, width: 172 };
+  const tooltipPosition = hoveredPoint
+    ? chartTooltipPosition(
+        {
+          x: xScale(hoveredPoint.point.x),
+          y: yScale(hoveredPoint.point.y),
+        },
+        plot,
+        tooltipSize,
+      )
+    : null;
 
   return (
     <div className="analysis-chart" data-testid={testId}>
       <div className="analysis-chart-heading">
         <h3>{title}</h3>
         <div className="analysis-chart-toolbar">
+          {valueModeControl}
           <div
             aria-label={`${title} y-axis scale`}
             className="analysis-chart-axis-mode"
@@ -5336,6 +5699,7 @@ function AnalysisLineChart({
           ) : null}
         </div>
       ) : null}
+      {seriesControls}
       <svg
         aria-label={title}
         className={svgClassName || undefined}
@@ -5452,6 +5816,7 @@ function AnalysisLineChart({
               />
               <text
                 className="analysis-chart-tick"
+                data-axis="y"
                 textAnchor="end"
                 x={plot.left - 8}
                 y={y + 4}
@@ -5474,6 +5839,7 @@ function AnalysisLineChart({
               />
               <text
                 className="analysis-chart-tick"
+                data-axis="x"
                 textAnchor="middle"
                 x={x}
                 y={plot.bottom + 18}
@@ -5483,6 +5849,16 @@ function AnalysisLineChart({
             </g>
           );
         })}
+        {zeroLineVisible ? (
+          <line
+            className="analysis-chart-zero-line"
+            data-testid={`${testId}-zero-line`}
+            x1={plot.left}
+            x2={plot.right}
+            y1={yScale(0)}
+            y2={yScale(0)}
+          />
+        ) : null}
         <line
           className="analysis-chart-axis"
           x1={plot.left}
@@ -5508,51 +5884,62 @@ function AnalysisLineChart({
         <text
           className="analysis-chart-axis-label"
           textAnchor="middle"
-          transform={`translate(14 ${(plot.top + plot.bottom) / 2}) rotate(-90)`}
+          transform={`translate(22 ${(plot.top + plot.bottom) / 2}) rotate(-90)`}
         >
           {yLabel}
         </text>
         <g clipPath={`url(#${clipPathId})`}>
-        {visibleSeries.map((entry, seriesIndex) => {
-          const color = chartColor(seriesIndex);
-          const scaledPoints = entry.points.map((point) => ({
-            point,
-            x: xScale(point.x),
-            y: yScale(point.y),
-          }));
-          return (
-            <g key={entry.key}>
-              {scaledPoints.length > 1 ? (
-                <path
-                  className="analysis-chart-line"
-                  d={pointsToPath(scaledPoints)}
-                  stroke={color}
-                />
-              ) : null}
-              {scaledPoints.map(({ point, x, y }, pointIndex) => (
-                <circle
-                  key={`${entry.key}-${pointIndex}`}
-                  className="analysis-chart-point"
-                  cx={x}
-                  cy={y}
-                  fill={color}
-                  onPointerEnter={() =>
-                    setHoveredPoint({
-                      color,
-                      point,
-                      seriesLabel: entry.label,
-                    })
-                  }
-                  r="4"
-                />
-              ))}
-            </g>
-          );
-        })}
+          {visibleSeries.map((entry) => {
+            const color = chartColor(
+              Math.max(
+                0,
+                populatedSeries.findIndex(
+                  (seriesEntry) => seriesEntry.key === entry.key,
+                ),
+              ),
+            );
+            const scaledPoints = entry.points.map((point) => ({
+              point,
+              x: xScale(point.x),
+              y: yScale(point.y),
+            }));
+            return (
+              <g key={entry.key}>
+                {scaledPoints.length > 1 ? (
+                  <path
+                    className="analysis-chart-line"
+                    d={pointsToPath(scaledPoints)}
+                    stroke={color}
+                  />
+                ) : null}
+                {scaledPoints.map(({ point, x, y }, pointIndex) => (
+                  <circle
+                    key={`${entry.key}-${pointIndex}`}
+                    className="analysis-chart-point"
+                    cx={x}
+                    cy={y}
+                    fill={color}
+                    onPointerEnter={() =>
+                      setHoveredPoint({
+                        color,
+                        point,
+                        seriesLabel: entry.label,
+                      })
+                    }
+                    r="4"
+                  />
+                ))}
+              </g>
+            );
+          })}
         </g>
-        {hoveredPoint ? (
-          <g className="analysis-chart-tooltip" transform="translate(438 30)">
-            <rect width="158" height="58" rx="6" />
+        {hoveredPoint && tooltipPosition ? (
+          <g
+            className="analysis-chart-tooltip"
+            data-testid={`${testId}-tooltip`}
+            transform={`translate(${tooltipPosition.x} ${tooltipPosition.y})`}
+          >
+            <rect width={tooltipSize.width} height={tooltipSize.height} rx="6" />
             <circle cx="12" cy="16" fill={hoveredPoint.color} r="4" />
             <text x="22" y="20">
               {hoveredPoint.seriesLabel}
@@ -5567,24 +5954,7 @@ function AnalysisLineChart({
         ) : null}
       </svg>
       {populatedSeries.length > 1 ? (
-        useSeriesSelect ? (
-          <label className="analysis-chart-series-select">
-            <span>Trace</span>
-            <select
-              aria-label={`${title} trace`}
-              data-testid={`${testId}-trace-select`}
-              onChange={(event) => selectSeries(event.target.value)}
-              value={activeSelectedSeriesKey}
-            >
-              <option value="all">All traces</option>
-              {populatedSeries.map((entry) => (
-                <option key={entry.key} value={entry.key}>
-                  {entry.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
+        useSeriesSelect ? null : (
           <div className="analysis-chart-legend">
             {populatedSeries.map((entry, index) => {
               const hidden = hiddenKeys.has(entry.key);
@@ -5646,6 +6016,27 @@ function zoomChartBounds(
   };
 }
 
+function chartTooltipPosition(
+  point: { x: number; y: number },
+  plot: { bottom: number; left: number; right: number; top: number },
+  size: { height: number; width: number },
+): { x: number; y: number } {
+  const margin = 8;
+  const offset = 12;
+  const xCandidate =
+    point.x + offset + size.width <= plot.right - margin
+      ? point.x + offset
+      : point.x - size.width - offset;
+  const yCandidate =
+    point.y - size.height - offset >= plot.top + margin
+      ? point.y - size.height - offset
+      : point.y + offset;
+  return {
+    x: clamp(xCandidate, plot.left + margin, plot.right - size.width - margin),
+    y: clamp(yCandidate, plot.top + margin, plot.bottom - size.height - margin),
+  };
+}
+
 function chartTicks(min: number, max: number, count = 5): number[] {
   if (count <= 1 || min === max) {
     return [min];
@@ -5654,6 +6045,26 @@ function chartTicks(min: number, max: number, count = 5): number[] {
   return Array.from({ length: count }, (_, index) =>
     Number((min + step * index).toPrecision(12)),
   );
+}
+
+function integerChartTicks(min: number, max: number, count = 6): number[] {
+  const start = Math.ceil(min);
+  const end = Math.floor(max);
+  if (end < start) {
+    return [Math.round((min + max) / 2)];
+  }
+  if (end === start) {
+    return [start];
+  }
+  const step = Math.max(1, Math.ceil((end - start) / Math.max(1, count - 1)));
+  const ticks: number[] = [];
+  for (let tick = start; tick <= end; tick += step) {
+    ticks.push(tick);
+  }
+  if (ticks[ticks.length - 1] !== end) {
+    ticks.push(end);
+  }
+  return ticks;
 }
 
 function chartColor(index: number): string {
@@ -5680,7 +6091,14 @@ function formatChartTick(value: number): string {
   if (Number.isInteger(value) && Math.abs(value) < 1e6) {
     return String(value);
   }
-  return formatModalNumber(value);
+  const absValue = Math.abs(value);
+  if (value === 0) {
+    return "0";
+  }
+  if (absValue < 1e-2 || absValue >= 1e4) {
+    return value.toExponential(2);
+  }
+  return Number(value.toPrecision(4)).toString();
 }
 
 function missingParameterNames(

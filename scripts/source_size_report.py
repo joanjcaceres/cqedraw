@@ -97,7 +97,7 @@ def count_lines(path: Path) -> int | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
             return sum(1 for _line in handle)
-    except UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError):
         return None
 
 

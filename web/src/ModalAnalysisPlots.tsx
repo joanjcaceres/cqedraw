@@ -174,6 +174,7 @@ export function ModalAnalysisPlots({
               )
             }
             series={displayedZpfSeries}
+            seriesSelectThreshold={1}
             testId={zpfTestId}
             title={zpfTitle}
             xLabel="mode index"

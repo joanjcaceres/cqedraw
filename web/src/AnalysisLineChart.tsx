@@ -24,6 +24,7 @@ import { clamp } from "./viewBox";
 export function AnalysisLineChart({
   referenceYBoundsForSeries,
   series,
+  seriesSelectThreshold = 6,
   testId,
   title,
   valueModeControl,
@@ -32,6 +33,7 @@ export function AnalysisLineChart({
 }: {
   referenceYBoundsForSeries?: (seriesKeys: string[]) => ChartYBounds | null;
   series: ChartSeries[];
+  seriesSelectThreshold?: number;
   testId: string;
   title: string;
   valueModeControl?: ReactNode;
@@ -76,9 +78,7 @@ export function AnalysisLineChart({
     return null;
   }
 
-  const useSeriesSelect = testId.includes("zpf")
-    ? populatedSeries.length > 1
-    : populatedSeries.length > 6;
+  const useSeriesSelect = populatedSeries.length > seriesSelectThreshold;
   const activeSelectedSeriesKey =
     populatedSeries.some((entry) => entry.key === selectedSeriesKey)
       ? selectedSeriesKey

@@ -115,6 +115,26 @@ npm run build
 npm run test:e2e
 ```
 
+## Source Size Hygiene
+
+The project is moving from prototype-shaped files toward smaller modules that
+are easier to review, test, and modify with Codex. Treat these as soft caps, not
+hard gates:
+
+- Most source files should stay below roughly 800-1000 lines.
+- React components and hooks should usually stay below roughly 300-500 lines.
+- Generated files, lock files, and binary assets are exempt.
+
+Use the advisory size report when starting broad refactors or reviewing large
+changes:
+
+```bash
+python3 scripts/source_size_report.py
+```
+
+The report does not fail by default. If a future CI job needs a gate, use
+`--fail-over-soft-cap` explicitly.
+
 If Playwright has not installed a browser on your machine yet, install Chromium
 before running the end-to-end tests:
 

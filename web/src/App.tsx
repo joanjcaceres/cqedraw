@@ -74,6 +74,13 @@ import {
   type SweepSample,
   type SweepScale,
 } from "./analysis";
+import {
+  buildParameterInputSpecs,
+  convertAnalysisParameterValues,
+  convertParameterDisplayValue,
+  type ParameterInputMode,
+  type ParameterInputSpec,
+} from "./parameterUnits";
 import { PyodideBridgeClient } from "./pyodideClient";
 import {
   CircuitEdge,
@@ -304,6 +311,9 @@ export function App() {
   const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
+  const [parameterInputModes, setParameterInputModes] = useState<
+    Record<string, ParameterInputMode>
+  >({});
   const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
     null,
   );
@@ -467,6 +477,10 @@ export function App() {
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
+  const parameterInputSpecs = useMemo(
+    () => buildParameterInputSpecs(output, project.state.edges),
+    [output, project.state.edges],
+  );
 
   useEffect(() => {
     if (!outputDrawerOpen || output || !hasProjectContent) {
@@ -490,8 +504,10 @@ export function App() {
         outputParameters,
         sweepConfig,
         MAX_SWEEP_POINTS,
+        parameterInputModes,
+        parameterInputSpecs,
       ),
-    [outputParameters, sweepConfig],
+    [outputParameters, parameterInputModes, parameterInputSpecs, sweepConfig],
   );
   const activeSweepParameters = sweepValidation.parameters;
   const selectedSweepValues = useMemo(
@@ -529,6 +545,30 @@ export function App() {
     activeSweepParameters.length > 0 &&
     !sweepValidation.error &&
     sweepValidation.totalCombinations > 0;
+  const activeParameterInputValues = useMemo(() => {
+    const selectedGridPoint = selectedSweepGridPoint(
+      selectedSweepValues,
+      activeSweepParameters,
+    );
+    return activeSweepParameters.length > 0 && selectedGridPoint
+      ? sweepAnalysisParameterValues(parameterValues, selectedGridPoint)
+      : parameterValues;
+  }, [activeSweepParameters, parameterValues, selectedSweepValues]);
+  const parameterInputError = useMemo(
+    () =>
+      convertAnalysisParameterValues(
+        outputParameters,
+        activeParameterInputValues,
+        parameterInputModes,
+        parameterInputSpecs,
+      ).error,
+    [
+      activeParameterInputValues,
+      outputParameters,
+      parameterInputModes,
+      parameterInputSpecs,
+    ],
+  );
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
@@ -593,6 +633,7 @@ export function App() {
       analysisRequestIdRef.current += 1;
       setModalAnalysis(null);
       setAnalysisRunning(false);
+      setParameterInputModes({});
       clearSweepResults();
       return;
     }
@@ -610,14 +651,26 @@ export function App() {
       }
       return next;
     });
-  }, [output, outputParameters]);
+    setParameterInputModes((current) => {
+      const next: Record<string, ParameterInputMode> = {};
+      for (const name of outputParameters) {
+        const currentMode = current[name] ?? "physical";
+        next[name] =
+          currentMode === "energy" && parameterInputSpecs[name]?.kind
+            ? "energy"
+            : "physical";
+      }
+      return next;
+    });
+  }, [output, outputParameters, parameterInputSpecs]);
 
   useEffect(() => {
     if (
       !output ||
       outputParameters.length === 0 ||
       activeSweepParameters.length > 0 ||
-      missingParameterValues.length > 0
+      missingParameterValues.length > 0 ||
+      parameterInputError
     ) {
       analysisRequestIdRef.current += 1;
       setAnalysisRunning(false);
@@ -634,6 +687,7 @@ export function App() {
     missingParameterValues,
     output,
     outputParameters.length,
+    parameterInputError,
     parameterValues,
   ]);
 
@@ -681,9 +735,21 @@ export function App() {
       setSweepRunning(false);
       return;
     }
+    const convertedParameterValues = convertAnalysisParameterValues(
+      output.parameters,
+      analysisParameterValues,
+      parameterInputModes,
+      parameterInputSpecs,
+    );
+    if (convertedParameterValues.error) {
+      sweepRequestIdRef.current += 1;
+      setSweepRunning(false);
+      setSweepError(convertedParameterValues.error);
+      return;
+    }
 
     const sweepProject = projectRef.current;
-    const cacheKey = sweepCacheKey(sweepProject, analysisParameterValues);
+    const cacheKey = sweepCacheKey(sweepProject, convertedParameterValues.values);
     const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
     if (cachedSample) {
       sweepRequestIdRef.current += 1;
@@ -713,7 +779,7 @@ export function App() {
       }));
       setEngineStatus("Calculating selected sweep point...");
       clientRef.current!
-        .analyze(sweepProject, analysisParameterValues)
+        .analyze(sweepProject, convertedParameterValues.values)
         .then((analysis) => {
           if (requestId !== sweepRequestIdRef.current) {
             return;
@@ -758,6 +824,8 @@ export function App() {
     activeSweepParameters,
     missingSweepFixedValues,
     output,
+    parameterInputModes,
+    parameterInputSpecs,
     parameterValues,
     selectedSweepValues,
     sweepValidation.error,
@@ -804,8 +872,17 @@ export function App() {
     if (missing.length > 0) {
       return;
     }
+    const convertedParameterValues = convertAnalysisParameterValues(
+      output.parameters,
+      analysisParameterValues,
+      parameterInputModes,
+      parameterInputSpecs,
+    );
+    if (convertedParameterValues.error) {
+      return;
+    }
 
-    const cacheKey = sweepCacheKey(sweepProject, analysisParameterValues);
+    const cacheKey = sweepCacheKey(sweepProject, convertedParameterValues.values);
     const cachedSample = sweepSampleCacheRef.current.get(cacheKey);
     if (cachedSample) {
       setSweepSamples((current) => upsertSweepSample(current, cachedSample));
@@ -824,7 +901,7 @@ export function App() {
       }
       setSweepPrecomputeRunning(true);
       clientRef.current!
-        .analyze(sweepProject, analysisParameterValues)
+        .analyze(sweepProject, convertedParameterValues.values)
         .then((analysis) => {
           if (
             contextId !== sweepPrecomputeContextRef.current ||
@@ -871,6 +948,8 @@ export function App() {
     activeSweepParameters,
     missingSweepFixedValues,
     output,
+    parameterInputModes,
+    parameterInputSpecs,
     parameterValues,
     selectedSweepSample,
     selectedSweepValues,
@@ -1878,6 +1957,34 @@ export function App() {
     clearSweepResults();
   }
 
+  function updateParameterInputMode(name: string, mode: ParameterInputMode) {
+    const spec = parameterInputSpecs[name];
+    const nextMode = spec?.kind ? mode : "physical";
+    const previousMode = parameterInputModes[name] ?? "physical";
+    if (previousMode === nextMode) {
+      return;
+    }
+
+    analysisRequestIdRef.current += 1;
+    setAnalysisRunning(false);
+    setParameterInputModes((current) => ({ ...current, [name]: nextMode }));
+    setParameterValues((current) => ({
+      ...current,
+      [name]: convertParameterDisplayValue(
+        current[name] ?? "",
+        spec,
+        previousMode,
+        nextMode,
+      ),
+    }));
+    setSweepConfig((current) => ({
+      ...current,
+      [name]: INITIAL_PARAMETER_SWEEP_CONFIG,
+    }));
+    setModalAnalysis(null);
+    clearSweepResults();
+  }
+
   async function runModalAnalysis(
     options: { preserveScroll?: boolean } = {},
   ): Promise<ModalAnalysisResult | null> {
@@ -1898,6 +2005,16 @@ export function App() {
       );
       return null;
     }
+    const convertedParameterValues = convertAnalysisParameterValues(
+      result.parameters,
+      analysisParameterValues,
+      parameterInputModes,
+      parameterInputSpecs,
+    );
+    if (convertedParameterValues.error) {
+      setEngineStatus(convertedParameterValues.error);
+      return null;
+    }
 
     clearSweepResults();
     setEngineWarmup((current) => ({
@@ -1916,7 +2033,7 @@ export function App() {
     try {
       const analysis = await clientRef.current!.analyze(
         analysisProject,
-        analysisParameterValues,
+        convertedParameterValues.values,
       );
       if (requestId !== analysisRequestIdRef.current) {
         return null;
@@ -1976,12 +2093,22 @@ export function App() {
     if (!analysis?.available || analysis.error) {
       return;
     }
+    const exportParameterValues = convertAnalysisParameterValues(
+      result.parameters,
+      parameterValues,
+      parameterInputModes,
+      parameterInputSpecs,
+    );
+    if (exportParameterValues.error) {
+      setEngineStatus(exportParameterValues.error);
+      return;
+    }
 
     setEngineStatus("Exporting analysis table CSV...");
     try {
       const exportResult = await clientRef.current!.exportAnalysisJson(
         project,
-        parameterValues,
+        exportParameterValues.values,
         analysis,
       );
       if (exportResult.error) {
@@ -2810,8 +2937,11 @@ export function App() {
                     cachedSweepGridPointCount={cachedSweepGridPointCount}
                     disabled={!output}
                     fixedMissingParameters={missingSweepFixedValues}
+                    inputError={parameterInputError}
+                    inputModes={parameterInputModes}
                     missingParameters={missingParameterValues}
                     onAnalyze={runModalAnalysis}
+                    onInputModeChange={updateParameterInputMode}
                     onParameterChange={updateParameterValue}
                     onRangeChange={updateSweepConfig}
                     onSliderChange={(name, value) => {
@@ -2826,6 +2956,7 @@ export function App() {
                       preserveOutputPanelScroll();
                     }}
                     parameters={outputParameters}
+                    parameterSpecs={parameterInputSpecs}
                     precomputeRunning={sweepPrecomputeRunning}
                     running={sweepRunning}
                     samples={sweepSamples}
@@ -3493,6 +3624,7 @@ function HelpDialog({
           <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to refresh matrices.</li>
           <li>Output prepares C and L_inv automatically; Copy matrices copies the Python snippet.</li>
           <li>Enter numeric parameter values in Output to run mode-frequency and Josephson phase-ZPF analysis automatically.</li>
+          <li>For direct component parameters, use the C/E_C, L/E_L, or LJ/E_J toggles to enter either component values or E/h values in GHz.</li>
           <li>Use Sweep on parameter rows to explore values with sliders; chart wheel zoom uses Ctrl/Cmd, and Box zoom selects a plot region.</li>
           <li>Current analysis assumes well-posed C and L_inv matrices and does not include external loop flux or hidden variable reduction.</li>
           <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
@@ -4392,13 +4524,17 @@ function AnalysisParameterPanel({
   cachedSweepGridPointCount,
   disabled,
   fixedMissingParameters,
+  inputError,
+  inputModes,
   missingParameters,
   onAnalyze,
+  onInputModeChange,
   onParameterChange,
   onRangeChange,
   onSliderChange,
   onSliderInteraction,
   parameters,
+  parameterSpecs,
   precomputeRunning,
   running,
   samples,
@@ -4413,13 +4549,17 @@ function AnalysisParameterPanel({
   cachedSweepGridPointCount: number;
   disabled: boolean;
   fixedMissingParameters: string[];
+  inputError: string | null;
+  inputModes: Record<string, ParameterInputMode>;
   missingParameters: string[];
   onAnalyze: () => void;
+  onInputModeChange: (name: string, mode: ParameterInputMode) => void;
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
   onSliderInteraction: () => void;
   parameters: string[];
+  parameterSpecs: Record<string, ParameterInputSpec>;
   precomputeRunning: boolean;
   running: boolean;
   samples: SweepSample[];
@@ -4430,7 +4570,7 @@ function AnalysisParameterPanel({
   sweepValues: ParameterSweepConfigs;
 }) {
   const missingParameterSet = new Set(missingParameters);
-  const actionDisabled = disabled || missingParameters.length > 0;
+  const actionDisabled = disabled || missingParameters.length > 0 || Boolean(inputError);
   const refreshDisabled = actionDisabled || analysisRunning;
   const missingMessage =
     missingParameters.length > 0
@@ -4441,13 +4581,16 @@ function AnalysisParameterPanel({
       ? `Enter fixed values for: ${fixedMissingParameters.join(", ")}`
       : "";
   const parameterWarningMessage =
-    activeSweepParameters.length > 0 ? fixedMissingMessage : missingMessage;
+    inputError ??
+    (activeSweepParameters.length > 0 ? fixedMissingMessage : missingMessage);
   const sweepValidationMessage =
     disabled
       ? ""
       : parameters.length === 0
         ? "Prepare matrices with at least one parameter to sweep."
-        : activeSweepParameters.length === 0
+        : inputError
+          ? inputError
+          : activeSweepParameters.length === 0
           ? "Select Sweep on any parameter to enable sliders."
           : fixedMissingMessage || validation.error || sweepError || "";
   return (
@@ -4485,14 +4628,17 @@ function AnalysisParameterPanel({
               <ParameterControlRow
                 key={name}
                 disabled={disabled}
+                inputMode={inputModes[name] ?? "physical"}
                 missing={missingParameterSet.has(name)}
                 name={name}
+                onInputModeChange={onInputModeChange}
                 onParameterChange={onParameterChange}
                 onRangeChange={onRangeChange}
                 onSliderChange={onSliderChange}
                 onSliderInteraction={onSliderInteraction}
                 range={sweepValues[name] ?? INITIAL_PARAMETER_SWEEP_CONFIG}
                 selectedSweepValue={selectedValues[name]}
+                spec={parameterSpecs[name]}
                 sweepValues={validation.parameterValues[name] ?? []}
                 value={values[name] ?? ""}
               />
@@ -4533,26 +4679,32 @@ function AnalysisParameterPanel({
 
 function ParameterControlRow({
   disabled,
+  inputMode,
   missing,
   name,
+  onInputModeChange,
   onParameterChange,
   onRangeChange,
   onSliderChange,
   onSliderInteraction,
   range,
   selectedSweepValue,
+  spec,
   sweepValues,
   value,
 }: {
   disabled: boolean;
+  inputMode: ParameterInputMode;
   missing: boolean;
   name: string;
+  onInputModeChange: (name: string, mode: ParameterInputMode) => void;
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
   onSliderChange: (name: string, value: number) => void;
   onSliderInteraction: () => void;
   range: ParameterSweepConfig;
   selectedSweepValue: number | undefined;
+  spec: ParameterInputSpec | undefined;
   sweepValues: number[];
   value: string;
 }) {
@@ -4579,6 +4731,15 @@ function ParameterControlRow({
   const sweepScale = range.scale ?? "linear";
   const stepLabel = sweepScale === "log" ? "Points/decade" : "Step";
   const stepPlaceholder = sweepScale === "log" ? "points" : "step";
+  const hasEnergyMode = Boolean(spec?.kind && spec.energyLabel);
+  const valueLabel =
+    inputMode === "energy" && spec?.energyLabel ? spec.energyLabel : name;
+  const activeUnit =
+    inputMode === "energy" ? spec?.energyUnit : spec?.physicalUnit;
+  const inputPlaceholder =
+    inputMode === "energy" && spec?.energyLabel
+      ? `${spec.energyLabel}/h in ${spec.energyUnit}`
+      : "required";
 
   useEffect(() => {
     setLocalSliderDraft(null);
@@ -4666,11 +4827,37 @@ function ParameterControlRow({
             disabled={disabled || range.enabled}
             inputMode="decimal"
             onChange={(event) => onParameterChange(name, event.target.value)}
-            placeholder="required"
+            placeholder={inputPlaceholder}
             required={!range.enabled}
             value={range.enabled ? sweepReferenceValue : value}
           />
         </label>
+        {hasEnergyMode ? (
+          <div
+            aria-label={`Input representation for ${name}`}
+            className="parameter-unit-toggle"
+            role="group"
+          >
+            <button
+              aria-pressed={inputMode === "physical"}
+              disabled={disabled}
+              onClick={() => onInputModeChange(name, "physical")}
+              title={`Use ${spec?.physicalLabel} in ${spec?.physicalUnit}`}
+              type="button"
+            >
+              {spec?.physicalLabel}
+            </button>
+            <button
+              aria-pressed={inputMode === "energy"}
+              disabled={disabled}
+              onClick={() => onInputModeChange(name, "energy")}
+              title={`Use ${spec?.energyLabel}/h in ${spec?.energyUnit}`}
+              type="button"
+            >
+              {spec?.energyLabel}
+            </button>
+          </div>
+        ) : null}
         <label className="parameter-sweep-toggle">
           <input
             aria-label={`Sweep ${name}`}
@@ -4740,7 +4927,10 @@ function ParameterControlRow({
           {sweepValues.length > 0 ? (
             <div className="sweep-sample-slider">
               <label className="sweep-manual-value">
-                <span>{name}</span>
+                <span>
+                  {valueLabel}
+                  {activeUnit ? <small>{activeUnit}</small> : null}
+                </span>
                 <input
                   aria-label={`Selected sweep value for ${name}`}
                   disabled={disabled}
@@ -6112,6 +6302,8 @@ function buildMultiSweepValues(
   parameters: string[],
   configs: ParameterSweepConfigs,
   maxPoints: number,
+  inputModes: Record<string, ParameterInputMode> = {},
+  inputSpecs: Record<string, ParameterInputSpec> = {},
 ): MultiSweepValidation {
   const activeParameters = parameters.filter((name) => configs[name]?.enabled);
   const parameterValues: Record<string, number[]> = {};
@@ -6129,6 +6321,20 @@ function buildMultiSweepValues(
     if (validation.error) {
       return {
         error: `${parameter}: ${validation.error}`,
+        parameterValues,
+        precomputeLimit: 0,
+        parameters: activeParameters,
+        totalCombinations: 0,
+      };
+    }
+    const spec = inputSpecs[parameter];
+    if (
+      inputModes[parameter] === "energy" &&
+      spec?.kind &&
+      validation.values.some((value) => value <= 0)
+    ) {
+      return {
+        error: `${parameter}: ${spec.energyLabel}/h sweep values must be positive.`,
         parameterValues,
         precomputeLimit: 0,
         parameters: activeParameters,

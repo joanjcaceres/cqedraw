@@ -144,6 +144,16 @@ Canvas node labels show the matrix row/column index used in generated output;
 the editable node name is preserved as metadata in the inspector and snippet
 node maps.
 
+The web analysis panel can accept numeric energy values instead of component
+values when a parameter is used directly as a single capacitance, linear
+inductance, or Josephson inductance. Energy entries use GHz for `E/h` and are
+converted before modal analysis as
+`C = e^2 / (2 h E_C)`, `L = phi0^2 / (h E_L)`, and
+`LJ = phi0^2 / (h E_J)`, where the entered GHz values are first converted to
+Hz and `phi0 = hbar / (2e)`. This is an analysis UI convenience only: saved
+projects and copied Python snippets still use the capacitance and inductance
+symbols drawn in the circuit.
+
 ## Using With SCCircuits
 
 The copied snippet defines `circuit_matrices`, `capacitance_matrix`,

@@ -1288,6 +1288,8 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   await expect(helpDialog).toContainText("Use Node and click the canvas");
   await expect(helpDialog).toContainText("Use New project to clear the drawing");
   await expect(helpDialog).toContainText("Cj, 40e-15, Lgeom, and Lj");
+  await expect(helpDialog).toContainText("mode-frequency and Josephson phase-ZPF");
+  await expect(helpDialog).toContainText("does not include external loop flux");
   await expect(closeButton).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(helpDialog.getByRole("button", { name: "Start tutorial" })).toBeFocused();

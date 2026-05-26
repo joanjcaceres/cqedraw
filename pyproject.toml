@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cqedraw"
-version = "0.1.1"
+version = "0.2.0"
 description = "Draw superconducting circuit graphs and generate capacitance and inverse-inductance matrix snippets."
 readme = "README.md"
 requires-python = ">=3.11"

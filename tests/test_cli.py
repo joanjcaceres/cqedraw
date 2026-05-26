@@ -10,7 +10,7 @@ def test_module_version_exits_without_opening_gui():
         text=True,
     )
 
-    assert result.stdout.strip() == "cqedraw 0.1.1"
+    assert result.stdout.strip() == "cqedraw 0.2.0"
     assert result.stderr == ""
 
 

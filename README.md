@@ -2,14 +2,44 @@
 
 cQEDraw is an application for drawing superconducting circuit graphs and
 generating sparse capacitance and inverse-inductance matrix snippets for
-Black Box Quantization workflows. It is available as a browser app and as a
-standalone Tkinter desktop app.
+Black Box Quantization workflows. The browser app is the primary interface;
+the standalone Tkinter desktop app remains available as a beta/maintenance
+interface.
 
 It is the companion GUI matrix-builder for
 [`sccircuits`](https://github.com/joanjcaceres/sccircuits): use the app to draw
 the linear circuit, then paste the generated matrices into a Python analysis
 that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
+
+## v0.2.0 Milestone Scope
+
+v0.2.0 is the first web-analysis milestone. It supports drawing circuit graphs,
+copying sparse Python matrix snippets, preserving Josephson junction branch
+metadata, running in-browser `sccircuits.BBQ` modal analysis, plotting mode
+frequencies and Josephson phase zero-point fluctuations, sweeping parameter
+values with sliders, and exporting the current analysis table as CSV.
+
+The supported analysis scope is intentionally limited:
+
+- Modal analysis assumes the evaluated capacitance and inverse-inductance
+  matrices are well-posed for the generalized eigenvalue problem.
+- cQEDraw does not yet model external loop fluxes.
+- cQEDraw does not silently reduce, eliminate, or classify free, frozen,
+  constrained, periodic, or extended variables.
+- Physical graph-to-Hamiltonian reduction is planned for `sccircuits`; cQEDraw
+  will preserve and export graph metadata needed by that later layer.
+
+This boundary follows the broader computer-aided circuit quantization problem
+discussed in
+[Computer-aided quantization and numerical analysis of superconducting circuits](https://iopscience.iop.org/article/10.1088/1367-2630/ac94f2).
+Time-dependent external-flux and microwave-drive Hamiltonians are also outside
+this milestone; see
+[Systematic Construction of Time-Dependent Hamiltonians for Microwave-Driven Josephson Circuits](https://arxiv.org/abs/2512.20743).
+
+The current matrix snippet workflow remains useful outside this scope: advanced
+users can copy the sparse matrices and handle reductions or external fluxes in
+their own Python analysis.
 
 ## Install And Open
 
@@ -26,8 +56,8 @@ Pyodide. It does not require Python, Pixi, or a terminal on the user's machine.
 
 ### macOS And Windows
 
-This is the recommended path for most users. It does not require Python, Pixi,
-or any terminal setup.
+This path remains available for users who prefer a local desktop app. The web
+app is the primary interface for new analysis and plotting features.
 
 1. Open the latest release: https://github.com/joanjcaceres/cqedraw/releases/latest
 2. Download `cQEDraw-macOS.zip` on macOS or `cQEDraw-Windows.zip` on Windows.
@@ -106,8 +136,8 @@ Use the toolbar or keyboard shortcuts to create nodes, edges, and ground
 connections. Edge dialogs accept numeric values or SymPy-compatible symbolic
 expressions for capacitance, linear inductance, and Josephson inductance.
 
-Projects can be saved and loaded as JSON files from the GUI. Use the `Snippet`
-button to copy generated Python code for the current capacitance matrix and
+Projects can be saved and loaded as JSON files from the GUI. Use **Copy
+matrices** to copy generated Python code for the current capacitance matrix and
 inverse-inductance matrix. The generated snippet returns sparse SciPy CSR
 matrices so large circuits do not allocate dense zero-filled arrays.
 Canvas node labels show the matrix row/column index used in generated output;
@@ -171,11 +201,12 @@ frequencies_hz = np.sqrt(np.maximum(omega_squared, 0.0)) / (2 * np.pi)
 ```
 
 In the web app, after generating a circuit, enter numeric parameter values in
-the Output panel and click **Analyze modes**. The app uses `sccircuits.BBQ` to
-display mode frequencies and, when Josephson junctions are present, one
-phase-ZPF row per junction. In the browser build, the BBQ class is loaded on
-demand from the `sccircuits` repository; in Python environments, install cQEDraw
-with the `sccircuits` extra to use the same analysis path locally.
+the Output panel. Analysis runs automatically when the required values are
+complete. The app uses `sccircuits.BBQ` to display mode frequencies and, when
+Josephson junctions are present, one phase-ZPF row per junction. In the browser
+build, the BBQ class is loaded on demand from the `sccircuits` repository; in
+Python environments, install cQEDraw with the `sccircuits` extra to use the same
+analysis path locally.
 
 Click **Export CSV** to download the frequency and Josephson-junction
 zero-point fluctuation table for use in a separate Python script:
@@ -217,8 +248,8 @@ python -m build
 Create a release by pushing a version tag:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The release workflow builds Python distributions plus macOS and Windows

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  absoluteChartSeries,
   buildCurrentFrequencySeries,
   buildCurrentZpfSeries,
   buildSweepPrecomputeQueue,
@@ -158,6 +159,16 @@ describe("analysis helpers", () => {
         ],
       },
     ]);
+    expect(absoluteChartSeries(buildCurrentZpfSeries(analysis))).toEqual([
+      {
+        key: "edge_7",
+        label: "edge 7 phase 0 - 1",
+        points: [
+          { x: 0, y: 0.01 },
+          { x: 1, y: 0.02 },
+        ],
+      },
+    ]);
   });
 
   it("computes bounds for large reference datasets without stack overflow", () => {
@@ -184,6 +195,32 @@ describe("analysis helpers", () => {
       maxX: 99,
       minX: 0,
     });
+  });
+
+  it("can include zero in chart y bounds for reference lines", () => {
+    const positiveSeries = [
+      {
+        key: "frequency",
+        label: "frequency",
+        points: [
+          { x: 0, y: 5 },
+          { x: 1, y: 7 },
+        ],
+      },
+    ];
+
+    expect(chartBounds(positiveSeries, [], undefined, null, true).minY).toBeLessThan(
+      0,
+    );
+
+    const manualBounds = chartBounds(
+      positiveSeries,
+      [],
+      { maxY: 8, minY: 4 },
+      null,
+      true,
+    );
+    expect(manualBounds.minY).toBe(4);
   });
 
   it("computes cached frequency bounds without building reference series", () => {
@@ -213,6 +250,10 @@ describe("analysis helpers", () => {
     expect(referenceZpfYBounds(results, ["edge_8"])).toEqual({
       maxY: 0.4,
       minY: -0.2,
+    });
+    expect(referenceZpfYBounds(results, ["edge_8"], true)).toEqual({
+      maxY: 0.4,
+      minY: 0.2,
     });
   });
 

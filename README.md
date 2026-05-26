@@ -30,6 +30,13 @@ The supported analysis scope is intentionally limited:
 - Physical graph-to-Hamiltonian reduction is planned for `sccircuits`; cQEDraw
   will preserve and export graph metadata needed by that later layer.
 
+This boundary follows the broader computer-aided circuit quantization problem
+discussed in
+[Computer-aided quantization and numerical analysis of superconducting circuits](https://iopscience.iop.org/article/10.1088/1367-2630/ac94f2).
+Time-dependent external-flux and microwave-drive Hamiltonians are also outside
+this milestone; see
+[Systematic Construction of Time-Dependent Hamiltonians for Microwave-Driven Josephson Circuits](https://arxiv.org/abs/2512.20743).
+
 The current matrix snippet workflow remains useful outside this scope: advanced
 users can copy the sparse matrices and handle reductions or external fluxes in
 their own Python analysis.

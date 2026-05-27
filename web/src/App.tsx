@@ -65,15 +65,11 @@ import {
   type ViewBox,
 } from "./viewBox";
 import {
-  PROJECT_HISTORY_LIMIT,
-  appendProjectHistoryEntry,
   clipboardFromSelection,
   deletionStatusMessage,
   pasteSelectionClipboard,
   projectsMatch,
   selectionStatusMessage,
-  serializeProjectForDirtyCheck,
-  type ProjectHistory,
   type SelectionClipboard,
 } from "./projectState";
 import {
@@ -120,6 +116,7 @@ import {
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useOutputPanelScroll } from "./useOutputPanelScroll";
+import { useProjectHistory } from "./useProjectHistory";
 
 const COPY_MATRICES_STATUS =
   "Copied matrices to clipboard. Paste them into Python or a notebook.";
@@ -161,14 +158,6 @@ interface PastePreviewState {
 }
 
 export function App() {
-  const [project, setProject] = useState<CircuitProject>(() => emptyProject());
-  const [cleanProjectSnapshot, setCleanProjectSnapshot] = useState(() =>
-    serializeProjectForDirtyCheck(emptyProject()),
-  );
-  const [projectHistory, setProjectHistory] = useState<ProjectHistory>({
-    past: [],
-    future: [],
-  });
   const [mode, setMode] = useState<ToolMode>("node");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
@@ -218,6 +207,28 @@ export function App() {
   const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const [snippetCopied, setSnippetCopied] = useState(false);
+  const {
+    canRedo,
+    canUndo,
+    commitProjectChange,
+    hasUnsavedChanges,
+    markProjectClean,
+    project,
+    projectRef,
+    recordProjectHistory,
+    redoProjectChange,
+    resetProjectHistory,
+    setProjectState,
+    undoProjectChange,
+    updateProjectState,
+  } = useProjectHistory({
+    onProjectRestored: (message) => {
+      resetProjectInteractionState();
+      setOutput(null);
+      setEngineStatus(message);
+    },
+    onProjectStatus: setEngineStatus,
+  });
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -236,8 +247,6 @@ export function App() {
   const sweepPrecomputeJobIdRef = useRef(0);
   const sweepInteractionIdleTimerRef = useRef<number | null>(null);
   const sweepRequestIdRef = useRef(0);
-  const projectRef = useRef<CircuitProject>(project);
-  const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
 
   useEffect(() => {
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
@@ -274,13 +283,6 @@ export function App() {
   );
   const inlineValueEditorEdge =
     selectedEdge?.identifier === inlineValueEditorEdgeId ? selectedEdge : null;
-  const currentProjectSnapshot = useMemo(
-    () => serializeProjectForDirtyCheck(project),
-    [project],
-  );
-  const hasUnsavedChanges = currentProjectSnapshot !== cleanProjectSnapshot;
-  const canUndo = projectHistory.past.length > 0;
-  const canRedo = projectHistory.future.length > 0;
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
   const canStartNewProject =
@@ -390,20 +392,6 @@ export function App() {
     sweepRunning,
     sweepSamples,
   ]);
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) {
-      return;
-    }
-
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
 
   useEffect(
     () => () => {
@@ -912,24 +900,6 @@ export function App() {
     setInlineValueEditorEdgeId(null);
   }
 
-  function setProjectState(nextProject: CircuitProject) {
-    projectRef.current = nextProject;
-    setProject(nextProject);
-  }
-
-  function setProjectHistoryState(nextHistory: ProjectHistory) {
-    projectHistoryRef.current = nextHistory;
-    setProjectHistory(nextHistory);
-  }
-
-  function recordProjectHistory(previousProject: CircuitProject) {
-    const history = projectHistoryRef.current;
-    setProjectHistoryState({
-      past: appendProjectHistoryEntry(history.past, previousProject),
-      future: [],
-    });
-  }
-
   function clearSweepResults() {
     sweepRequestIdRef.current += 1;
     sweepPrecomputeContextRef.current += 1;
@@ -960,18 +930,6 @@ export function App() {
     }, SWEEP_INTERACTION_IDLE_MS);
   }
 
-  function commitProjectChange(
-    updateProject: (current: CircuitProject) => CircuitProject,
-  ) {
-    const currentProject = projectRef.current;
-    const next = updateProject(currentProject);
-    if (projectsMatch(currentProject, next)) {
-      return;
-    }
-    recordProjectHistory(currentProject);
-    setProjectState(next);
-  }
-
   function updateEdgeValueText(
     edgeId: number,
     values: {
@@ -997,45 +955,6 @@ export function App() {
     setMarqueeState(null);
     setPastePreview(null);
     setInlineValueEditorEdgeId(null);
-  }
-
-  function restoreProjectFromHistory(nextProject: CircuitProject, message: string) {
-    setProjectState(nextProject);
-    resetProjectInteractionState();
-    setOutput(null);
-    setEngineStatus(message);
-  }
-
-  function undoProjectChange() {
-    const history = projectHistoryRef.current;
-    if (history.past.length === 0) {
-      setEngineStatus("Nothing to undo.");
-      return;
-    }
-
-    const currentProject = projectRef.current;
-    const previous = history.past[history.past.length - 1];
-    setProjectHistoryState({
-      past: history.past.slice(0, -1),
-      future: [currentProject, ...history.future].slice(0, PROJECT_HISTORY_LIMIT),
-    });
-    restoreProjectFromHistory(previous, "Undid last change.");
-  }
-
-  function redoProjectChange() {
-    const history = projectHistoryRef.current;
-    if (history.future.length === 0) {
-      setEngineStatus("Nothing to redo.");
-      return;
-    }
-
-    const currentProject = projectRef.current;
-    const next = history.future[0];
-    setProjectHistoryState({
-      past: appendProjectHistoryEntry(history.past, currentProject),
-      future: history.future.slice(1),
-    });
-    restoreProjectFromHistory(next, "Redid last change.");
   }
 
   function recordCompletedNodeDrag(dragState: NodeDragState | null) {
@@ -1313,16 +1232,14 @@ export function App() {
         x: groundDragState.startOffset.x + point.x - groundDragState.startPoint.x,
         y: groundDragState.startOffset.y + point.y - groundDragState.startPoint.y,
       };
-      setProject((current) => {
-        const next = moveGroundEdge(
+      updateProjectState((current) =>
+        moveGroundEdge(
           current,
           groundDragState.edgeId,
           nextOffset.x,
           nextOffset.y,
-        );
-        projectRef.current = next;
-        return next;
-      });
+        ),
+      );
       return;
     }
 
@@ -1339,16 +1256,14 @@ export function App() {
         point.y - nodeDragState.startPoint.y,
         viewBox,
       );
-      setProject((current) => {
-        const next = moveDraggedNodes(
+      updateProjectState((current) =>
+        moveDraggedNodes(
           current,
           nodeDragState.nodePositions,
           delta.x,
           delta.y,
-        );
-        projectRef.current = next;
-        return next;
-      });
+        ),
+      );
       return;
     }
 
@@ -1922,7 +1837,7 @@ export function App() {
     document.body.append(link);
     link.click();
     link.remove();
-    setCleanProjectSnapshot(currentProjectSnapshot);
+    markProjectClean();
     setEngineStatus("Project saved.");
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
@@ -1931,8 +1846,8 @@ export function App() {
     const parsed = JSON.parse(await file.text());
     const next = normalizeProject(parsed);
     setProjectState(next);
-    setProjectHistoryState({ past: [], future: [] });
-    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
+    resetProjectHistory();
+    markProjectClean(next);
     setViewBox(fitProjectView(next));
     setSelectedEdgeId(null);
     clearNodeSelection();
@@ -1947,8 +1862,8 @@ export function App() {
   function resetToNewProject() {
     const next = emptyProject();
     setProjectState(next);
-    setProjectHistoryState({ past: [], future: [] });
-    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
+    resetProjectHistory();
+    markProjectClean(next);
     setMode("node");
     resetProjectInteractionState();
     setSelectionClipboard(null);
@@ -1992,8 +1907,8 @@ export function App() {
   function beginTutorial() {
     const next = emptyProject();
     setProjectState(next);
-    setProjectHistoryState({ past: [], future: [] });
-    setCleanProjectSnapshot(serializeProjectForDirtyCheck(next));
+    resetProjectHistory();
+    markProjectClean(next);
     setMode("node");
     clearNodeSelection();
     setSelectedEdgeId(null);

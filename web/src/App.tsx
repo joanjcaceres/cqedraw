@@ -1,7 +1,6 @@
 import {
   PointerEvent,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -77,8 +76,6 @@ import {
 import { AppToolbar } from "./AppToolbar";
 import { CircuitCanvas } from "./CircuitCanvas";
 import {
-  inlineEdgeEditorPosition,
-  type InlineEdgeEditorPosition,
   matrixNodeLabelMap,
 } from "./CircuitEdgeShape";
 import { InspectorPanel } from "./InspectorPanel";
@@ -92,6 +89,7 @@ import {
 } from "./tutorialFlow";
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useEngineWarmup } from "./useEngineWarmup";
+import { useInlineEdgeEditor } from "./useInlineEdgeEditor";
 import { useOutputGeneration } from "./useOutputGeneration";
 import { useOutputPanelScroll } from "./useOutputPanelScroll";
 import { useProjectHistory } from "./useProjectHistory";
@@ -163,10 +161,6 @@ export function App() {
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const { clientRef, engineWarmup, setEngineWarmup } = useEngineWarmup();
-  const [inlineValueEditorEdgeId, setInlineValueEditorEdgeId] =
-    useState<number | null>(null);
-  const [inlineValueEditorPosition, setInlineValueEditorPosition] =
-    useState<InlineEdgeEditorPosition | null>(null);
   const [concatenatePreviewPairs, setConcatenatePreviewPairs] = useState<
     ConcatenatePortPair[]
   >([]);
@@ -201,8 +195,6 @@ export function App() {
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const inlineValueEditorRef = useRef<HTMLDivElement | null>(null);
-  const inlineCapInputRef = useRef<HTMLInputElement | null>(null);
   const newProjectButtonRef = useRef<HTMLButtonElement | null>(null);
   const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -242,8 +234,22 @@ export function App() {
     () => matrixNodeLabelMap(project.state.nodes),
     [project.state.nodes],
   );
-  const inlineValueEditorEdge =
-    selectedEdge?.identifier === inlineValueEditorEdgeId ? selectedEdge : null;
+  const {
+    inlineCapInputRef,
+    inlineValueEditorEdge,
+    inlineValueEditorEdgeId,
+    inlineValueEditorPosition,
+    inlineValueEditorRef,
+    setInlineValueEditorEdgeId,
+  } = useInlineEdgeEditor({
+    canvasRef,
+    canvasStageRef,
+    project,
+    projectRef,
+    selectedEdge,
+    selectedEdgeId,
+    viewBox,
+  });
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
   const canStartNewProject =
@@ -470,93 +476,6 @@ export function App() {
       dismissTutorial();
     }
   }, [project.state.nodes.length, tutorialPromptOpen, tutorialStep]);
-
-  useEffect(() => {
-    if (inlineValueEditorEdgeId === null) {
-      return;
-    }
-    if (
-      selectedEdgeId !== inlineValueEditorEdgeId ||
-      !project.state.edges.some((edge) => edge.identifier === inlineValueEditorEdgeId)
-    ) {
-      setInlineValueEditorEdgeId(null);
-    }
-  }, [inlineValueEditorEdgeId, project.state.edges, selectedEdgeId]);
-
-  useEffect(() => {
-    if (inlineValueEditorEdgeId === null) {
-      return;
-    }
-    const frameId = window.requestAnimationFrame(() => {
-      inlineCapInputRef.current?.focus();
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [inlineValueEditorEdgeId]);
-
-  useEffect(() => {
-    if (inlineValueEditorEdgeId === null) {
-      return;
-    }
-
-    function handleDocumentPointerDown(event: globalThis.PointerEvent) {
-      const target = event.target;
-      if (
-        target instanceof Node &&
-        inlineValueEditorRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setInlineValueEditorEdgeId(null);
-    }
-
-    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
-    return () =>
-      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
-  }, [inlineValueEditorEdgeId]);
-
-  useLayoutEffect(() => {
-    if (!inlineValueEditorEdge) {
-      setInlineValueEditorPosition(null);
-      return;
-    }
-
-    setInlineValueEditorPosition(
-      inlineEdgeEditorPosition(
-        inlineValueEditorEdge,
-        projectRef.current.state.nodes,
-        canvasRef.current,
-        canvasStageRef.current,
-      ),
-    );
-  }, [inlineValueEditorEdge, viewBox]);
-
-  useEffect(() => {
-    if (inlineValueEditorEdgeId === null) {
-      return;
-    }
-
-    function updateInlineEditorPosition() {
-      const currentEdge = projectRef.current.state.edges.find(
-        (edge) => edge.identifier === inlineValueEditorEdgeId,
-      );
-      if (!currentEdge) {
-        setInlineValueEditorPosition(null);
-        return;
-      }
-
-      setInlineValueEditorPosition(
-        inlineEdgeEditorPosition(
-          currentEdge,
-          projectRef.current.state.nodes,
-          canvasRef.current,
-          canvasStageRef.current,
-        ),
-      );
-    }
-
-    window.addEventListener("resize", updateInlineEditorPosition);
-    return () => window.removeEventListener("resize", updateInlineEditorPosition);
-  }, [inlineValueEditorEdgeId]);
 
   useEffect(() => {
     if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {

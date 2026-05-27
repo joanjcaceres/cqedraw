@@ -30,6 +30,30 @@
     flex-direction: column;
   }
 
+  .analysis-chart-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-chart-primary-controls,
+  .analysis-chart-secondary-controls,
+  .analysis-chart-trace-controls {
+    grid-column: 1;
+  }
+
+  .analysis-chart-primary-controls {
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .analysis-chart-secondary-controls {
+    grid-row: 2;
+    justify-content: flex-end;
+  }
+
+  .analysis-chart-trace-controls {
+    grid-row: 3;
+  }
+
   .port-pair-row {
     align-items: stretch;
     grid-template-columns: 1fr;
@@ -84,7 +108,7 @@
     flex-direction: column;
   }
 
-  .analysis-chart-toolbar {
+  .analysis-chart-secondary-controls {
     justify-content: flex-start;
   }
 

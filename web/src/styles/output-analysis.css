@@ -625,12 +625,31 @@
 
 .analysis-chart-toolbar {
   align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.analysis-chart-primary-controls,
+.analysis-chart-secondary-controls {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  justify-content: flex-end;
   min-width: 0;
-  width: 100%;
+}
+
+.analysis-chart-primary-controls {
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
+.analysis-chart-secondary-controls {
+  grid-column: 1;
+  grid-row: 1;
+  justify-content: flex-start;
 }
 
 .analysis-chart-axis-mode,
@@ -890,11 +909,12 @@
   border: 0;
   border-radius: 8px;
   display: grid;
-  flex: 1 1 440px;
   gap: 6px;
+  grid-column: 1 / -1;
   grid-template-columns: minmax(170px, 1fr) auto minmax(120px, 0.9fr);
-  min-width: min(100%, 440px);
+  min-width: 0;
   padding: 0;
+  width: 100%;
 }
 
 .analysis-chart-trace-actions {

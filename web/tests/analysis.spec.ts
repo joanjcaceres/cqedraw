@@ -192,9 +192,30 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const frequencyPlotTabsBox = await page
+    .getByTestId("analysis-plot-tabs")
+    .boundingBox();
   await selectAnalysisPlotTab(page, "Phase ZPF");
   const zpfChart = page.getByTestId("zpf-mode-plot");
   await expect(zpfChart).toBeVisible({ timeout: 60_000 });
+  const zpfPlotTabsBox = await page
+    .getByTestId("analysis-plot-tabs")
+    .boundingBox();
+  const zpfAxisBox = await page
+    .getByTestId("zpf-mode-plot-axis-auto")
+    .boundingBox();
+  if (!frequencyPlotTabsBox || !zpfPlotTabsBox || !zpfAxisBox) {
+    throw new Error("Expected stable plot tabs and ZPF axis controls.");
+  }
+  expect(Math.abs(zpfPlotTabsBox.x - frequencyPlotTabsBox.x)).toBeLessThanOrEqual(
+    4,
+  );
+  expect(Math.abs(zpfPlotTabsBox.y - frequencyPlotTabsBox.y)).toBeLessThanOrEqual(
+    4,
+  );
+  expect(zpfPlotTabsBox.x + zpfPlotTabsBox.width).toBeLessThanOrEqual(
+    zpfAxisBox.x + 1,
+  );
   const modalTable = page.getByTestId("modal-analysis");
   await expect(modalTable.locator("summary")).toContainText("7 modes");
   await expect(modalTable.locator("summary")).toContainText("7 JJ columns");

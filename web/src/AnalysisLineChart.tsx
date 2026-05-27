@@ -419,82 +419,86 @@ export function AnalysisLineChart({
     <div className="analysis-chart" data-testid={testId}>
       <div className="analysis-chart-heading">
         <div className="analysis-chart-toolbar">
+          <div className="analysis-chart-secondary-controls">
+            {valueModeControl}
+            <div className="analysis-chart-nav">
+              <button
+                aria-label={`${title} box zoom`}
+                aria-pressed={interactionMode === "boxZoom"}
+                data-testid={`${testId}-box-zoom`}
+                onClick={() => toggleInteractionMode("boxZoom")}
+                title="Drag a region to zoom"
+                type="button"
+              >
+                <BoxSelect size={14} />
+              </button>
+              <button
+                aria-label={`${title} zoom in`}
+                data-testid={`${testId}-zoom-in`}
+                onClick={() => zoomChart(0.72)}
+                type="button"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                aria-label={`${title} zoom out`}
+                data-testid={`${testId}-zoom-out`}
+                onClick={() => zoomChart(1.32)}
+                type="button"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <button
+                aria-label={`${title} reset view`}
+                data-testid={`${testId}-reset-view`}
+                disabled={!zoomDomain}
+                onClick={() => setZoomDomain(null)}
+                type="button"
+              >
+                <Maximize2 size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="analysis-chart-primary-controls">
+            {plotSelectorControl}
+            <div
+              aria-label={`${title} y-axis scale`}
+              className="analysis-chart-axis-mode"
+              role="group"
+            >
+              <button
+                aria-pressed={effectiveYAxisMode === "auto"}
+                data-testid={`${testId}-axis-auto`}
+                onClick={() => changeYAxisMode("auto")}
+                type="button"
+              >
+                Auto
+              </button>
+              <button
+                aria-pressed={effectiveYAxisMode === "fixed"}
+                data-testid={`${testId}-axis-fixed`}
+                disabled={!hasReferenceY}
+                onClick={() => changeYAxisMode("fixed")}
+                title={
+                  hasReferenceY
+                    ? "Use cached sweep points for the y-axis"
+                    : "Run a sweep to use cached points for the y-axis"
+                }
+                type="button"
+              >
+                Fixed
+              </button>
+              <button
+                aria-pressed={effectiveYAxisMode === "manual"}
+                data-testid={`${testId}-axis-manual`}
+                onClick={() => changeYAxisMode("manual")}
+                type="button"
+              >
+                Manual
+              </button>
+            </div>
+          </div>
           {seriesControls}
-          {plotSelectorControl}
-          {valueModeControl}
-          <div
-            aria-label={`${title} y-axis scale`}
-            className="analysis-chart-axis-mode"
-            role="group"
-          >
-            <button
-              aria-pressed={effectiveYAxisMode === "auto"}
-              data-testid={`${testId}-axis-auto`}
-              onClick={() => changeYAxisMode("auto")}
-              type="button"
-            >
-              Auto
-            </button>
-            <button
-              aria-pressed={effectiveYAxisMode === "fixed"}
-              data-testid={`${testId}-axis-fixed`}
-              disabled={!hasReferenceY}
-              onClick={() => changeYAxisMode("fixed")}
-              title={
-                hasReferenceY
-                  ? "Use cached sweep points for the y-axis"
-                  : "Run a sweep to use cached points for the y-axis"
-              }
-              type="button"
-            >
-              Fixed
-            </button>
-            <button
-              aria-pressed={effectiveYAxisMode === "manual"}
-              data-testid={`${testId}-axis-manual`}
-              onClick={() => changeYAxisMode("manual")}
-              type="button"
-            >
-              Manual
-            </button>
-          </div>
-          <div className="analysis-chart-nav">
-            <button
-              aria-label={`${title} box zoom`}
-              aria-pressed={interactionMode === "boxZoom"}
-              data-testid={`${testId}-box-zoom`}
-              onClick={() => toggleInteractionMode("boxZoom")}
-              title="Drag a region to zoom"
-              type="button"
-            >
-              <BoxSelect size={14} />
-            </button>
-            <button
-              aria-label={`${title} zoom in`}
-              data-testid={`${testId}-zoom-in`}
-              onClick={() => zoomChart(0.72)}
-              type="button"
-            >
-              <ZoomIn size={14} />
-            </button>
-            <button
-              aria-label={`${title} zoom out`}
-              data-testid={`${testId}-zoom-out`}
-              onClick={() => zoomChart(1.32)}
-              type="button"
-            >
-              <ZoomOut size={14} />
-            </button>
-            <button
-              aria-label={`${title} reset view`}
-              data-testid={`${testId}-reset-view`}
-              disabled={!zoomDomain}
-              onClick={() => setZoomDomain(null)}
-              type="button"
-            >
-              <Maximize2 size={14} />
-            </button>
-          </div>
         </div>
       </div>
       {effectiveYAxisMode === "manual" ? (

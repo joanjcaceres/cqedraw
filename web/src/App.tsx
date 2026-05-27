@@ -39,19 +39,12 @@ import {
   ToolMode,
 } from "./types";
 import {
-  DEFAULT_VIEW_BOX,
-  WHEEL_DELTA_LIMIT,
-  WHEEL_ZOOM_SENSITIVITY,
-  clamp,
   clampNodeDragDeltaToView,
-  fitProjectView,
   moveDraggedNodes,
   nodeIdsInsideRect,
-  normalizeWheelDelta,
   rectFromPoints,
   svgPoint,
   svgPointFromClient,
-  zoomViewBox,
   type NodeDragPosition,
   type Point,
   type ViewBox,
@@ -83,6 +76,7 @@ import { InspectorPanel } from "./InspectorPanel";
 import { OutputDrawer } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { useAppShortcuts } from "./useAppShortcuts";
+import { useCanvasViewport } from "./useCanvasViewport";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useInlineEdgeEditor } from "./useInlineEdgeEditor";
 import { useOutputGeneration } from "./useOutputGeneration";
@@ -144,7 +138,6 @@ export function App() {
   const [selectionClipboard, setSelectionClipboard] =
     useState<SelectionClipboard | null>(null);
   const [pastePreview, setPastePreview] = useState<PastePreviewState | null>(null);
-  const [viewBox, setViewBox] = useState<ViewBox>(DEFAULT_VIEW_BOX);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [parameterInputModes, setParameterInputModes] = useState<
@@ -184,8 +177,6 @@ export function App() {
     },
     onProjectStatus: setEngineStatus,
   });
-  const canvasRef = useRef<SVGSVGElement | null>(null);
-  const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const newProjectButtonRef = useRef<HTMLButtonElement | null>(null);
   const nodeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -199,6 +190,22 @@ export function App() {
     setNodeDragState(null);
     setGroundDragState(null);
   }, []);
+  const resetCanvasWheelState = useCallback(() => {
+    setPanState(null);
+    setMarqueeState(null);
+    setGroundDragState(null);
+  }, []);
+  const {
+    canvasRef,
+    canvasStageRef,
+    fitCanvasView,
+    setViewBox,
+    viewBox,
+    zoomCanvas,
+  } = useCanvasViewport({
+    onWheelZoomStart: resetCanvasWheelState,
+    project,
+  });
 
   useEffect(() => {
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
@@ -451,35 +458,6 @@ export function App() {
     parameterInputError,
     parameterValues,
   ]);
-
-  useEffect(() => {
-    const canvasElement = canvasRef.current;
-    if (!canvasElement) {
-      return;
-    }
-
-    const handleNativeCanvasWheel = (event: globalThis.WheelEvent) => {
-      event.preventDefault();
-      const anchor = svgPointFromClient(canvasElement, event.clientX, event.clientY);
-      const normalizedDelta = normalizeWheelDelta(event);
-      const limitedDelta = clamp(
-        normalizedDelta,
-        -WHEEL_DELTA_LIMIT,
-        WHEEL_DELTA_LIMIT,
-      );
-      const factor = Math.exp(limitedDelta * WHEEL_ZOOM_SENSITIVITY);
-      setPanState(null);
-      setMarqueeState(null);
-      setGroundDragState(null);
-      setViewBox((current) => zoomViewBox(current, factor, anchor));
-    };
-
-    canvasElement.addEventListener("wheel", handleNativeCanvasWheel, {
-      passive: false,
-    });
-    return () =>
-      canvasElement.removeEventListener("wheel", handleNativeCanvasWheel);
-  }, []);
 
   function setModeAndReset(nextMode: ToolMode) {
     if (pastePreview) {
@@ -1342,14 +1320,6 @@ export function App() {
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  function zoomCanvas(factor: number) {
-    setViewBox((current) => zoomViewBox(current, factor));
-  }
-
-  function fitCanvasView() {
-    setViewBox(fitProjectView(project));
   }
 
   useAppShortcuts({

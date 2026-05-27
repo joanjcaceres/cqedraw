@@ -1,5 +1,5 @@
 import type { CircuitEdge, CircuitNode } from "./types";
-import { josephsonPhaseLabel } from "./CircuitEdgeShape";
+import { josephsonPhaseLabel } from "./edgeGeometry";
 import type { TutorialStep } from "./tutorialFlow";
 
 type EdgeValueTextUpdates = {

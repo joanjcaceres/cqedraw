@@ -37,7 +37,7 @@ import { AppToolbar } from "./AppToolbar";
 import { CircuitCanvas } from "./CircuitCanvas";
 import {
   matrixNodeLabelMap,
-} from "./CircuitEdgeShape";
+} from "./edgeGeometry";
 import { InspectorPanel } from "./InspectorPanel";
 import { OutputDrawer } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";

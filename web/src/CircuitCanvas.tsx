@@ -26,8 +26,8 @@ import {
 } from "./viewBox";
 import {
   CircuitEdgeShape,
-  type InlineEdgeEditorPosition,
 } from "./CircuitEdgeShape";
+import type { InlineEdgeEditorPosition } from "./edgeGeometry";
 
 export function CircuitCanvas({
   canvasRef,

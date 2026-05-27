@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import {
   CANVAS_WIDTH,
   clickBuildMatrices,

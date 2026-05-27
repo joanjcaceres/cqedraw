@@ -45,12 +45,9 @@ import {
   type ViewBox,
 } from "./viewBox";
 import {
-  clipboardFromSelection,
   deletionStatusMessage,
-  pasteSelectionClipboard,
   projectsMatch,
   selectionStatusMessage,
-  type SelectionClipboard,
 } from "./projectState";
 import {
   missingParameterNames,
@@ -72,6 +69,7 @@ import { OutputDrawer } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useCanvasViewport } from "./useCanvasViewport";
+import { useClipboardWorkflow } from "./useClipboardWorkflow";
 import { useConcatenateWorkflow } from "./useConcatenateWorkflow";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useInlineEdgeEditor } from "./useInlineEdgeEditor";
@@ -115,10 +113,6 @@ interface MarqueeState {
   current: Point;
 }
 
-interface PastePreviewState {
-  anchor: Point;
-}
-
 export function App() {
   const [mode, setMode] = useState<ToolMode>("node");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -131,9 +125,6 @@ export function App() {
   );
   const [panState, setPanState] = useState<PanState | null>(null);
   const [marqueeState, setMarqueeState] = useState<MarqueeState | null>(null);
-  const [selectionClipboard, setSelectionClipboard] =
-    useState<SelectionClipboard | null>(null);
-  const [pastePreview, setPastePreview] = useState<PastePreviewState | null>(null);
   const [output, setOutput] = useState<OutputResult | null>(null);
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [parameterInputModes, setParameterInputModes] = useState<
@@ -193,7 +184,6 @@ export function App() {
     setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
   }, []);
   const {
     canvasRef,
@@ -205,6 +195,41 @@ export function App() {
   } = useCanvasViewport({
     onWheelZoomStart: resetCanvasWheelState,
     project,
+  });
+  const {
+    activePasteClipboard,
+    cancelPastePreview,
+    clearPastePreview,
+    completePastePreview,
+    copySelectedGraphElements,
+    pastePreview,
+    setSelectionClipboard,
+    startPastePreview,
+    updatePastePreviewAnchor,
+  } = useClipboardWorkflow({
+    onCopySelection: () => {
+      setGroundDragState(null);
+    },
+    onPreparePastePreview: () => {
+      setPendingEdgeNodeId(null);
+      setNodeDragState(null);
+      setGroundDragState(null);
+      setPanState(null);
+      setMarqueeState(null);
+    },
+    onResetTransientInteractionState: resetTransientInteractionState,
+    project,
+    projectRef,
+    recordProjectHistory,
+    selectedNodeIds,
+    setEngineStatus,
+    setMode,
+    setOutput,
+    setProjectState,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+    setSelectedNodeIds,
+    viewBox,
   });
 
   useEffect(() => {
@@ -277,7 +302,10 @@ export function App() {
     setConcatenatePreviewPairs,
   } = useConcatenateWorkflow({
     concatenateButtonRef,
-    onResetTransientInteractionState: resetTransientInteractionState,
+    onResetTransientInteractionState: () => {
+      resetTransientInteractionState();
+      clearPastePreview();
+    },
     project,
     projectRef,
     recordProjectHistory,
@@ -519,7 +547,7 @@ export function App() {
     setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
+    clearPastePreview();
     setInlineValueEditorEdgeId(null);
   }
 
@@ -529,7 +557,7 @@ export function App() {
     setPendingEdgeNodeId(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
+    clearPastePreview();
   }
 
   function resetTutorialProjectInteractionState() {
@@ -540,7 +568,7 @@ export function App() {
     setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
+    clearPastePreview();
   }
 
   function recordCompletedNodeDrag(dragState: NodeDragState | null) {
@@ -792,7 +820,7 @@ export function App() {
 
   function handleCanvasPointerMove(event: PointerEvent<SVGSVGElement>) {
     if (pastePreview) {
-      setPastePreview({ anchor: svgPoint(event) });
+      updatePastePreviewAnchor(svgPoint(event));
       return;
     }
 
@@ -931,7 +959,7 @@ export function App() {
     setGroundDragState(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
+    clearPastePreview();
     setEngineStatus(
       edge?.is_ground
         ? "Selected ground connection. Enter C/L/LJ values."
@@ -965,7 +993,7 @@ export function App() {
     setPendingEdgeNodeId(null);
     setPanState(null);
     setMarqueeState(null);
-    setPastePreview(null);
+    clearPastePreview();
     setEngineStatus("Selected ground connection.");
     if (mode === "select" || mode === "box-select") {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -1055,71 +1083,6 @@ export function App() {
     setEngineStatus(
       `Merged ${selectedNodeIds.length} nodes into ${survivor?.name ?? `Node ${selectedNodeId}`}.${detailText}`,
     );
-  }
-
-  function copySelectedGraphElements() {
-    const clipboard = clipboardFromSelection(project, selectedNodeIds);
-    if (!clipboard) {
-      setEngineStatus("Nothing selected to copy.");
-      return;
-    }
-
-    setSelectionClipboard(clipboard);
-    setGroundDragState(null);
-    setPastePreview(null);
-    setEngineStatus(`Copied ${clipboard.nodes.length} node(s) to clipboard.`);
-  }
-
-  function startPastePreview() {
-    if (!selectionClipboard) {
-      setEngineStatus("Clipboard is empty.");
-      return;
-    }
-
-    setMode("select");
-    setPendingEdgeNodeId(null);
-    setNodeDragState(null);
-    setGroundDragState(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview({
-      anchor: {
-        x: viewBox.x + viewBox.width / 2,
-        y: viewBox.y + viewBox.height / 2,
-      },
-    });
-    setEngineStatus(
-      "Move the pointer to place the copied selection, click to paste or press Esc to cancel.",
-    );
-  }
-
-  function completePastePreview(anchor: Point) {
-    if (!pastePreview || !selectionClipboard) {
-      return;
-    }
-
-    const result = pasteSelectionClipboard(projectRef.current, selectionClipboard, anchor);
-    recordProjectHistory(projectRef.current);
-    setProjectState(result.project);
-    setSelectedNodeIds(result.nodeIds);
-    setSelectedNodeId(result.nodeIds[result.nodeIds.length - 1] ?? null);
-    setSelectedEdgeId(null);
-    setPendingEdgeNodeId(null);
-    setNodeDragState(null);
-    setGroundDragState(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview(null);
-    setOutput(null);
-    setEngineStatus(`Pasted ${result.nodeIds.length} node(s).`);
-  }
-
-  function cancelPastePreview(message = "Paste cancelled.") {
-    if (!pastePreview) {
-      return;
-    }
-    setPastePreview(null);
-    setEngineStatus(message);
   }
 
   function updateParameterValue(name: string, value: string) {
@@ -1336,7 +1299,6 @@ export function App() {
   const marqueeRect = marqueeState
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
-  const activePasteClipboard = pastePreview ? selectionClipboard : null;
 
   return (
     <main className="app-shell">

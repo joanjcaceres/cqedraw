@@ -1,4 +1,4 @@
-import { Check, Copy, X } from "lucide-react";
+import { AlertCircle, Check, Copy, Info, LoaderCircle, X } from "lucide-react";
 import type { Ref } from "react";
 
 import { type SweepSample } from "./analysis";
@@ -20,6 +20,14 @@ import type {
 import type { ModalAnalysisResult, OutputResult } from "./types";
 import type { TutorialStep } from "./tutorialFlow";
 
+export type OutputDrawerState =
+  | {
+      kind: "empty" | "warming" | "generating" | "error";
+      message: string;
+      title: string;
+    }
+  | null;
+
 export function OutputDrawer({
   activeSweepParameters,
   analysisRunning,
@@ -39,6 +47,7 @@ export function OutputDrawer({
   onSweepSliderChange,
   onSweepSliderInteraction,
   output,
+  outputDrawerState,
   outputPanelRef,
   outputParameters,
   parameterInputError,
@@ -77,6 +86,7 @@ export function OutputDrawer({
   onSweepSliderChange: (name: string, value: number) => void;
   onSweepSliderInteraction: () => void;
   output: OutputResult | null;
+  outputDrawerState: OutputDrawerState;
   outputPanelRef: Ref<HTMLElement>;
   outputParameters: string[];
   parameterInputError: string | null;
@@ -94,6 +104,9 @@ export function OutputDrawer({
   sweepValidation: MultiSweepValidation;
   tutorialStep: TutorialStep | null;
 }) {
+  const outputBusy =
+    outputDrawerState?.kind === "warming" ||
+    outputDrawerState?.kind === "generating";
   return (
     <aside aria-label="Output" className="output-drawer" data-testid="output-drawer">
       <section
@@ -132,12 +145,14 @@ export function OutputDrawer({
                   "output-copy-button",
                   tutorialStep === "copy" ? "tutorial-highlight-control" : "",
                 ].join(" ")}
-                disabled={!hasProjectContent}
+                disabled={!hasProjectContent || outputBusy}
                 onClick={onCopySnippet}
                 title={
-                  hasGeneratedSnippet
-                    ? "Copy matrices"
-                    : "Prepare matrices and copy when ready"
+                  outputBusy
+                    ? "Matrices are still being prepared"
+                    : hasGeneratedSnippet
+                      ? "Copy matrices"
+                      : "Prepare matrices and copy when ready"
                 }
                 type="button"
               >
@@ -149,6 +164,7 @@ export function OutputDrawer({
               </button>
             </div>
           </div>
+          <OutputStateCard state={outputDrawerState} />
           <JosephsonBranchSummary branches={output?.josephson_branches ?? []} />
         </div>
         <div className="output-section output-section-analysis">
@@ -165,6 +181,11 @@ export function OutputDrawer({
                 analysisRunning={analysisRunning}
                 cachedSweepGridPointCount={cachedSweepGridPointCount}
                 disabled={!output}
+                disabledMessage={
+                  outputDrawerState
+                    ? outputDrawerState.message
+                    : "Open Output to prepare matrices for analysis."
+                }
                 fixedMissingParameters={missingSweepFixedValues}
                 inputError={parameterInputError}
                 inputModes={parameterInputModes}
@@ -200,10 +221,55 @@ export function OutputDrawer({
                 result={displayedAnalysis}
                 onExportAnalysis={onExportAnalysisCsv}
               />
+              {outputDrawerState ? (
+                <div
+                  className="output-results-placeholder"
+                  data-testid="output-results-placeholder"
+                >
+                  {outputDrawerState.kind === "error"
+                    ? "Fix the issue or retry matrix generation to run analysis."
+                    : "Analysis results will appear here once matrices are ready."}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       </section>
     </aside>
+  );
+}
+
+function OutputStateCard({ state }: { state: OutputDrawerState }) {
+  if (!state) {
+    return null;
+  }
+
+  const Icon =
+    state.kind === "error"
+      ? AlertCircle
+      : state.kind === "empty"
+        ? Info
+        : LoaderCircle;
+  return (
+    <div
+      className={[
+        "output-state-card",
+        `output-state-card-${state.kind}`,
+      ].join(" ")}
+      data-testid={
+        state.kind === "error"
+          ? "output-generation-error"
+          : "output-generation-state"
+      }
+      role={state.kind === "error" ? "alert" : "status"}
+    >
+      <span className="output-state-icon" aria-hidden="true">
+        <Icon size={16} />
+      </span>
+      <span className="output-state-copy">
+        <strong>{state.title}</strong>
+        <span>{state.message}</span>
+      </span>
+    </div>
   );
 }

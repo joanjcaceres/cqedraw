@@ -2,6 +2,8 @@ import { expect, test as base } from "@playwright/test";
 
 declare global {
   interface Window {
+    __CQEDRAW_GENERATE_DELAY_MS__?: number;
+    __CQEDRAW_GENERATE_FAILURE_MESSAGE__?: string;
     __CQEDRAW_SKIP_ENGINE_WARMUP__?: boolean;
   }
 }

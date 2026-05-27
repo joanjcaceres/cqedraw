@@ -24,6 +24,8 @@ interface UseOutputGenerationOptions {
   setModalAnalysis: Dispatch<SetStateAction<ModalAnalysisResult | null>>;
   setOutput: Dispatch<SetStateAction<OutputResult | null>>;
   setOutputDrawerOpen: Dispatch<SetStateAction<boolean>>;
+  setOutputGenerationError: Dispatch<SetStateAction<string | null>>;
+  setOutputGenerationPending: Dispatch<SetStateAction<boolean>>;
   setSnippetCopied: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -39,6 +41,8 @@ export function useOutputGeneration({
   setModalAnalysis,
   setOutput,
   setOutputDrawerOpen,
+  setOutputGenerationError,
+  setOutputGenerationPending,
   setSnippetCopied,
 }: UseOutputGenerationOptions) {
   const outputGenerationPromiseRef = useRef<Promise<OutputResult | null> | null>(
@@ -55,6 +59,8 @@ export function useOutputGeneration({
     }
 
     setOutputDrawerOpen(true);
+    setOutputGenerationError(null);
+    setOutputGenerationPending(true);
     setEngineStatus(
       engineWarmup.base === "ready"
         ? "Generating matrices..."
@@ -81,14 +87,17 @@ export function useOutputGeneration({
         setEngineStatus(`Generated ${result.size} x ${result.size} matrices.`);
         return result;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         setEngineWarmup((current) => ({
           ...current,
           base: current.base === "ready" ? current.base : "error",
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
         }));
-        setEngineStatus(error instanceof Error ? error.message : String(error));
+        setOutputGenerationError(message);
+        setEngineStatus(message);
         return null;
       } finally {
+        setOutputGenerationPending(false);
         outputGenerationPromiseRef.current = null;
       }
     })();

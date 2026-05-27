@@ -5,6 +5,13 @@ import {
   OutputResult,
 } from "./types";
 
+declare global {
+  interface Window {
+    __CQEDRAW_GENERATE_DELAY_MS__?: number;
+    __CQEDRAW_GENERATE_FAILURE_MESSAGE__?: string;
+  }
+}
+
 type PrewarmTarget = "base" | "analysis";
 
 type WorkerResult<T> = {
@@ -52,6 +59,22 @@ export class PyodideBridgeClient {
   }
 
   generate(project: CircuitProject): Promise<OutputResult> {
+    const failureMessage =
+      typeof window === "undefined"
+        ? ""
+        : window.__CQEDRAW_GENERATE_FAILURE_MESSAGE__ ?? "";
+    if (failureMessage) {
+      return Promise.reject(new Error(failureMessage));
+    }
+    const delayMs =
+      typeof window === "undefined" ? 0 : window.__CQEDRAW_GENERATE_DELAY_MS__ ?? 0;
+    if (delayMs > 0) {
+      return new Promise((resolve, reject) => {
+        window.setTimeout(() => {
+          this.send<OutputResult>("generate", project).then(resolve, reject);
+        }, delayMs);
+      });
+    }
     return this.send<OutputResult>("generate", project);
   }
 

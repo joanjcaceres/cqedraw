@@ -370,7 +370,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("parameter-required-message")).toContainText(
     "Enter values for: C12, Cg, L12_inv, Lg_inv",
   );
-  await expect(page.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
   await expect(page.getByTestId("frequency-mode-plot-placeholder")).toBeVisible();
@@ -390,7 +390,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot-zero-line")).toHaveCount(1);
   await expectFrequencyPlotFitsInOutputPanel(page);
   await expectAnalysisResultsUseDrawerScroll(page);
-  await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
   const analysisExportButton = page
     .getByTestId("modal-analysis")
     .getByRole("button", { name: "Export CSV" });

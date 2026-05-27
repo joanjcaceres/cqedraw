@@ -93,7 +93,7 @@ export function App() {
   const [modalAnalysis, setModalAnalysis] = useState<ModalAnalysisResult | null>(
     null,
   );
-  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const [, setAnalysisRunning] = useState(false);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [outputGenerationError, setOutputGenerationError] = useState<string | null>(
     null,
@@ -529,7 +529,6 @@ export function App() {
   const {
     copySnippet,
     exportAnalysisCsv,
-    runModalAnalysis,
     updateParameterInputMode,
     updateParameterValue,
   } = useModalAnalysisActions({
@@ -824,7 +823,6 @@ export function App() {
       {outputDrawerOpen ? (
         <OutputDrawer
           activeSweepParameters={activeSweepParameters}
-          analysisRunning={analysisRunning}
           cachedSweepGridPointCount={cachedSweepGridPointCount}
           displayedAnalysis={displayedAnalysis}
           hasGeneratedSnippet={hasGeneratedSnippet}
@@ -836,7 +834,6 @@ export function App() {
           onExportAnalysisCsv={exportAnalysisCsv}
           onParameterInputModeChange={updateParameterInputMode}
           onParameterValueChange={updateParameterValue}
-          onRunModalAnalysis={runModalAnalysis}
           onSweepConfigChange={updateSweepConfig}
           onSweepSliderChange={(name, value) => {
             markSweepSliderInteraction();

@@ -1,4 +1,4 @@
-import { Download, Repeat2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { type SweepSample, type SweepScale } from "./analysis";
@@ -37,7 +37,6 @@ export function JosephsonBranchSummary({
 
 export function AnalysisParameterPanel({
   activeSweepParameters,
-  analysisRunning,
   cachedSweepGridPointCount,
   disabled,
   disabledMessage,
@@ -45,7 +44,6 @@ export function AnalysisParameterPanel({
   inputError,
   inputModes,
   missingParameters,
-  onAnalyze,
   onInputModeChange,
   onParameterChange,
   onRangeChange,
@@ -63,7 +61,6 @@ export function AnalysisParameterPanel({
   sweepValues,
 }: {
   activeSweepParameters: string[];
-  analysisRunning: boolean;
   cachedSweepGridPointCount: number;
   disabled: boolean;
   disabledMessage?: string;
@@ -71,7 +68,6 @@ export function AnalysisParameterPanel({
   inputError: string | null;
   inputModes: Record<string, ParameterInputMode>;
   missingParameters: string[];
-  onAnalyze: () => void;
   onInputModeChange: (name: string, mode: ParameterInputMode) => void;
   onParameterChange: (name: string, value: string) => void;
   onRangeChange: (name: string, updates: Partial<ParameterSweepConfig>) => void;
@@ -89,8 +85,6 @@ export function AnalysisParameterPanel({
   sweepValues: ParameterSweepConfigs;
 }) {
   const missingParameterSet = new Set(missingParameters);
-  const actionDisabled = disabled || missingParameters.length > 0 || Boolean(inputError);
-  const refreshDisabled = actionDisabled || analysisRunning;
   const missingMessage =
     missingParameters.length > 0
       ? `Enter values for: ${missingParameters.join(", ")}`
@@ -116,17 +110,6 @@ export function AnalysisParameterPanel({
     <div className="parameter-panel analysis-parameter-panel" data-testid="analysis-parameter-panel">
       <div className="parameter-panel-heading">
         <h3>Parameter values</h3>
-        <div className="parameter-panel-actions">
-          <button
-            disabled={refreshDisabled}
-            onClick={onAnalyze}
-            title={missingMessage}
-            type="button"
-          >
-            <Repeat2 size={14} />
-            {analysisRunning ? "Analyzing..." : "Refresh"}
-          </button>
-        </div>
       </div>
       {disabled ? (
         <p data-testid="parameter-empty">

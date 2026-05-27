@@ -7,6 +7,51 @@ from tkinter import messagebox, ttk
 from .desktop_models import EdgeParameters
 
 
+def ask_save_before_close(parent: tk.Tk) -> str:
+    dialog = tk.Toplevel(parent)
+    dialog.title("Unsaved changes")
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+
+    result = {"action": "cancel"}
+
+    def choose(action: str) -> None:
+        result["action"] = action
+        dialog.destroy()
+
+    frame = ttk.Frame(dialog, padding=16)
+    frame.grid(row=0, column=0, sticky="nsew")
+    ttk.Label(
+        frame,
+        text="Save changes before closing?",
+        font=("", 12, "bold"),
+    ).grid(row=0, column=0, sticky=tk.W)
+    ttk.Label(
+        frame,
+        text="Your current drawing has unsaved changes.",
+    ).grid(row=1, column=0, sticky=tk.W, pady=(6, 12))
+
+    buttons = ttk.Frame(frame)
+    buttons.grid(row=2, column=0, sticky=tk.E)
+    ttk.Button(buttons, text="Save", command=lambda: choose("save")).pack(
+        side=tk.LEFT, padx=(0, 6)
+    )
+    ttk.Button(buttons, text="Don't Save", command=lambda: choose("discard")).pack(
+        side=tk.LEFT, padx=(0, 6)
+    )
+    cancel_button = ttk.Button(
+        buttons, text="Cancel", command=lambda: choose("cancel")
+    )
+    cancel_button.pack(side=tk.LEFT)
+
+    dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
+    dialog.bind("<Escape>", lambda _event: choose("cancel"))
+    dialog.grab_set()
+    cancel_button.focus_set()
+    dialog.wait_window()
+    return result["action"]
+
+
 class ToolTip:
     def __init__(self, widget: tk.Widget, text: str):
         self.widget = widget

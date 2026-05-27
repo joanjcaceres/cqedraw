@@ -18,9 +18,9 @@ from .core import (
     finalize_matrix_entries,
     matrix_node_records,
 )
-from .desktop_dialogs import EdgeDialog, ToolTip
+from .desktop_dialogs import EdgeDialog, ToolTip, ask_save_before_close
 from .desktop_models import Edge, EdgeParameters, Node
-from . import desktop_merge, desktop_project_state, desktop_selection
+from . import desktop_canvas, desktop_merge, desktop_project_state, desktop_selection
 
 
 class CircuitGraphApp:
@@ -354,58 +354,15 @@ class CircuitGraphApp:
         color: str = "#1976d2",
         forced_id: Optional[int] = None,
     ) -> int:
-        if forced_id is None:
-            node_id = self.node_counter
-            self.node_counter += 1
-        else:
-            node_id = forced_id
-            self.node_counter = max(self.node_counter, node_id + 1)
-        tag = f"node_{node_id}"
-        radius = self._current_node_radius()
-        circle = self.canvas.create_oval(
-            x - radius,
-            y - radius,
-            x + radius,
-            y + radius,
-            fill=color,
-            outline="black",
-            width=2,
-            tags=("node", tag),
-        )
-        label = self.canvas.create_text(
-            x + radius + 6,
+        return desktop_canvas.add_node(
+            self,
+            x,
             y,
-            text=name,
-            fill="#212121",
-            anchor=tk.W,
-            tags=("node", tag),
+            name,
+            silent=silent,
+            color=color,
+            forced_id=forced_id,
         )
-        self.canvas.tag_bind(
-            tag,
-            "<ButtonPress-1>",
-            lambda event, nid=node_id: self._handle_node_press(event, nid),
-        )
-        self.canvas.tag_bind(
-            tag,
-            "<B1-Motion>",
-            lambda event, nid=node_id: self._handle_node_drag(event, nid),
-        )
-        self.canvas.tag_bind(
-            tag,
-            "<ButtonRelease-1>",
-            lambda event, nid=node_id: self._handle_node_release(event, nid),
-        )
-        self.canvas.tag_bind(
-            tag,
-            "<Double-Button-1>",
-            lambda event, nid=node_id: self._rename_node(nid),
-        )
-
-        self.nodes[node_id] = Node(node_id, name, x, y, circle, label)
-        if not silent:
-            self._update_status(f"Node {name} created. Press 'c' to connect.")
-        self._update_scrollregion()
-        return node_id
 
     def _handle_node_press(self, event: tk.Event, node_id: int) -> None:
         if self.mode == "ground":
@@ -446,38 +403,7 @@ class CircuitGraphApp:
         self._create_edge(first, second)
 
     def _connect_node_to_ground(self, node_id: int) -> None:
-        existing = self._find_edge(node_id, GROUND_NODE_ID)
-        default_cap = ""
-        default_ind = ""
-        if existing is not None:
-            default_cap = existing.capacitance_text or (
-                str(existing.capacitance_expr)
-                if existing.capacitance_expr is not None
-                else ""
-            )
-            default_ind = existing.inductance_text or (
-                str(existing.inductance_expr)
-                if existing.inductance_expr is not None
-                else ""
-            )
-        node_name = self.nodes[node_id].name
-        dialog = EdgeDialog(
-            self.root, node_name, "GND", default_cap or None, default_ind or None
-        )
-        if dialog.value is None:
-            self._update_status("Ground connection cancelled.")
-            return
-        changed = False
-        if existing is not None:
-            self._apply_edge_parameters(existing, dialog.value)
-            self._update_status(f"Ground connection for {node_name} updated.")
-            changed = True
-        else:
-            self._create_ground_edge(node_id, dialog.value)
-            self._update_status(f"Node {node_name} connected to ground.")
-            changed = True
-        if changed:
-            self._push_history()
+        desktop_canvas.connect_node_to_ground(self, node_id, EdgeDialog)
 
     def _handle_node_drag(self, event: tk.Event, node_id: int) -> None:
         if self.dragging_node != node_id or self.mode == "edge":
@@ -549,127 +475,13 @@ class CircuitGraphApp:
             self._push_history()
 
     def _move_node(self, node_id: int, x: float, y: float) -> None:
-        node = self.nodes[node_id]
-        node.x = x
-        node.y = y
-        radius = self._current_node_radius()
-        self.canvas.coords(
-            node.circle_id,
-            x - radius,
-            y - radius,
-            x + radius,
-            y + radius,
-        )
-        self.canvas.coords(node.label_id, x + radius + 6, y)
-        for edge_id, edge in self.edges.items():
-            if node_id in edge.nodes:
-                self._update_edge_geometry(edge_id)
-        self._update_scrollregion()
+        desktop_canvas.move_node(self, node_id, x, y)
 
     def _update_edge_geometry(self, edge_id: int) -> None:
-        edge = self.edges[edge_id]
-        if edge.is_ground:
-            primary_id = edge.nodes[0]
-            if primary_id not in self.nodes:
-                return
-            node = self.nodes[primary_id]
-            x = node.x
-            y = node.y
-            end_x = node.x + edge.ground_offset_x
-            end_y = node.y + edge.ground_offset_y
-            self.canvas.coords(edge.line_id, x, y, end_x, end_y)
-            mid_x = (x + end_x) / 2
-            mid_y = (y + end_y) / 2
-            radius = self._current_edge_center_radius()
-            if edge.center_circle_id is not None:
-                self.canvas.coords(
-                    edge.center_circle_id,
-                    mid_x - radius,
-                    mid_y - radius,
-                    mid_x + radius,
-                    mid_y + radius,
-                )
-                self.canvas.tag_raise(edge.label_id, edge.center_circle_id)
-            if edge.ground_marker_id is not None:
-                triangle_points = [
-                    end_x - self.GROUND_TRIANGLE_WIDTH / 2,
-                    end_y,
-                    end_x + self.GROUND_TRIANGLE_WIDTH / 2,
-                    end_y,
-                    end_x,
-                    end_y + self.GROUND_TRIANGLE_HEIGHT,
-                ]
-                self.canvas.coords(edge.ground_marker_id, *triangle_points)
-            self.canvas.coords(edge.label_id, mid_x, mid_y)
-            return
-
-        node_a = self.nodes[edge.nodes[0]]
-        node_b = self.nodes[edge.nodes[1]]
-        self.canvas.coords(edge.line_id, node_a.x, node_a.y, node_b.x, node_b.y)
-        center_x = (node_a.x + node_b.x) / 2
-        center_y = (node_a.y + node_b.y) / 2
-        radius = self._current_edge_center_radius()
-        if edge.center_circle_id is not None:
-            self.canvas.coords(
-                edge.center_circle_id,
-                center_x - radius,
-                center_y - radius,
-                center_x + radius,
-                center_y + radius,
-            )
-            self.canvas.tag_raise(edge.label_id, edge.center_circle_id)
-        self.canvas.coords(edge.label_id, center_x, center_y)
+        desktop_canvas.update_edge_geometry(self, edge_id)
 
     def _edit_edge(self, edge_id: int) -> None:
-        edge = self.edges[edge_id]
-        first_node = self.nodes[edge.nodes[0]]
-        first_name = first_node.name
-
-        if edge.is_ground:
-            second_name = "GND"
-        else:
-            try:
-                second_name = self.nodes[edge.nodes[1]].name
-            except KeyError:
-                second_name = f"Node {edge.nodes[1]}"
-
-        default_cap = edge.capacitance_text or (
-            str(edge.capacitance_expr) if edge.capacitance_expr is not None else ""
-        )
-        default_ind = edge.inductance_text or (
-            str(edge.inductance_expr) if edge.inductance_expr is not None else ""
-        )
-        dialog = EdgeDialog(
-            self.root, first_name, second_name, default_cap, default_ind
-        )
-        if dialog.value is None:
-            self._update_status("Connection edit cancelled.")
-            return
-
-        if edge.is_ground and (
-            dialog.value.capacitance_expr is None
-            and dialog.value.inductance_expr is None
-            and edge.josephson_inductance_expr is None
-        ):
-            self._remove_edge(edge_id)
-            self._set_focus_node(None)
-            self._refresh_all_node_appearances()
-            self._push_history()
-            self._update_status(f"Ground connection removed from {first_name}.")
-            return
-
-        params = EdgeParameters(
-            capacitance_expr=dialog.value.capacitance_expr,
-            capacitance_text=dialog.value.capacitance_text,
-            inductance_expr=dialog.value.inductance_expr,
-            inductance_text=dialog.value.inductance_text,
-            josephson_inductance_expr=edge.josephson_inductance_expr,
-            josephson_inductance_text=edge.josephson_inductance_text,
-            josephson_phase_sign=edge.josephson_phase_sign,
-        )
-        self._apply_edge_parameters(edge, params)
-        self._update_status("Connection updated.")
-        self._push_history()
+        desktop_canvas.edit_edge(self, edge_id, EdgeDialog)
 
     def _delete_focused_node(self) -> None:
         if self.focus_node is None:
@@ -735,33 +547,10 @@ class CircuitGraphApp:
         )
 
     def _remove_node(self, node_id: int) -> None:
-        node = self.nodes.pop(node_id, None)
-        if node is None:
-            return
-        self.selected_nodes.discard(node_id)
-        self.canvas.delete(node.circle_id)
-        self.canvas.delete(node.label_id)
-        edges_to_remove = [
-            edge_id for edge_id, edge in self.edges.items() if node_id in edge.nodes
-        ]
-        for edge_id in edges_to_remove:
-            self._remove_edge(edge_id)
-        self._update_scrollregion()
-        self._refresh_all_node_appearances()
+        desktop_canvas.remove_node(self, node_id)
 
     def _remove_edge(self, edge_id: int) -> None:
-        edge = self.edges.pop(edge_id, None)
-        if edge is None:
-            return
-        if self.dragging_ground_edge == edge_id:
-            self.dragging_ground_edge = None
-        self.canvas.delete(edge.line_id)
-        if edge.center_circle_id is not None:
-            self.canvas.delete(edge.center_circle_id)
-        if edge.ground_marker_id is not None:
-            self.canvas.delete(edge.ground_marker_id)
-        self.canvas.delete(edge.label_id)
-        self._update_scrollregion()
+        desktop_canvas.remove_edge(self, edge_id)
 
     def _duplicate_selection(self) -> None:
         if not self.selected_nodes:
@@ -892,50 +681,10 @@ class CircuitGraphApp:
         self._update_status("Concatenation complete.")
 
     def _apply_edge_parameters(self, edge: Edge, params: EdgeParameters) -> None:
-        edge.capacitance_expr = params.capacitance_expr
-        edge.capacitance_text = params.capacitance_text
-        edge.inductance_expr = params.inductance_expr
-        edge.inductance_text = params.inductance_text
-        edge.l_inverse_expr = (
-            sp.simplify(sp.Integer(1) / edge.inductance_expr)
-            if edge.inductance_expr is not None
-            else None
-        )
-        edge.josephson_inductance_expr = params.josephson_inductance_expr
-        edge.josephson_inductance_text = params.josephson_inductance_text
-        edge.josephson_phase_sign = (
-            -1 if params.josephson_phase_sign == -1 else 1
-        )
-        self.canvas.itemconfigure(
-            edge.label_id,
-            text=self._edge_label(
-                edge.capacitance_expr,
-                edge.capacitance_text,
-                edge.inductance_expr,
-                edge.inductance_text,
-                edge.josephson_inductance_expr,
-                edge.josephson_inductance_text,
-            ),
-        )
-        self._update_edge_geometry(edge.identifier)
+        desktop_canvas.apply_edge_parameters(self, edge, params)
 
     def _rename_node(self, node_id: int) -> None:
-        node = self.nodes[node_id]
-        new_name = simpledialog.askstring(
-            "Renombrar nodo",
-            "Nuevo nombre:",
-            initialvalue=node.name,
-            parent=self.root,
-        )
-        if not new_name:
-            return
-        new_name = new_name.strip()
-        if not new_name or new_name == node.name:
-            return
-        node.name = new_name
-        self.canvas.itemconfigure(node.label_id, text=new_name)
-        self._update_status(f"Node renamed to {new_name}.")
-        self._push_history()
+        desktop_canvas.rename_node(self, node_id, simpledialog)
 
     def _instantiate_edge(
         self,
@@ -945,96 +694,12 @@ class CircuitGraphApp:
         *,
         forced_id: Optional[int] = None,
     ) -> int:
-        capacitance_expr = params.capacitance_expr
-        capacitance_text = params.capacitance_text
-        inductance_expr = params.inductance_expr
-        inductance_text = params.inductance_text
-        josephson_inductance_expr = params.josephson_inductance_expr
-        josephson_inductance_text = params.josephson_inductance_text
-        josephson_phase_sign = -1 if params.josephson_phase_sign == -1 else 1
-        l_inverse_expr: Optional[sp.Expr] = None
-        if inductance_expr is not None:
-            l_inverse_expr = sp.simplify(sp.Integer(1) / inductance_expr)
-        if forced_id is None:
-            edge_id = self.edge_counter
-            self.edge_counter += 1
-        else:
-            edge_id = forced_id
-            self.edge_counter = max(self.edge_counter, edge_id + 1)
-        tag = f"edge_{edge_id}"
-        x1, y1 = self.nodes[first].x, self.nodes[first].y
-        x2, y2 = self.nodes[second].x, self.nodes[second].y
-        line = self.canvas.create_line(
-            x1, y1, x2, y2, width=2, fill="#424242", tags=("edge", tag)
+        return desktop_canvas.instantiate_edge(
+            self, first, second, params, forced_id=forced_id
         )
-        radius = self._current_edge_center_radius()
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
-        circle = self.canvas.create_oval(
-            center_x - radius,
-            center_y - radius,
-            center_x + radius,
-            center_y + radius,
-            fill="#f5f5f5",
-            outline="#424242",
-            width=2,
-            tags=("edge", tag),
-        )
-        label = self.canvas.create_text(
-            center_x,
-            center_y,
-            text="",
-            fill="#212121",
-            justify=tk.CENTER,
-            tags=("edge", tag),
-        )
-        if circle is not None:
-            self.canvas.tag_raise(label, circle)
-        self.edges[edge_id] = Edge(
-            identifier=edge_id,
-            nodes=(first, second),
-            line_id=line,
-            center_circle_id=circle,
-            label_id=label,
-            capacitance_expr=capacitance_expr,
-            capacitance_text=capacitance_text,
-            inductance_expr=inductance_expr,
-            inductance_text=inductance_text,
-            l_inverse_expr=l_inverse_expr,
-            josephson_inductance_expr=josephson_inductance_expr,
-            josephson_inductance_text=josephson_inductance_text,
-            josephson_phase_sign=josephson_phase_sign,
-        )
-        self.canvas.tag_bind(
-            tag,
-            "<Double-Button-1>",
-            lambda event, eid=edge_id: self._edit_edge(eid),
-        )
-        self._apply_edge_parameters(self.edges[edge_id], params)
-        self._update_scrollregion()
-        return edge_id
 
     def _create_edge(self, first: int, second: int) -> None:
-        first_name = self.nodes[first].name
-        second_name = self.nodes[second].name
-        existing = self._find_edge(first, second)
-        if existing is not None:
-            if not messagebox.askyesno(
-                "Enlace existente",
-                "A connection between these nodes already exists.\nDo you want to create another one in parallel?",
-                parent=self.root,
-            ):
-                self._update_status("Original connection maintained.")
-                return
-        dialog = EdgeDialog(self.root, first_name, second_name)
-        if dialog.value is None:
-            self._update_status("Connection cancelled.")
-            return
-        self._instantiate_edge(first, second, dialog.value)
-        self._update_status(
-            "Connection created. Press 'c' for another or Esc to exit mode."
-        )
-        self._push_history()
+        desktop_canvas.create_edge(self, first, second, EdgeDialog, messagebox)
 
     def _instantiate_ground_edge(
         self,
@@ -1045,123 +710,17 @@ class CircuitGraphApp:
         offset_y: Optional[float] = None,
         forced_id: Optional[int] = None,
     ) -> int:
-        capacitance_expr = params.capacitance_expr
-        capacitance_text = params.capacitance_text
-        inductance_expr = params.inductance_expr
-        inductance_text = params.inductance_text
-        josephson_inductance_expr = params.josephson_inductance_expr
-        josephson_inductance_text = params.josephson_inductance_text
-        josephson_phase_sign = -1 if params.josephson_phase_sign == -1 else 1
-        l_inverse_expr: Optional[sp.Expr] = None
-        if inductance_expr is not None:
-            l_inverse_expr = sp.simplify(sp.Integer(1) / inductance_expr)
-        if forced_id is None:
-            edge_id = self.edge_counter
-            self.edge_counter += 1
-        else:
-            edge_id = forced_id
-            self.edge_counter = max(self.edge_counter, edge_id + 1)
-        tag = f"edge_{edge_id}"
-        node = self.nodes[node_id]
-        start_x = node.x
-        start_y = node.y
-        if offset_y is None:
-            offset_y = self.GROUND_LINE_LENGTH
-        end_x = start_x + offset_x
-        end_y = start_y + offset_y
-        line = self.canvas.create_line(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            width=2,
-            fill="#424242",
-            tags=("edge", tag),
+        return desktop_canvas.instantiate_ground_edge(
+            self,
+            node_id,
+            params,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            forced_id=forced_id,
         )
-        mid_x = (start_x + end_x) / 2
-        mid_y = (start_y + end_y) / 2
-        radius = self._current_edge_center_radius()
-        circle = self.canvas.create_oval(
-            mid_x - radius,
-            mid_y - radius,
-            mid_x + radius,
-            mid_y + radius,
-            fill="#f5f5f5",
-            outline="#424242",
-            width=2,
-            tags=("edge", tag),
-        )
-        triangle_points = [
-            end_x - self.GROUND_TRIANGLE_WIDTH / 2,
-            end_y,
-            end_x + self.GROUND_TRIANGLE_WIDTH / 2,
-            end_y,
-            end_x,
-            end_y + self.GROUND_TRIANGLE_HEIGHT,
-        ]
-        triangle = self.canvas.create_polygon(
-            triangle_points,
-            fill="#f5f5f5",
-            outline="#424242",
-            width=2,
-            tags=("edge", tag),
-        )
-        label = self.canvas.create_text(
-            mid_x,
-            mid_y,
-            text="",
-            fill="#212121",
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-            tags=("edge", tag),
-        )
-        self.canvas.tag_raise(label, circle)
-        self.edges[edge_id] = Edge(
-            identifier=edge_id,
-            nodes=(node_id, GROUND_NODE_ID),
-            line_id=line,
-            center_circle_id=circle,
-            label_id=label,
-            capacitance_expr=capacitance_expr,
-            capacitance_text=capacitance_text,
-            inductance_expr=inductance_expr,
-            inductance_text=inductance_text,
-            l_inverse_expr=l_inverse_expr,
-            josephson_inductance_expr=josephson_inductance_expr,
-            josephson_inductance_text=josephson_inductance_text,
-            josephson_phase_sign=josephson_phase_sign,
-            is_ground=True,
-            ground_marker_id=triangle,
-            ground_offset_x=offset_x,
-            ground_offset_y=offset_y,
-        )
-        self.canvas.tag_bind(
-            tag,
-            "<Double-Button-1>",
-            lambda event, eid=edge_id: self._edit_edge(eid),
-        )
-        for item in (line, circle, triangle, label):
-            self.canvas.tag_bind(
-                item,
-                "<ButtonPress-1>",
-                lambda event, eid=edge_id: self._handle_ground_press(event, eid),
-            )
-            self.canvas.tag_bind(
-                item,
-                "<B1-Motion>",
-                lambda event, eid=edge_id: self._handle_ground_drag(event, eid),
-            )
-            self.canvas.tag_bind(
-                item,
-                "<ButtonRelease-1>",
-                lambda event, eid=edge_id: self._handle_ground_release(event, eid),
-            )
-        self._apply_edge_parameters(self.edges[edge_id], params)
-        self._update_scrollregion()
-        return edge_id
 
     def _create_ground_edge(self, node_id: int, params: EdgeParameters) -> None:
-        self._instantiate_ground_edge(node_id, params)
+        desktop_canvas.create_ground_edge(self, node_id, params)
 
     @staticmethod
     def _sum_optional_expressions(
@@ -1236,47 +795,22 @@ class CircuitGraphApp:
         josephson_inductance_expr: Optional[sp.Expr] = None,
         josephson_inductance_text: Optional[str] = None,
     ) -> str:
-        parts: list[str] = []
-        cap_display = self._expression_to_display(capacitance_expr, capacitance_text)
-        ind_display = self._expression_to_display(inductance_expr, inductance_text)
-        josephson_display = self._expression_to_display(
+        return desktop_canvas.edge_label(
+            capacitance_expr,
+            capacitance_text,
+            inductance_expr,
+            inductance_text,
             josephson_inductance_expr,
             josephson_inductance_text,
         )
-        if cap_display is not None:
-            parts.append(f"C={cap_display}")
-        if ind_display is not None:
-            parts.append(f"L={ind_display}")
-        if josephson_display is not None:
-            parts.append(f"LJ={josephson_display}")
-        if not parts:
-            return ""
-        if len(parts) == 1:
-            return parts[0]
-        return "\n".join(parts)
 
     def _expression_to_display(
         self, expr: Optional[sp.Expr], raw_text: Optional[str]
     ) -> Optional[str]:
-        if expr is None:
-            return None
-        if expr.free_symbols:
-            return raw_text or str(expr)
-        try:
-            numerical = float(expr.evalf())
-        except (TypeError, ValueError):
-            return raw_text or str(expr)
-        return f"{numerical:g}"
+        return desktop_canvas.expression_to_display(expr, raw_text)
 
     def _find_edge(self, first: int, second: int) -> Edge | None:
-        for edge in self.edges.values():
-            if edge.is_ground:
-                if {first, second} == {edge.nodes[0], edge.nodes[1]}:
-                    return edge
-            else:
-                if set(edge.nodes) == {first, second}:
-                    return edge
-        return None
+        return desktop_canvas.find_edge(self, first, second)
 
     def _refresh_node_appearance(self, node_id: int) -> None:
         desktop_selection.refresh_node_appearance(self, node_id)
@@ -1437,48 +971,7 @@ class CircuitGraphApp:
         self.root.destroy()
 
     def _ask_save_before_close(self) -> str:
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Unsaved changes")
-        dialog.transient(self.root)
-        dialog.resizable(False, False)
-
-        result = {"action": "cancel"}
-
-        def choose(action: str) -> None:
-            result["action"] = action
-            dialog.destroy()
-
-        frame = ttk.Frame(dialog, padding=16)
-        frame.grid(row=0, column=0, sticky="nsew")
-        ttk.Label(
-            frame,
-            text="Save changes before closing?",
-            font=("", 12, "bold"),
-        ).grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(
-            frame,
-            text="Your current drawing has unsaved changes.",
-        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 12))
-
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=2, column=0, sticky=tk.E)
-        ttk.Button(
-            buttons, text="Save", command=lambda: choose("save")
-        ).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(
-            buttons, text="Don't Save", command=lambda: choose("discard")
-        ).pack(side=tk.LEFT, padx=(0, 6))
-        cancel_button = ttk.Button(
-            buttons, text="Cancel", command=lambda: choose("cancel")
-        )
-        cancel_button.pack(side=tk.LEFT)
-
-        dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
-        dialog.bind("<Escape>", lambda _event: choose("cancel"))
-        dialog.grab_set()
-        cancel_button.focus_set()
-        dialog.wait_window()
-        return result["action"]
+        return ask_save_before_close(self.root)
 
     def _update_status(self, message: str) -> None:
         self.status_var.set(message)

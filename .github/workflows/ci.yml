@@ -34,11 +34,11 @@ jobs:
             git fetch origin "${{ github.base_ref }}" --depth=1
             changed_files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
 
-            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/release\.yml|pyproject\.toml|scripts/|cqedraw/|tests/)'; then
+            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/release\.yml|pyproject\.toml|assets/|packaging/|scripts/|cqedraw/|tests/)'; then
               run_python=true
             fi
 
-            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/pages\.yml|web/|cqedraw/(core|web_bridge|__init__)\.py|pyproject\.toml)'; then
+            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/pages\.yml|web/|cqedraw/(core|web_bridge)\.py|pyproject\.toml)'; then
               run_web=true
             fi
           fi
@@ -130,3 +130,21 @@ jobs:
           set -euo pipefail
           echo "Python checks requested: ${{ needs.changes.outputs.python }}"
           echo "Web checks requested: ${{ needs.changes.outputs.web }}"
+          echo "Detect changed areas result: ${{ needs.changes.result }}"
+          echo "Python checks result: ${{ needs.python-test.result }}"
+          echo "Web checks result: ${{ needs.web-test.result }}"
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "Changed-area detection failed."
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.python }}" == "true" && "${{ needs.python-test.result }}" != "success" ]]; then
+            echo "Python checks were requested but did not pass."
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.web }}" == "true" && "${{ needs.web-test.result }}" != "success" ]]; then
+            echo "Web checks were requested but did not pass."
+            exit 1
+          fi

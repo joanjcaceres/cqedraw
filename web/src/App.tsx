@@ -1,5 +1,6 @@
 import {
   PointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -81,12 +82,6 @@ import {
 import { InspectorPanel } from "./InspectorPanel";
 import { OutputDrawer } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
-import {
-  isTutorialDismissed,
-  nextTutorialStep,
-  rememberTutorialDismissed,
-  type TutorialStep,
-} from "./tutorialFlow";
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useInlineEdgeEditor } from "./useInlineEdgeEditor";
@@ -95,6 +90,7 @@ import { useOutputPanelScroll } from "./useOutputPanelScroll";
 import { useProjectHistory } from "./useProjectHistory";
 import { useProjectLifecycle } from "./useProjectLifecycle";
 import { useSweepAnalysis } from "./useSweepAnalysis";
+import { useTutorialState } from "./useTutorialState";
 
 const COPY_MATRICES_STATUS =
   "Copied matrices to clipboard. Paste them into Python or a notebook.";
@@ -165,10 +161,6 @@ export function App() {
     ConcatenatePortPair[]
   >([]);
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [tutorialPromptOpen, setTutorialPromptOpen] = useState(false);
-  const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
-  const [tutorialCopied, setTutorialCopied] = useState(false);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const {
     canRedo,
@@ -200,24 +192,19 @@ export function App() {
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const analysisRequestIdRef = useRef(0);
+  const dismissTutorialResetRef = useRef<() => void>(() => {});
+  const prepareTutorialGenerateStep = useCallback(() => {
+    setMode("select");
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setGroundDragState(null);
+  }, []);
 
   useEffect(() => {
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
       navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
     }
   }, []);
-
-  useEffect(() => {
-    if (!isTutorialDismissed()) {
-      setTutorialPromptOpen(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (tutorialStep === "generate" || tutorialStep === "copy") {
-      setOutputDrawerOpen(true);
-    }
-  }, [tutorialStep]);
 
   const selectedNode = useMemo(
     () =>
@@ -249,6 +236,28 @@ export function App() {
     selectedEdge,
     selectedEdgeId,
     viewBox,
+  });
+  const {
+    closeHelp,
+    dismissTutorial,
+    finishTutorial,
+    helpOpen,
+    setHelpOpen,
+    setTutorialCopied,
+    setTutorialPromptOpen,
+    setTutorialStep,
+    tutorialCopied,
+    tutorialPromptOpen,
+    tutorialStep,
+  } = useTutorialState({
+    dismissTutorialResetRef,
+    helpButtonRef,
+    mode,
+    onPrepareGenerateStep: prepareTutorialGenerateStep,
+    output,
+    project,
+    selectedEdgeId,
+    setOutputDrawerOpen,
   });
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
@@ -292,6 +301,7 @@ export function App() {
     setTutorialStep,
     setViewBox,
   });
+  dismissTutorialResetRef.current = dismissTutorialReset;
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
@@ -470,39 +480,6 @@ export function App() {
     return () =>
       canvasElement.removeEventListener("wheel", handleNativeCanvasWheel);
   }, []);
-
-  useEffect(() => {
-    if (project.state.nodes.length > 0 && tutorialPromptOpen && tutorialStep === null) {
-      dismissTutorial();
-    }
-  }, [project.state.nodes.length, tutorialPromptOpen, tutorialStep]);
-
-  useEffect(() => {
-    if (tutorialStep === null || tutorialStep === "welcome" || tutorialStep === "finish") {
-      return;
-    }
-
-    const nextStep = nextTutorialStep({
-      step: tutorialStep,
-      project,
-      mode,
-      output,
-      selectedEdgeId,
-      tutorialCopied,
-    });
-    if (nextStep === "generate" && mode !== "select") {
-      setMode("select");
-      setPendingEdgeNodeId(null);
-      setNodeDragState(null);
-      setGroundDragState(null);
-    }
-    if (nextStep === "generate") {
-      setOutputDrawerOpen(true);
-    }
-    if (nextStep && nextStep !== tutorialStep) {
-      setTutorialStep(nextStep);
-    }
-  }, [mode, output, project, selectedEdgeId, tutorialCopied, tutorialStep]);
 
   function setModeAndReset(nextMode: ToolMode) {
     if (pastePreview) {
@@ -1365,23 +1342,6 @@ export function App() {
     } catch (error) {
       setEngineStatus(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  function closeHelp() {
-    setHelpOpen(false);
-    window.requestAnimationFrame(() => helpButtonRef.current?.focus());
-  }
-
-  function dismissTutorial() {
-    rememberTutorialDismissed();
-    setTutorialPromptOpen(false);
-    setTutorialStep(null);
-    dismissTutorialReset();
-  }
-
-  function finishTutorial() {
-    rememberTutorialDismissed();
-    setTutorialStep(null);
   }
 
   function zoomCanvas(factor: number) {

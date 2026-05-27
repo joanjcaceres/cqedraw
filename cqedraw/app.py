@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-from types import SimpleNamespace
 from typing import Dict, Optional, Tuple
 
 import sympy as sp
@@ -21,7 +20,7 @@ from .core import (
 )
 from .desktop_dialogs import EdgeDialog, ToolTip
 from .desktop_models import Edge, EdgeParameters, Node
-from . import desktop_merge, desktop_project_state
+from . import desktop_merge, desktop_project_state, desktop_selection
 
 
 class CircuitGraphApp:
@@ -1280,455 +1279,52 @@ class CircuitGraphApp:
         return None
 
     def _refresh_node_appearance(self, node_id: int) -> None:
-        node = self.nodes.get(node_id)
-        if node is None:
-            return
-        if node_id == self.focus_node:
-            color = "#d32f2f"
-        elif node_id in self.selected_nodes:
-            color = "#ff9800"
-        else:
-            color = "#1976d2"
-        self.canvas.itemconfigure(node.circle_id, fill=color)
+        desktop_selection.refresh_node_appearance(self, node_id)
 
     def _refresh_all_node_appearances(self) -> None:
-        for node_id in self.nodes:
-            self._refresh_node_appearance(node_id)
+        desktop_selection.refresh_all_node_appearances(self)
 
     def _clear_selection(self) -> None:
-        if not self.selected_nodes:
-            return
-        for node_id in list(self.selected_nodes):
-            self.selected_nodes.discard(node_id)
-            self._refresh_node_appearance(node_id)
+        desktop_selection.clear_selection(self)
 
     def _toggle_selection(self, node_id: int) -> None:
-        if node_id in self.selected_nodes:
-            self.selected_nodes.remove(node_id)
-        else:
-            self.selected_nodes.add(node_id)
-        self._refresh_node_appearance(node_id)
+        desktop_selection.toggle_selection(self, node_id)
 
     def _ensure_selected(self, node_id: int) -> None:
-        if node_id not in self.selected_nodes or len(self.selected_nodes) > 1:
-            self._clear_selection()
-            self.selected_nodes.add(node_id)
-            self._refresh_node_appearance(node_id)
+        desktop_selection.ensure_selected(self, node_id)
 
     def _copy_selection(self) -> None:
-        if not self.selected_nodes:
-            self._update_status("Nothing selected to copy.")
-            return
-        nodes = sorted(self.selected_nodes)
-        min_x = min(self.nodes[nid].x for nid in nodes)
-        min_y = min(self.nodes[nid].y for nid in nodes)
-        clipboard_nodes = []
-        for nid in nodes:
-            node = self.nodes[nid]
-            clipboard_nodes.append(
-                {
-                    "id": nid,
-                    "name": node.name,
-                    "dx": node.x - min_x,
-                    "dy": node.y - min_y,
-                }
-            )
-
-        clipboard_edges = []
-        for edge in self.edges.values():
-            if edge.is_ground:
-                if edge.nodes[0] in self.selected_nodes:
-                    clipboard_edges.append(
-                        {
-                            "nodes": list(edge.nodes),
-                            "capacitance_expr": self._expr_to_string(
-                                edge.capacitance_expr
-                            ),
-                            "capacitance_text": edge.capacitance_text,
-                            "inductance_expr": self._expr_to_string(
-                                edge.inductance_expr
-                            ),
-                            "inductance_text": edge.inductance_text,
-                            "josephson_inductance_expr": self._expr_to_string(
-                                edge.josephson_inductance_expr
-                            ),
-                            "josephson_inductance_text": edge.josephson_inductance_text,
-                            "josephson_phase_sign": edge.josephson_phase_sign,
-                            "is_ground": True,
-                            "ground_offset_x": edge.ground_offset_x,
-                            "ground_offset_y": edge.ground_offset_y,
-                        }
-                    )
-            else:
-                if (
-                    edge.nodes[0] in self.selected_nodes
-                    and edge.nodes[1] in self.selected_nodes
-                ):
-                    clipboard_edges.append(
-                        {
-                            "nodes": list(edge.nodes),
-                            "capacitance_expr": self._expr_to_string(
-                                edge.capacitance_expr
-                            ),
-                            "capacitance_text": edge.capacitance_text,
-                            "inductance_expr": self._expr_to_string(
-                                edge.inductance_expr
-                            ),
-                            "inductance_text": edge.inductance_text,
-                            "josephson_inductance_expr": self._expr_to_string(
-                                edge.josephson_inductance_expr
-                            ),
-                            "josephson_inductance_text": edge.josephson_inductance_text,
-                            "josephson_phase_sign": edge.josephson_phase_sign,
-                            "is_ground": False,
-                        }
-                    )
-
-        self.clipboard_data = {
-            "nodes": clipboard_nodes,
-            "edges": clipboard_edges,
-            "origin": (min_x, min_y),
-        }
-        self._update_status(f"Copied {len(nodes)} node(s) to clipboard.")
+        desktop_selection.copy_selection(self)
 
     def _set_focus_node(self, node_id: Optional[int]) -> None:
-        previous = self.focus_node
-        self.focus_node = node_id
-        if previous is not None:
-            self._refresh_node_appearance(previous)
-        if node_id is not None:
-            self._refresh_node_appearance(node_id)
+        desktop_selection.set_focus_node(self, node_id)
 
     def _start_marquee(self, x: float, y: float) -> None:
-        self._clear_selection()
-        self._marquee_start = (x, y)
-        if self._marquee_rect_id is not None:
-            self.canvas.delete(self._marquee_rect_id)
-        self._marquee_rect_id = self.canvas.create_rectangle(
-            x,
-            y,
-            x,
-            y,
-            outline="#1976d2",
-            dash=(4, 2),
-            width=1,
-        )
+        desktop_selection.start_marquee(self, x, y)
 
     def _update_marquee(self, x: float, y: float) -> None:
-        if self._marquee_rect_id is None or self._marquee_start is None:
-            return
-        x0, y0 = self._marquee_start
-        self.canvas.coords(self._marquee_rect_id, x0, y0, x, y)
+        desktop_selection.update_marquee(self, x, y)
 
     def _finish_marquee(self, x: float, y: float) -> None:
-        if self._marquee_start is None or self._marquee_rect_id is None:
-            return
-        x0, y0 = self._marquee_start
-        self.canvas.delete(self._marquee_rect_id)
-        self._marquee_rect_id = None
-        self._marquee_start = None
-
-        left = min(x0, x)
-        right = max(x0, x)
-        top = min(y0, y)
-        bottom = max(y0, y)
-
-        selected = []
-        for node_id, node in self.nodes.items():
-            radius = self._current_node_radius()
-            if left <= node.x <= right and top <= node.y <= bottom:
-                selected.append(node_id)
-
-        self.selected_nodes = set(selected)
-        if selected:
-            self._set_focus_node(selected[-1])
-            self._update_status(f"Selected {len(selected)} node(s).")
-        else:
-            self._set_focus_node(None)
-            self._update_status("Selection cleared.")
-        self._refresh_all_node_appearances()
+        desktop_selection.finish_marquee(self, x, y)
 
     def _start_paste_preview_fake(self) -> None:
-        if self.clipboard_data is None:
-            self._update_status("Clipboard is empty.")
-            return
-        self.root.update_idletasks()
-        width = self.canvas.winfo_width() or 600
-        height = self.canvas.winfo_height() or 400
-        event = SimpleNamespace(x=width / 2, y=height / 2)
-        self._start_paste_preview(event)
+        desktop_selection.start_paste_preview_fake(self)
 
     def _start_paste_preview(self, event: tk.Event) -> None:
-        if self.clipboard_data is None:
-            self._update_status("Clipboard is empty.")
-            return
-
-        if self._pasting_active:
-            self._cancel_paste_preview()
-
-        canvas_x = self.canvas.canvasx(event.x)
-        canvas_y = self.canvas.canvasy(event.y)
-
-        nodes = self.clipboard_data["nodes"]
-        edges = self.clipboard_data["edges"]
-
-        ghost_nodes = []
-        for node in nodes:
-            x = canvas_x + node["dx"]
-            y = canvas_y + node["dy"]
-            radius = self._current_node_radius()
-            oval = self.canvas.create_oval(
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius,
-                outline="#ff9800",
-                dash=(3, 2),
-                width=2,
-                fill="",
-            )
-            label = self.canvas.create_text(
-                x + radius + 6,
-                y,
-                text=node["name"],
-                fill="#ff9800",
-                anchor=tk.W,
-            )
-            ghost_nodes.append(
-                {
-                    "id": node["id"],
-                    "oval": oval,
-                    "label": label,
-                    "dx": node["dx"],
-                    "dy": node["dy"],
-                }
-            )
-
-        ghost_edges = []
-        for edge in edges:
-            if edge.get("is_ground"):
-                source = next(
-                    (gn for gn in ghost_nodes if gn["id"] == edge["nodes"][0]), None
-                )
-                if source is None:
-                    continue
-                x = canvas_x + source["dx"]
-                y = canvas_y + source["dy"]
-                line = self.canvas.create_line(
-                    x,
-                    y,
-                    x + edge.get("ground_offset_x", 0.0),
-                    y + edge.get("ground_offset_y", self.GROUND_LINE_LENGTH),
-                    fill="#ff9800",
-                    dash=(3, 2),
-                    width=2,
-                )
-                ghost_edges.append(
-                    {
-                        "is_ground": True,
-                        "line": line,
-                        "source_id": edge["nodes"][0],
-                        "offset_x": edge.get("ground_offset_x", 0.0),
-                        "offset_y": edge.get(
-                            "ground_offset_y", self.GROUND_LINE_LENGTH
-                        ),
-                    }
-                )
-            else:
-                source = next(
-                    (gn for gn in ghost_nodes if gn["id"] == edge["nodes"][0]), None
-                )
-                target = next(
-                    (gn for gn in ghost_nodes if gn["id"] == edge["nodes"][1]), None
-                )
-                if source is None or target is None:
-                    continue
-                line = self.canvas.create_line(
-                    canvas_x + source["dx"],
-                    canvas_y + source["dy"],
-                    canvas_x + target["dx"],
-                    canvas_y + target["dy"],
-                    fill="#ff9800",
-                    dash=(3, 2),
-                    width=2,
-                )
-                ghost_edges.append(
-                    {
-                        "is_ground": False,
-                        "line": line,
-                        "source_id": edge["nodes"][0],
-                        "target_id": edge["nodes"][1],
-                    }
-                )
-
-        self._paste_preview = {
-            "ghost_nodes": ghost_nodes,
-            "ghost_edges": ghost_edges,
-            "anchor": (canvas_x, canvas_y),
-        }
-        self._pasting_active = True
-        self.canvas.bind("<Motion>", self._update_paste_preview, add="+")
-        self.root.bind("<Escape>", self._cancel_paste_preview_event, add="+")
-        self._update_status(
-            "Move the mouse to place the copied selection, click to confirm or press Esc to cancel."
-        )
+        desktop_selection.start_paste_preview(self, event)
 
     def _update_paste_preview(self, event: tk.Event) -> None:
-        if not self._pasting_active or self._paste_preview is None:
-            return
-        canvas_x = self.canvas.canvasx(event.x)
-        canvas_y = self.canvas.canvasy(event.y)
-        anchor_x, anchor_y = self._paste_preview["anchor"]
-        dx = canvas_x - anchor_x
-        dy = canvas_y - anchor_y
-        self._paste_preview["anchor"] = (canvas_x, canvas_y)
-
-        for ghost in self._paste_preview["ghost_nodes"]:
-            x = canvas_x + ghost["dx"]
-            y = canvas_y + ghost["dy"]
-            radius = self._current_node_radius()
-            self.canvas.coords(
-                ghost["oval"],
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius,
-            )
-            self.canvas.coords(ghost["label"], x + radius + 6, y)
-
-        for ghost in self._paste_preview["ghost_edges"]:
-            if ghost["is_ground"]:
-                source = next(
-                    (
-                        n
-                        for n in self._paste_preview["ghost_nodes"]
-                        if n["id"] == ghost["source_id"]
-                    ),
-                    None,
-                )
-                if source is None:
-                    continue
-                x = canvas_x + source["dx"]
-                y = canvas_y + source["dy"]
-                self.canvas.coords(
-                    ghost["line"],
-                    x,
-                    y,
-                    x + ghost["offset_x"],
-                    y + ghost["offset_y"],
-                )
-            else:
-                source = next(
-                    (
-                        n
-                        for n in self._paste_preview["ghost_nodes"]
-                        if n["id"] == ghost["source_id"]
-                    ),
-                    None,
-                )
-                target = next(
-                    (
-                        n
-                        for n in self._paste_preview["ghost_nodes"]
-                        if n["id"] == ghost["target_id"]
-                    ),
-                    None,
-                )
-                if source is None or target is None:
-                    continue
-                self.canvas.coords(
-                    ghost["line"],
-                    canvas_x + source["dx"],
-                    canvas_y + source["dy"],
-                    canvas_x + target["dx"],
-                    canvas_y + target["dy"],
-                )
+        desktop_selection.update_paste_preview(self, event)
 
     def _complete_paste_preview(self, canvas_x: float, canvas_y: float) -> None:
-        if (
-            not self._pasting_active
-            or self._paste_preview is None
-            or self.clipboard_data is None
-        ):
-            return
-
-        nodes = self.clipboard_data["nodes"]
-        edges = self.clipboard_data["edges"]
-
-        mapping: Dict[int, int] = {}
-        new_nodes: list[int] = []
-
-        for node in nodes:
-            new_name = self._generate_default_node_name()
-            new_id = self._add_node(
-                canvas_x + node["dx"],
-                canvas_y + node["dy"],
-                new_name,
-                silent=True,
-            )
-            mapping[node["id"]] = new_id
-            new_nodes.append(new_id)
-
-        for edge in edges:
-            params = EdgeParameters(
-                capacitance_expr=self._expr_from_string(edge.get("capacitance_expr")),
-                capacitance_text=edge.get("capacitance_text"),
-                inductance_expr=self._expr_from_string(edge.get("inductance_expr")),
-                inductance_text=edge.get("inductance_text"),
-                josephson_inductance_expr=self._expr_from_string(
-                    edge.get("josephson_inductance_expr")
-                ),
-                josephson_inductance_text=edge.get("josephson_inductance_text"),
-                josephson_phase_sign=(
-                    -1 if edge.get("josephson_phase_sign", 1) == -1 else 1
-                ),
-            )
-            if edge.get("is_ground"):
-                source_id = mapping.get(edge["nodes"][0])
-                if source_id is not None:
-                    self._instantiate_ground_edge(
-                        source_id,
-                        params,
-                        offset_x=edge.get("ground_offset_x", 0.0),
-                        offset_y=edge.get("ground_offset_y", self.GROUND_LINE_LENGTH),
-                    )
-            else:
-                first_new = mapping.get(edge["nodes"][0])
-                second_new = mapping.get(edge["nodes"][1])
-                if first_new is not None and second_new is not None:
-                    self._instantiate_edge(first_new, second_new, params)
-
-        self.selected_nodes = set(new_nodes)
-        if new_nodes:
-            self._set_focus_node(new_nodes[-1])
-        else:
-            self._set_focus_node(None)
-        self._refresh_all_node_appearances()
-        self._update_scrollregion()
-        self._push_history()
-        self._update_status(f"Pasted {len(new_nodes)} node(s).")
-        self._cancel_paste_preview()
+        desktop_selection.complete_paste_preview(self, canvas_x, canvas_y)
 
     def _cancel_paste_preview_event(self, event: tk.Event) -> None:
-        self._cancel_paste_preview(message="Paste cancelled.")
+        desktop_selection.cancel_paste_preview_event(self, event)
 
     def _cancel_paste_preview(self, message: Optional[str] = None) -> None:
-        if not self._pasting_active:
-            return
-        if self._paste_preview is not None:
-            for ghost in self._paste_preview.get("ghost_nodes", []):
-                self.canvas.delete(ghost["oval"])
-                self.canvas.delete(ghost["label"])
-            for ghost in self._paste_preview.get("ghost_edges", []):
-                self.canvas.delete(ghost["line"])
-        self._paste_preview = None
-        self._pasting_active = False
-        try:
-            self.canvas.unbind("<Motion>")
-        except Exception:
-            pass
-        if message:
-            self._update_status(message)
+        desktop_selection.cancel_paste_preview(self, message)
 
     def _set_mode(self, mode: Optional[str]) -> None:
         if self.selected_node is not None:

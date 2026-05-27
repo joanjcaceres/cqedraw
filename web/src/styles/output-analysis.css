@@ -384,7 +384,7 @@
 
 .parameter-mode-grid {
   gap: 10px;
-  max-height: min(58vh, 620px);
+  max-height: min(44vh, 520px);
   overflow: auto;
   overscroll-behavior: contain;
   padding-right: 4px;

@@ -56,6 +56,11 @@ test("keeps many symbolic parameter controls contained and usable", async ({
   if (!panelBox || !gridBox) {
     throw new Error("Expected output panel and parameter grid boxes.");
   }
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error("Expected viewport size.");
+  }
+  expect(gridBox.y + gridBox.height).toBeLessThanOrEqual(viewport.height - 12);
   expect(gridBox.height).toBeLessThan(panelBox.height * 0.72);
   await expectAnalysisResultsRightOfControls(page);
 });

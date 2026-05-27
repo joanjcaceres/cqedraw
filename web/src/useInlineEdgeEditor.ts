@@ -9,7 +9,7 @@ import {
 import {
   inlineEdgeEditorPosition,
   type InlineEdgeEditorPosition,
-} from "./CircuitEdgeShape";
+} from "./edgeGeometry";
 import type { CircuitEdge, CircuitProject } from "./types";
 import type { ViewBox } from "./viewBox";
 

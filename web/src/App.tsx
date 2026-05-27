@@ -39,6 +39,11 @@ import {
   matrixNodeLabelMap,
 } from "./edgeGeometry";
 import { InspectorPanel } from "./InspectorPanel";
+import {
+  buildOutputDefaults,
+  extractProjectParameterNames,
+  serializeOutputDefaultsForDirtyCheck,
+} from "./outputDefaults";
 import { OutputDrawer, type OutputDrawerState } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { useAppShortcuts } from "./useAppShortcuts";
@@ -97,6 +102,23 @@ export function App() {
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const { clientRef, engineWarmup, setEngineWarmup } = useEngineWarmup();
   const [snippetCopied, setSnippetCopied] = useState(false);
+  const dirtyOutputDefaults = useMemo(
+    () =>
+      buildOutputDefaults(
+        output?.parameters ?? [],
+        parameterValues,
+        parameterInputModes,
+      ),
+    [output, parameterInputModes, parameterValues],
+  );
+  const outputDefaultsSnapshot = useMemo(
+    () => serializeOutputDefaultsForDirtyCheck(dirtyOutputDefaults),
+    [dirtyOutputDefaults],
+  );
+  const projectDirtySnapshotExtras = useMemo(
+    () => [outputDefaultsSnapshot],
+    [outputDefaultsSnapshot],
+  );
   const {
     canRedo,
     canUndo,
@@ -112,6 +134,7 @@ export function App() {
     undoProjectChange,
     updateProjectState,
   } = useProjectHistory({
+    dirtySnapshotExtras: projectDirtySnapshotExtras,
     onProjectRestored: (message) => {
       resetProjectInteractionState();
       setOutput(null);
@@ -279,6 +302,22 @@ export function App() {
   });
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
+  const outputDefaultParameterNames = useMemo(
+    () =>
+      output?.parameters.length
+        ? output.parameters
+        : extractProjectParameterNames(project),
+    [output, project],
+  );
+  const outputDefaults = useMemo(
+    () =>
+      buildOutputDefaults(
+        outputDefaultParameterNames,
+        parameterValues,
+        parameterInputModes,
+      ),
+    [outputDefaultParameterNames, parameterInputModes, parameterValues],
+  );
   const outputDrawerState = useMemo<OutputDrawerState>(() => {
     if (output) {
       return null;
@@ -343,6 +382,8 @@ export function App() {
     markProjectClean,
     newProjectButtonRef,
     nodeButtonRef,
+    outputDefaults,
+    outputDefaultsSnapshot,
     project,
     resetLoadedProjectInteractionState,
     resetProjectHistory,
@@ -353,6 +394,8 @@ export function App() {
     setMode,
     setOutput,
     setOutputDrawerOpen,
+    setParameterInputModes,
+    setParameterValues,
     setProjectState,
     setSelectionClipboard,
     setTutorialCopied,
@@ -461,7 +504,6 @@ export function App() {
       analysisRequestIdRef.current += 1;
       setModalAnalysis(null);
       setAnalysisRunning(false);
-      setParameterInputModes({});
       clearSweepResults();
       return;
     }

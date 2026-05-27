@@ -1,8 +1,22 @@
 import { useState, type RefObject } from "react";
 
 import { emptyProject, normalizeProject } from "./graph";
+import {
+  applyOutputDefaultsToProject,
+  EMPTY_OUTPUT_DEFAULTS_SNAPSHOT,
+  extractProjectParameterNames,
+  outputDefaultsStateFromMetadata,
+  readProjectOutputDefaults,
+  serializeOutputDefaultsForDirtyCheck,
+} from "./outputDefaults";
+import type { ParameterInputMode } from "./parameterUnits";
 import type { SelectionClipboard } from "./projectState";
-import type { CircuitProject, OutputResult, ToolMode } from "./types";
+import type {
+  CircuitProject,
+  CircuitProjectOutputDefaults,
+  OutputResult,
+  ToolMode,
+} from "./types";
 import type { TutorialStep } from "./tutorialFlow";
 import { DEFAULT_VIEW_BOX, fitProjectView, type ViewBox } from "./viewBox";
 
@@ -11,9 +25,11 @@ interface UseProjectLifecycleOptions {
   hasProjectContent: boolean;
   hasUnsavedChanges: boolean;
   helpButtonRef: RefObject<HTMLButtonElement | null>;
-  markProjectClean: (project?: CircuitProject) => void;
+  markProjectClean: (project?: CircuitProject, dirtySnapshotExtras?: string[]) => void;
   newProjectButtonRef: RefObject<HTMLButtonElement | null>;
   nodeButtonRef: RefObject<HTMLButtonElement | null>;
+  outputDefaults: CircuitProjectOutputDefaults | undefined;
+  outputDefaultsSnapshot: string;
   project: CircuitProject;
   resetLoadedProjectInteractionState: () => void;
   resetProjectHistory: () => void;
@@ -24,6 +40,8 @@ interface UseProjectLifecycleOptions {
   setMode: (mode: ToolMode) => void;
   setOutput: (output: OutputResult | null) => void;
   setOutputDrawerOpen: (open: boolean) => void;
+  setParameterInputModes: (modes: Record<string, ParameterInputMode>) => void;
+  setParameterValues: (values: Record<string, string>) => void;
   setProjectState: (project: CircuitProject) => void;
   setSelectionClipboard: (clipboard: SelectionClipboard | null) => void;
   setTutorialCopied: (copied: boolean) => void;
@@ -40,6 +58,8 @@ export function useProjectLifecycle({
   markProjectClean,
   newProjectButtonRef,
   nodeButtonRef,
+  outputDefaults,
+  outputDefaultsSnapshot,
   project,
   resetLoadedProjectInteractionState,
   resetProjectHistory,
@@ -50,6 +70,8 @@ export function useProjectLifecycle({
   setMode,
   setOutput,
   setOutputDrawerOpen,
+  setParameterInputModes,
+  setParameterValues,
   setProjectState,
   setSelectionClipboard,
   setTutorialCopied,
@@ -61,7 +83,8 @@ export function useProjectLifecycle({
   const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
 
   function saveProject() {
-    const blob = new Blob([JSON.stringify(project, null, 2)], {
+    const projectForSave = applyOutputDefaultsToProject(project, outputDefaults);
+    const blob = new Blob([JSON.stringify(projectForSave, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -71,7 +94,7 @@ export function useProjectLifecycle({
     document.body.append(link);
     link.click();
     link.remove();
-    markProjectClean();
+    markProjectClean(project, [outputDefaultsSnapshot]);
     setEngineStatus("Project saved.");
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
@@ -79,9 +102,17 @@ export function useProjectLifecycle({
   async function loadProject(file: File) {
     const parsed = JSON.parse(await file.text());
     const next = normalizeProject(parsed);
+    const parameterNames = extractProjectParameterNames(next);
+    const loadedDefaults = readProjectOutputDefaults(parsed, parameterNames);
+    const outputDefaultsState = outputDefaultsStateFromMetadata(loadedDefaults);
+    const loadedDefaultsSnapshot = serializeOutputDefaultsForDirtyCheck(
+      loadedDefaults,
+    );
     setProjectState(next);
     resetProjectHistory();
-    markProjectClean(next);
+    setParameterValues(outputDefaultsState.parameterValues);
+    setParameterInputModes(outputDefaultsState.parameterInputModes);
+    markProjectClean(next, [loadedDefaultsSnapshot]);
     setViewBox(fitProjectView(next));
     resetLoadedProjectInteractionState();
     setOutput(null);
@@ -92,7 +123,9 @@ export function useProjectLifecycle({
     const next = emptyProject();
     setProjectState(next);
     resetProjectHistory();
-    markProjectClean(next);
+    setParameterValues({});
+    setParameterInputModes({});
+    markProjectClean(next, [EMPTY_OUTPUT_DEFAULTS_SNAPSHOT]);
     setMode("node");
     resetProjectInteractionState();
     setSelectionClipboard(null);
@@ -132,7 +165,9 @@ export function useProjectLifecycle({
     const next = emptyProject();
     setProjectState(next);
     resetProjectHistory();
-    markProjectClean(next);
+    setParameterValues({});
+    setParameterInputModes({});
+    markProjectClean(next, [EMPTY_OUTPUT_DEFAULTS_SNAPSHOT]);
     setMode("node");
     resetTutorialProjectInteractionState();
     setViewBox(DEFAULT_VIEW_BOX);

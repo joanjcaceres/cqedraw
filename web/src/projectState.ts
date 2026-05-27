@@ -27,8 +27,11 @@ export interface ProjectHistory {
   future: CircuitProject[];
 }
 
-export function serializeProjectForDirtyCheck(project: CircuitProject): string {
-  return JSON.stringify(project);
+export function serializeProjectForDirtyCheck(
+  project: CircuitProject,
+  extras: string[] = [],
+): string {
+  return JSON.stringify({ extras, project });
 }
 
 export function projectsMatch(

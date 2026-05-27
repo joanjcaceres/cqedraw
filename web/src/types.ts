@@ -40,6 +40,18 @@ export interface CircuitState {
 export interface CircuitProject {
   version: number;
   state: CircuitState;
+  web?: CircuitProjectWebMetadata;
+}
+
+export interface CircuitProjectWebMetadata {
+  output_defaults?: CircuitProjectOutputDefaults;
+  schema_version: 1;
+}
+
+export interface CircuitProjectOutputDefaults {
+  parameter_input_modes: Record<string, "energy" | "physical">;
+  parameter_values: Record<string, string>;
+  schema_version: 1;
 }
 
 export interface MatrixEntryRecord {

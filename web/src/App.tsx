@@ -14,10 +14,8 @@ import {
   concatenatePortPairsForSelection,
   concatenatePreviewBridgesForSelection,
   concatenateSelection,
-  emptyProject,
   mergeNodes,
   moveGroundEdge,
-  normalizeProject,
   removeEdge,
   removeNode,
   renameNode,
@@ -117,6 +115,7 @@ import { useAppShortcuts } from "./useAppShortcuts";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useOutputPanelScroll } from "./useOutputPanelScroll";
 import { useProjectHistory } from "./useProjectHistory";
+import { useProjectLifecycle } from "./useProjectLifecycle";
 
 const COPY_MATRICES_STATUS =
   "Copied matrices to clipboard. Paste them into Python or a notebook.";
@@ -200,11 +199,9 @@ export function App() {
     ConcatenatePortPair[]
   >([]);
   const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
-  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [tutorialPromptOpen, setTutorialPromptOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState<TutorialStep | null>(null);
-  const [tutorialResetOpen, setTutorialResetOpen] = useState(false);
   const [tutorialCopied, setTutorialCopied] = useState(false);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const {
@@ -287,6 +284,44 @@ export function App() {
     project.state.nodes.length > 0 || project.state.edges.length > 0;
   const canStartNewProject =
     hasProjectContent || hasUnsavedChanges || output !== null || canUndo || canRedo;
+  const {
+    beginTutorial,
+    closeNewProjectDialog,
+    closeTutorialReset,
+    confirmNewProject,
+    confirmTutorialReset,
+    dismissTutorialReset,
+    loadProject,
+    newProjectDialogOpen,
+    requestNewProject,
+    requestTutorialStart,
+    saveProject,
+    tutorialResetOpen,
+  } = useProjectLifecycle({
+    canStartNewProject,
+    hasProjectContent,
+    hasUnsavedChanges,
+    helpButtonRef,
+    markProjectClean,
+    newProjectButtonRef,
+    nodeButtonRef,
+    project,
+    resetLoadedProjectInteractionState,
+    resetProjectHistory,
+    resetProjectInteractionState,
+    resetTutorialProjectInteractionState,
+    setEngineStatus,
+    setHelpOpen,
+    setMode,
+    setOutput,
+    setOutputDrawerOpen,
+    setProjectState,
+    setSelectionClipboard,
+    setTutorialCopied,
+    setTutorialPromptOpen,
+    setTutorialStep,
+    setViewBox,
+  });
   const hasGeneratedSnippet = Boolean(output?.snippet);
   const statusIsCopyConfirmation = engineStatus === COPY_MATRICES_STATUS;
   const outputParameters = useMemo(() => output?.parameters ?? [], [output]);
@@ -955,6 +990,26 @@ export function App() {
     setMarqueeState(null);
     setPastePreview(null);
     setInlineValueEditorEdgeId(null);
+  }
+
+  function resetLoadedProjectInteractionState() {
+    setSelectedEdgeId(null);
+    clearNodeSelection();
+    setPendingEdgeNodeId(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
+  }
+
+  function resetTutorialProjectInteractionState() {
+    clearNodeSelection();
+    setSelectedEdgeId(null);
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setGroundDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
   }
 
   function recordCompletedNodeDrag(dragState: NodeDragState | null) {
@@ -1826,139 +1881,21 @@ export function App() {
     clearSweepResults();
   }
 
-  function saveProject() {
-    const blob = new Blob([JSON.stringify(project, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "cqedraw-project.json";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    markProjectClean();
-    setEngineStatus("Project saved.");
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  async function loadProject(file: File) {
-    const parsed = JSON.parse(await file.text());
-    const next = normalizeProject(parsed);
-    setProjectState(next);
-    resetProjectHistory();
-    markProjectClean(next);
-    setViewBox(fitProjectView(next));
-    setSelectedEdgeId(null);
-    clearNodeSelection();
-    setPendingEdgeNodeId(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview(null);
-    setOutput(null);
-    setOutputDrawerOpen(false);
-  }
-
-  function resetToNewProject() {
-    const next = emptyProject();
-    setProjectState(next);
-    resetProjectHistory();
-    markProjectClean(next);
-    setMode("node");
-    resetProjectInteractionState();
-    setSelectionClipboard(null);
-    setViewBox(DEFAULT_VIEW_BOX);
-    setOutput(null);
-    setOutputDrawerOpen(false);
-    setNewProjectDialogOpen(false);
-    setTutorialResetOpen(false);
-    setTutorialStep(null);
-    setTutorialCopied(false);
-    setEngineStatus("Started new project.");
-  }
-
-  function requestNewProject() {
-    if (!canStartNewProject) {
-      setEngineStatus("Project is already empty.");
-      return;
-    }
-    if (hasProjectContent || hasUnsavedChanges) {
-      setNewProjectDialogOpen(true);
-      return;
-    }
-    resetToNewProject();
-  }
-
-  function closeNewProjectDialog() {
-    setNewProjectDialogOpen(false);
-    window.requestAnimationFrame(() => newProjectButtonRef.current?.focus());
-  }
-
-  function confirmNewProject() {
-    resetToNewProject();
-    window.requestAnimationFrame(() => nodeButtonRef.current?.focus());
-  }
-
   function closeHelp() {
     setHelpOpen(false);
     window.requestAnimationFrame(() => helpButtonRef.current?.focus());
-  }
-
-  function beginTutorial() {
-    const next = emptyProject();
-    setProjectState(next);
-    resetProjectHistory();
-    markProjectClean(next);
-    setMode("node");
-    clearNodeSelection();
-    setSelectedEdgeId(null);
-    setPendingEdgeNodeId(null);
-    setNodeDragState(null);
-    setGroundDragState(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview(null);
-    setViewBox(DEFAULT_VIEW_BOX);
-    setOutput(null);
-    setOutputDrawerOpen(false);
-    setEngineStatus("Ready.");
-    setTutorialCopied(false);
-    setTutorialPromptOpen(false);
-    setTutorialResetOpen(false);
-    setTutorialStep("welcome");
-  }
-
-  function requestTutorialStart() {
-    setHelpOpen(false);
-    if (project.state.nodes.length > 0 || project.state.edges.length > 0) {
-      setTutorialResetOpen(true);
-      return;
-    }
-    beginTutorial();
   }
 
   function dismissTutorial() {
     rememberTutorialDismissed();
     setTutorialPromptOpen(false);
     setTutorialStep(null);
-    setTutorialResetOpen(false);
+    dismissTutorialReset();
   }
 
   function finishTutorial() {
     rememberTutorialDismissed();
     setTutorialStep(null);
-  }
-
-  function closeTutorialReset() {
-    setTutorialResetOpen(false);
-    window.requestAnimationFrame(() => helpButtonRef.current?.focus());
-  }
-
-  function confirmTutorialReset() {
-    beginTutorial();
-    window.requestAnimationFrame(() =>
-      document.querySelector<HTMLButtonElement>('[data-testid="tutorial-callout"] button')?.focus(),
-    );
   }
 
   function zoomCanvas(factor: number) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   absoluteChartSeries,
@@ -117,41 +117,21 @@ export function ModalAnalysisPlots({
 
   const showPlotTabs = hasFrequencyPlot && hasZpfPlot;
   const selectedPlot = activePlot === "zpf" && hasZpfPlot ? "zpf" : "frequency";
+  const plotSelectorControl = showPlotTabs ? (
+    <AnalysisPlotTabs
+      frequencyPanelId={`${frequencyTestId}-panel`}
+      onSelect={setActivePlot}
+      selectedPlot={selectedPlot}
+      zpfPanelId={`${zpfTestId}-panel`}
+    />
+  ) : null;
 
   return (
     <div className="analysis-plots" data-testid="modal-analysis-plots">
-      {showPlotTabs ? (
-        <div
-          aria-label="Analysis plot"
-          className="analysis-plot-tabs"
-          data-testid="analysis-plot-tabs"
-          role="tablist"
-        >
-          <button
-            aria-controls={`${frequencyTestId}-panel`}
-            aria-selected={selectedPlot === "frequency"}
-            data-testid="analysis-plot-tab-frequency"
-            onClick={() => setActivePlot("frequency")}
-            role="tab"
-            type="button"
-          >
-            Frequencies
-          </button>
-          <button
-            aria-controls={`${zpfTestId}-panel`}
-            aria-selected={selectedPlot === "zpf"}
-            data-testid="analysis-plot-tab-zpf"
-            onClick={() => setActivePlot("zpf")}
-            role="tab"
-            type="button"
-          >
-            Phase ZPF
-          </button>
-        </div>
-      ) : null}
       {selectedPlot === "frequency" && hasFrequencyPlot ? (
         <div id={`${frequencyTestId}-panel`} role="tabpanel">
           <AnalysisLineChart
+            plotSelectorControl={plotSelectorControl}
             referenceYBoundsForSeries={() =>
               referenceFrequencyYBounds(referenceResults)
             }
@@ -166,6 +146,7 @@ export function ModalAnalysisPlots({
       {selectedPlot === "zpf" && hasZpfPlot ? (
         <div id={`${zpfTestId}-panel`} role="tabpanel">
           <AnalysisLineChart
+            plotSelectorControl={plotSelectorControl}
             referenceYBoundsForSeries={(seriesKeys) =>
               referenceZpfYBounds(
                 referenceResults,
@@ -206,6 +187,48 @@ export function ModalAnalysisPlots({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function AnalysisPlotTabs({
+  frequencyPanelId,
+  onSelect,
+  selectedPlot,
+  zpfPanelId,
+}: {
+  frequencyPanelId: string;
+  onSelect: (plot: "frequency" | "zpf") => void;
+  selectedPlot: "frequency" | "zpf";
+  zpfPanelId: string;
+}): ReactNode {
+  return (
+    <div
+      aria-label="Analysis plot"
+      className="analysis-plot-tabs"
+      data-testid="analysis-plot-tabs"
+      role="tablist"
+    >
+      <button
+        aria-controls={frequencyPanelId}
+        aria-selected={selectedPlot === "frequency"}
+        data-testid="analysis-plot-tab-frequency"
+        onClick={() => onSelect("frequency")}
+        role="tab"
+        type="button"
+      >
+        Frequencies
+      </button>
+      <button
+        aria-controls={zpfPanelId}
+        aria-selected={selectedPlot === "zpf"}
+        data-testid="analysis-plot-tab-zpf"
+        onClick={() => onSelect("zpf")}
+        role="tab"
+        type="button"
+      >
+        Phase ZPF
+      </button>
     </div>
   );
 }

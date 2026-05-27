@@ -132,6 +132,17 @@ test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const plotTabsBox = await page.getByTestId("analysis-plot-tabs").boundingBox();
+  const frequencyAxisBox = await page
+    .getByTestId("frequency-mode-plot-axis-auto")
+    .boundingBox();
+  if (!plotTabsBox || !frequencyAxisBox) {
+    throw new Error("Expected plot tabs and frequency axis controls.");
+  }
+  expect(Math.abs(plotTabsBox.y - frequencyAxisBox.y)).toBeLessThanOrEqual(8);
+  expect(plotTabsBox.x + plotTabsBox.width).toBeLessThanOrEqual(
+    frequencyAxisBox.x + 1,
+  );
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
 });

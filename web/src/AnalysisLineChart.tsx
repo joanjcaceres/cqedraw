@@ -22,6 +22,7 @@ import { formatModalNumber } from "./csvExport";
 import { clamp } from "./viewBox";
 
 export function AnalysisLineChart({
+  plotSelectorControl,
   referenceYBoundsForSeries,
   series,
   seriesSelectThreshold = 6,
@@ -31,6 +32,7 @@ export function AnalysisLineChart({
   xLabel,
   yLabel,
 }: {
+  plotSelectorControl?: ReactNode;
   referenceYBoundsForSeries?: (seriesKeys: string[]) => ChartYBounds | null;
   series: ChartSeries[];
   seriesSelectThreshold?: number;
@@ -418,6 +420,7 @@ export function AnalysisLineChart({
       <div className="analysis-chart-heading">
         <div className="analysis-chart-toolbar">
           {seriesControls}
+          {plotSelectorControl}
           {valueModeControl}
           <div
             aria-label={`${title} y-axis scale`}

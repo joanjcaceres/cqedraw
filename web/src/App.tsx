@@ -113,6 +113,7 @@ import {
 } from "./tutorialFlow";
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useEngineWarmup } from "./useEngineWarmup";
+import { useOutputGeneration } from "./useOutputGeneration";
 import { useOutputPanelScroll } from "./useOutputPanelScroll";
 import { useProjectHistory } from "./useProjectHistory";
 import { useProjectLifecycle } from "./useProjectLifecycle";
@@ -236,14 +237,25 @@ export function App() {
   const concatenateButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const analysisRequestIdRef = useRef(0);
-  const outputGenerationPromiseRef = useRef<Promise<OutputResult | null> | null>(
-    null,
-  );
   const sweepSampleCacheRef = useRef<Map<string, SweepSample>>(new Map());
   const sweepPrecomputeContextRef = useRef(0);
   const sweepPrecomputeJobIdRef = useRef(0);
   const sweepInteractionIdleTimerRef = useRef<number | null>(null);
   const sweepRequestIdRef = useRef(0);
+  const { generateOutput, runGenerateOutput } = useOutputGeneration({
+    analysisRequestIdRef,
+    clearSweepResults,
+    clientRef,
+    engineWarmup,
+    project,
+    setAnalysisRunning,
+    setEngineStatus,
+    setEngineWarmup,
+    setModalAnalysis,
+    setOutput,
+    setOutputDrawerOpen,
+    setSnippetCopied,
+  });
 
   useEffect(() => {
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
@@ -1641,57 +1653,6 @@ export function App() {
     }
     setPastePreview(null);
     setEngineStatus(message);
-  }
-
-  async function generateOutput() {
-    await runGenerateOutput();
-  }
-
-  async function runGenerateOutput(): Promise<OutputResult | null> {
-    if (outputGenerationPromiseRef.current) {
-      return outputGenerationPromiseRef.current;
-    }
-
-    setOutputDrawerOpen(true);
-    setEngineStatus(
-      engineWarmup.base === "ready"
-        ? "Generating matrices..."
-        : "Python engine is warming; generating when ready...",
-    );
-    setSnippetCopied(false);
-    analysisRequestIdRef.current += 1;
-    setAnalysisRunning(false);
-    setModalAnalysis(null);
-    clearSweepResults();
-
-    const generationPromise = (async () => {
-      try {
-        const result = await clientRef.current!.generate(project);
-        setEngineWarmup((current) => ({
-          ...current,
-          base: "ready",
-          error: current.base === "error" ? null : current.error,
-        }));
-        if (result.error) {
-          throw new Error(result.error);
-        }
-        setOutput(result);
-        setEngineStatus(`Generated ${result.size} x ${result.size} matrices.`);
-        return result;
-      } catch (error) {
-        setEngineWarmup((current) => ({
-          ...current,
-          base: current.base === "ready" ? current.base : "error",
-          error: error instanceof Error ? error.message : String(error),
-        }));
-        setEngineStatus(error instanceof Error ? error.message : String(error));
-        return null;
-      } finally {
-        outputGenerationPromiseRef.current = null;
-      }
-    })();
-    outputGenerationPromiseRef.current = generationPromise;
-    return generationPromise;
   }
 
   function updateParameterValue(name: string, value: string) {

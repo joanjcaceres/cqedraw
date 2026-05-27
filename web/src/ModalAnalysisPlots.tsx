@@ -222,12 +222,12 @@ function AnalysisChartPlaceholder({
   yLabel: string;
 }) {
   const viewWidth = 760;
-  const viewHeight = 280;
+  const viewHeight = 340;
   const plot = {
-    bottom: 238,
+    bottom: 294,
     left: 96,
     right: 736,
-    top: 16,
+    top: 18,
   };
   const xTicks = [0, 25, 50, 75, 100];
   const yTicks = [0, 0.25, 0.5, 0.75, 1];

@@ -117,12 +117,12 @@ export function AnalysisLineChart({
       : chartTicks(displayBounds.minX, displayBounds.maxX);
   const yTicks = chartTicks(displayBounds.minY, displayBounds.maxY);
   const viewWidth = 760;
-  const viewHeight = 280;
+  const viewHeight = 340;
   const plot = {
-    bottom: 238,
+    bottom: 294,
     left: 96,
     right: 736,
-    top: 16,
+    top: 18,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
@@ -416,7 +416,6 @@ export function AnalysisLineChart({
   return (
     <div className="analysis-chart" data-testid={testId}>
       <div className="analysis-chart-heading">
-        <h3>{title}</h3>
         <div className="analysis-chart-toolbar">
           {seriesControls}
           {valueModeControl}

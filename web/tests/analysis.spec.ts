@@ -209,6 +209,7 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
     throw new Error("Expected parameter controls, ZPF plot, and viewport boxes.");
   }
   expect(zpfPlotAreaBox.y).toBeLessThanOrEqual(parameterGridBox.y + 110);
+  expect(zpfPlotAreaBox.height).toBeGreaterThan(240);
   expect(zpfPlotAreaBox.y + zpfPlotAreaBox.height).toBeLessThanOrEqual(
     viewport.height - 12,
   );

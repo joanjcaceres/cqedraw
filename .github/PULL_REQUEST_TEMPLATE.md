@@ -21,12 +21,12 @@ Compatibility notes:
 
 ## Checks
 
-- [ ] `pytest`
-- [ ] `cqedraw --version`
-- [ ] `npm run typecheck` from `web/`
-- [ ] `npm test` from `web/`
-- [ ] `npm run build` from `web/`
-- [ ] `npm run test:e2e` from `web/`
+CI is path-aware. Run the checks for the touched surface and mark unrelated
+checks as not applicable.
+
+- [ ] Python checks: `pytest` and `cqedraw --version`
+- [ ] Web checks: `npm run typecheck`, `npm test`, `npm run build`, and `npm run test:e2e` from `web/`
+- [ ] Not applicable; reason:
 - [ ] Not run; reason:
 
 ## Screenshots Or Notes

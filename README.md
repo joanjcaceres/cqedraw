@@ -3,8 +3,8 @@
 cQEDraw is an application for drawing superconducting circuit graphs and
 generating sparse capacitance and inverse-inductance matrix snippets for
 Black Box Quantization workflows. The browser app is the primary interface;
-the standalone Tkinter desktop app remains available as a beta/maintenance
-interface.
+new feature work and routine refactors target the web app. The standalone
+Tkinter desktop app remains available as a legacy maintenance-only interface.
 
 It is the companion GUI matrix-builder for
 [`sccircuits`](https://github.com/joanjcaceres/sccircuits): use the app to draw
@@ -54,10 +54,11 @@ This is the lowest-friction path once GitHub Pages deployment is enabled:
 The web app runs the same Python/SymPy output logic in the browser through
 Pyodide. It does not require Python, Pixi, or a terminal on the user's machine.
 
-### macOS And Windows
+### macOS And Windows Legacy Desktop Builds
 
-This path remains available for users who prefer a local desktop app. The web
-app is the primary interface for new analysis and plotting features.
+This path remains available for users who prefer a local desktop app, but the
+desktop app is legacy maintenance-only. Use the web app for the actively
+maintained interface, including new analysis and plotting features.
 
 1. Open the latest release: https://github.com/joanjcaceres/cqedraw/releases/latest
 2. Download `cQEDraw-macOS.zip` on macOS or `cQEDraw-Windows.zip` on Windows.
@@ -281,3 +282,24 @@ npm run test:e2e
 The web app is deployed to GitHub Pages by `.github/workflows/pages.yml` after
 changes land on `main`. The repository's Pages source must be set to GitHub
 Actions once in the GitHub settings.
+
+### Support And CI Policy
+
+The web app is the primary product surface. New UI features, analysis UX work,
+and maintainability refactors should target `web/` unless a change is needed to
+preserve shared matrix-output behavior.
+
+The Python desktop app is legacy maintenance-only. Keep it loadable and avoid
+breaking existing Python tests, but do not start broad desktop refactors for new
+web functionality. Shared Python modules such as `cqedraw/core.py` and
+`cqedraw/web_bridge.py` still matter because the web app uses them through
+Pyodide.
+
+Pull-request CI is path-aware:
+
+- Web changes run the web typecheck, unit tests, build, and Playwright suite.
+- Python, desktop, packaging, or Python-test changes run the Python test matrix.
+- Shared Python output changes also run the web checks because they can affect
+  browser-generated matrices.
+- Documentation-only PRs may run only the CI policy summary.
+- Pushes to `main` run both Python and web checks.

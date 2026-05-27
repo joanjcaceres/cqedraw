@@ -6,8 +6,50 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      web: ${{ steps.filter.outputs.web }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_python=false
+          run_web=false
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            run_python=true
+            run_web=true
+          else
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+
+            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/release\.yml|pyproject\.toml|scripts/|cqedraw/|tests/)'; then
+              run_python=true
+            fi
+
+            if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|\.github/workflows/pages\.yml|web/|cqedraw/(core|web_bridge|__init__)\.py|pyproject\.toml)'; then
+              run_web=true
+            fi
+          fi
+
+          echo "python=$run_python" >> "$GITHUB_OUTPUT"
+          echo "web=$run_web" >> "$GITHUB_OUTPUT"
+
   python-test:
     name: Python test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,6 +76,8 @@ jobs:
 
   web-test:
     name: Web test
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -73,3 +117,16 @@ jobs:
 
       - name: Run web browser tests
         run: npm run test:e2e
+
+  ci-summary:
+    name: CI policy summary
+    needs: [changes, python-test, web-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize path-aware CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Python checks requested: ${{ needs.changes.outputs.python }}"
+          echo "Web checks requested: ${{ needs.changes.outputs.web }}"

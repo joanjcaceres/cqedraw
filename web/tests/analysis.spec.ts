@@ -139,6 +139,7 @@ test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
 test("uses a trace selector for many Josephson phase ZPF traces", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1231, height: 675 });
   await page.goto("/");
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -199,6 +200,18 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
     .toBe(true);
   const traceSelect = page.getByTestId("zpf-mode-plot-trace-select");
   await expect(traceSelect).toBeVisible();
+  const parameterGridBox = await page.getByTestId("parameter-values").boundingBox();
+  const zpfPlotAreaBox = await page
+    .getByTestId("zpf-mode-plot-plot-area")
+    .boundingBox();
+  const viewport = page.viewportSize();
+  if (!parameterGridBox || !zpfPlotAreaBox || !viewport) {
+    throw new Error("Expected parameter controls, ZPF plot, and viewport boxes.");
+  }
+  expect(zpfPlotAreaBox.y).toBeLessThanOrEqual(parameterGridBox.y + 110);
+  expect(zpfPlotAreaBox.y + zpfPlotAreaBox.height).toBeLessThanOrEqual(
+    viewport.height - 12,
+  );
   await expect(traceSelect).not.toHaveValue("all");
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(1);
 

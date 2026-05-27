@@ -634,6 +634,7 @@
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .analysis-chart-axis-mode,
@@ -831,6 +832,12 @@
   stroke-width: 1.5;
 }
 
+.analysis-chart-hit-target {
+  cursor: pointer;
+  fill: transparent;
+  pointer-events: all;
+}
+
 .analysis-chart-tooltip {
   pointer-events: none;
 }
@@ -883,13 +890,15 @@
 
 .analysis-chart-trace-controls {
   align-items: center;
-  background: #f8fbff;
-  border: 1px solid #d7e1ea;
+  background: transparent;
+  border: 0;
   border-radius: 8px;
   display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 1.2fr);
-  padding: 7px 8px;
+  flex: 1 1 440px;
+  gap: 6px;
+  grid-template-columns: minmax(170px, 1fr) auto minmax(120px, 0.9fr);
+  min-width: min(100%, 440px);
+  padding: 0;
 }
 
 .analysis-chart-trace-actions {

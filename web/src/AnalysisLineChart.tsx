@@ -117,12 +117,12 @@ export function AnalysisLineChart({
       : chartTicks(displayBounds.minX, displayBounds.maxX);
   const yTicks = chartTicks(displayBounds.minY, displayBounds.maxY);
   const viewWidth = 760;
-  const viewHeight = 370;
+  const viewHeight = 280;
   const plot = {
-    bottom: 320,
+    bottom: 238,
     left: 96,
     right: 736,
-    top: 22,
+    top: 16,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
@@ -205,6 +205,14 @@ export function AnalysisLineChart({
   function changeYAxisMode(mode: ChartAxisMode) {
     setYAxisMode(mode);
     setZoomDomain(null);
+  }
+
+  function showPointTooltip(point: ChartPoint, seriesLabel: string, color: string) {
+    setHoveredPoint({
+      color,
+      point,
+      seriesLabel,
+    });
   }
 
   function updateManualYMin(value: string) {
@@ -410,6 +418,7 @@ export function AnalysisLineChart({
       <div className="analysis-chart-heading">
         <h3>{title}</h3>
         <div className="analysis-chart-toolbar">
+          {seriesControls}
           {valueModeControl}
           <div
             aria-label={`${title} y-axis scale`}
@@ -520,7 +529,6 @@ export function AnalysisLineChart({
           ) : null}
         </div>
       ) : null}
-      {seriesControls}
       <svg
         aria-label={title}
         className={svgClassName || undefined}
@@ -741,17 +749,55 @@ export function AnalysisLineChart({
                     cy={y}
                     fill={color}
                     onPointerEnter={() =>
-                      setHoveredPoint({
-                        color,
-                        point,
-                        seriesLabel: entry.label,
-                      })
+                      showPointTooltip(point, entry.label, color)
+                    }
+                    onPointerMove={() =>
+                      showPointTooltip(point, entry.label, color)
                     }
                     r="4"
                   />
                 ))}
               </g>
             );
+          })}
+        </g>
+        <g className="analysis-chart-hit-targets">
+          {visibleSeries.map((entry) => {
+            const color = chartColor(
+              Math.max(
+                0,
+                populatedSeries.findIndex(
+                  (seriesEntry) => seriesEntry.key === entry.key,
+                ),
+              ),
+            );
+            return entry.points.map((point, pointIndex) => {
+              const x = xScale(point.x);
+              const y = yScale(point.y);
+              if (
+                x < plot.left ||
+                x > plot.right ||
+                y < plot.top ||
+                y > plot.bottom
+              ) {
+                return null;
+              }
+              return (
+                <circle
+                  key={`${entry.key}-${pointIndex}-hit-target`}
+                  className="analysis-chart-hit-target"
+                  cx={x}
+                  cy={y}
+                  onPointerEnter={() =>
+                    showPointTooltip(point, entry.label, color)
+                  }
+                  onPointerMove={() =>
+                    showPointTooltip(point, entry.label, color)
+                  }
+                  r="10"
+                />
+              );
+            });
           })}
         </g>
         {hoveredPoint && tooltipPosition ? (

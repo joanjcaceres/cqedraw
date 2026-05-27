@@ -222,12 +222,12 @@ function AnalysisChartPlaceholder({
   yLabel: string;
 }) {
   const viewWidth = 760;
-  const viewHeight = 370;
+  const viewHeight = 280;
   const plot = {
-    bottom: 320,
+    bottom: 238,
     left: 96,
     right: 736,
-    top: 22,
+    top: 16,
   };
   const xTicks = [0, 25, 50, 75, 100];
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
@@ -308,7 +308,7 @@ function AnalysisChartPlaceholder({
           className="analysis-chart-axis-label"
           textAnchor="middle"
           x={(plot.left + plot.right) / 2}
-          y={354}
+          y={viewHeight - 6}
         >
           {xLabel}
         </text>

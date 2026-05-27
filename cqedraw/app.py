@@ -1,7 +1,5 @@
 import copy
-import json
 import tkinter as tk
-from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from types import SimpleNamespace
 from typing import Dict, Optional, Tuple
@@ -24,6 +22,7 @@ from .core import (
 )
 from .desktop_dialogs import EdgeDialog, ToolTip
 from .desktop_models import Edge, EdgeParameters, Node
+from . import desktop_project_state
 
 
 class CircuitGraphApp:
@@ -1339,260 +1338,42 @@ class CircuitGraphApp:
         )
 
     def _snapshot_state(self) -> dict:
-        nodes_snapshot = [
-            {
-                "identifier": node_id,
-                "name": node.name,
-                "x": node.x,
-                "y": node.y,
-            }
-            for node_id, node in sorted(self.nodes.items())
-        ]
-        edges_snapshot = [
-            {
-                "identifier": edge_id,
-                "nodes": list(edge.nodes),
-                "capacitance_expr": edge.capacitance_expr,
-                "capacitance_text": edge.capacitance_text,
-                "inductance_expr": edge.inductance_expr,
-                "inductance_text": edge.inductance_text,
-                "l_inverse_expr": edge.l_inverse_expr,
-                "josephson_inductance_expr": edge.josephson_inductance_expr,
-                "josephson_inductance_text": edge.josephson_inductance_text,
-                "josephson_phase_sign": edge.josephson_phase_sign,
-                "is_ground": edge.is_ground,
-                "ground_offset_x": edge.ground_offset_x,
-                "ground_offset_y": edge.ground_offset_y,
-            }
-            for edge_id, edge in sorted(self.edges.items())
-        ]
-        return {
-            "node_counter": self.node_counter,
-            "edge_counter": self.edge_counter,
-            "view_scale": self.view_scale,
-            "nodes": nodes_snapshot,
-            "edges": edges_snapshot,
-            "selected_nodes": sorted(self.selected_nodes),
-            "focus_node": self.focus_node,
-            "selected_node": self.selected_node,
-            "mode": self.mode,
-        }
+        return desktop_project_state.snapshot_state(self)
 
     def _project_content_snapshot(self, snapshot: Optional[dict] = None) -> dict:
-        if snapshot is None:
-            snapshot = self._snapshot_state()
-        return {
-            "nodes": copy.deepcopy(snapshot.get("nodes", [])),
-            "edges": copy.deepcopy(snapshot.get("edges", [])),
-        }
+        return desktop_project_state.project_content_snapshot(self, snapshot)
 
     def _mark_project_clean(self) -> None:
-        self._clean_project_snapshot = self._project_content_snapshot()
-        self._project_dirty = False
+        desktop_project_state.mark_project_clean(self)
 
     def _update_dirty_state(self, snapshot: Optional[dict] = None) -> None:
-        current = self._project_content_snapshot(snapshot)
-        clean = getattr(self, "_clean_project_snapshot", None)
-        if clean is None:
-            self._project_dirty = bool(current["nodes"] or current["edges"])
-            return
-        self._project_dirty = current != clean
+        desktop_project_state.update_dirty_state(self, snapshot)
 
     def _has_unsaved_changes(self) -> bool:
-        self._update_dirty_state()
-        return self._project_dirty
+        return desktop_project_state.has_unsaved_changes(self)
 
     def _restore_state(self, snapshot: dict) -> None:
-        self._history_suspended = True
-        try:
-            self.canvas.delete("all")
-            self.nodes.clear()
-            self.edges.clear()
-            self.node_counter = 0
-            self.edge_counter = 0
-            self.view_scale = snapshot.get("view_scale", 1.0)
-            self.mode = snapshot.get("mode")
-            self.selected_node = snapshot.get("selected_node")
-            self.dragging_node = None
-            self.dragging_ground_edge = None
-            self._node_drag_moved = False
-            self._ground_drag_moved = False
-
-            for node_data in snapshot.get("nodes", []):
-                self._add_node(
-                    node_data["x"],
-                    node_data["y"],
-                    node_data["name"],
-                    silent=True,
-                    forced_id=node_data["identifier"],
-                )
-
-            self.node_counter = snapshot.get("node_counter", self.node_counter)
-
-            for edge_data in snapshot.get("edges", []):
-                params = EdgeParameters(
-                    capacitance_expr=edge_data["capacitance_expr"],
-                    capacitance_text=edge_data["capacitance_text"],
-                    inductance_expr=edge_data["inductance_expr"],
-                    inductance_text=edge_data["inductance_text"],
-                    josephson_inductance_expr=edge_data.get(
-                        "josephson_inductance_expr"
-                    ),
-                    josephson_inductance_text=edge_data.get(
-                        "josephson_inductance_text"
-                    ),
-                    josephson_phase_sign=(
-                        -1
-                        if edge_data.get("josephson_phase_sign", 1) == -1
-                        else 1
-                    ),
-                )
-                if edge_data.get("is_ground"):
-                    self._instantiate_ground_edge(
-                        edge_data["nodes"][0],
-                        params,
-                        offset_x=edge_data.get("ground_offset_x", 0.0),
-                        offset_y=edge_data.get(
-                            "ground_offset_y", self.GROUND_LINE_LENGTH
-                        ),
-                        forced_id=edge_data["identifier"],
-                    )
-                else:
-                    self._instantiate_edge(
-                        edge_data["nodes"][0],
-                        edge_data["nodes"][1],
-                        params,
-                        forced_id=edge_data["identifier"],
-                    )
-
-            self.edge_counter = snapshot.get("edge_counter", self.edge_counter)
-            self.selected_nodes = set(snapshot.get("selected_nodes", []))
-            self.focus_node = snapshot.get("focus_node")
-            self._refresh_all_node_appearances()
-            self._update_scrollregion()
-        finally:
-            self._history_suspended = False
-        self._update_dirty_state()
+        desktop_project_state.restore_state(self, snapshot)
 
     def _expr_to_string(self, expr: Optional[sp.Expr]) -> Optional[str]:
-        if expr is None:
-            return None
-        return sp.srepr(expr)
+        return desktop_project_state.expr_to_string(expr)
 
     def _expr_from_string(self, text: Optional[str]) -> Optional[sp.Expr]:
-        if text in (None, ""):
-            return None
-        try:
-            return sp.sympify(text, evaluate=False)
-        except Exception as exc:  # type: ignore[catching-non-exception]
-            messagebox.showerror(
-                "Load project",
-                f"Failed to parse expression '{text}':\n{exc}",
-                parent=self.root,
-            )
-            return None
+        return desktop_project_state.expr_from_string(
+            text, parent=self.root, messagebox_module=messagebox
+        )
 
     def _push_history(self) -> None:
-        if self._history_suspended:
-            return
-        snapshot = self._snapshot_state()
-        if self.history and snapshot == self.history[-1]:
-            self._update_dirty_state(snapshot)
-            return
-        self.history.append(copy.deepcopy(snapshot))
-        if len(self.history) > 100:
-            self.history = self.history[-100:]
-        self._update_dirty_state(snapshot)
+        desktop_project_state.push_history(self)
 
     def _undo(self) -> None:
-        if len(self.history) <= 1:
-            self._update_status("No actions to undo.")
-            return
-        self.history.pop()
-        snapshot = copy.deepcopy(self.history[-1])
-        self._restore_state(snapshot)
-        self._refresh_all_node_appearances()
-        self._update_dirty_state(snapshot)
-        self._update_status("Action undone.")
+        desktop_project_state.undo(self)
 
     def _save_project(self) -> bool:
-        filename = filedialog.asksaveasfilename(
-            title="Save project",
-            defaultextension=".json",
-            filetypes=[("Circuit project", "*.json"), ("All files", "*.*")],
-            parent=self.root,
-        )
-        if not filename:
-            return False
-
-        snapshot = copy.deepcopy(self._snapshot_state())
-        for edge in snapshot.get("edges", []):
-            edge["capacitance_expr"] = self._expr_to_string(
-                edge.get("capacitance_expr")
-            )
-            edge["inductance_expr"] = self._expr_to_string(edge.get("inductance_expr"))
-            edge["l_inverse_expr"] = self._expr_to_string(edge.get("l_inverse_expr"))
-            edge["josephson_inductance_expr"] = self._expr_to_string(
-                edge.get("josephson_inductance_expr")
-            )
-
-        data = {"version": 2, "state": snapshot}
-        try:
-            Path(filename).write_text(json.dumps(data, indent=2))
-        except OSError as exc:
-            messagebox.showerror(
-                "Save project", f"Could not save file:\n{exc}", parent=self.root
-            )
-            return False
-
-        self._mark_project_clean()
-        self._update_status(f"Project saved to {Path(filename).name}.")
-        return True
+        return desktop_project_state.save_project(self, filedialog, messagebox)
 
     def _load_project(self) -> None:
-        filename = filedialog.askopenfilename(
-            title="Load project",
-            defaultextension=".json",
-            filetypes=[("Circuit project", "*.json"), ("All files", "*.*")],
-            parent=self.root,
-        )
-        if not filename:
-            return
-
-        try:
-            data = json.loads(Path(filename).read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            messagebox.showerror(
-                "Load project", f"Could not load file:\n{exc}", parent=self.root
-            )
-            return
-
-        state = data.get("state", data)
-        state.setdefault("selected_nodes", [])
-        for edge in state.get("edges", []):
-            edge["capacitance_expr"] = self._expr_from_string(
-                edge.get("capacitance_expr")
-            )
-            edge["inductance_expr"] = self._expr_from_string(
-                edge.get("inductance_expr")
-            )
-            edge["l_inverse_expr"] = self._expr_from_string(edge.get("l_inverse_expr"))
-            edge["josephson_inductance_expr"] = self._expr_from_string(
-                edge.get("josephson_inductance_expr")
-            )
-            edge["josephson_inductance_text"] = edge.get(
-                "josephson_inductance_text"
-            )
-            edge["josephson_phase_sign"] = (
-                -1 if edge.get("josephson_phase_sign", 1) == -1 else 1
-            )
-
-        current_snapshot = copy.deepcopy(self._snapshot_state())
-        self._restore_state(state)
-        new_snapshot = copy.deepcopy(self._snapshot_state())
-        self.history = [current_snapshot, new_snapshot]
-        self._mark_project_clean()
-        self._update_status(f"Project loaded from {Path(filename).name}.")
+        desktop_project_state.load_project(self, filedialog, messagebox)
 
     def _edge_label(
         self,

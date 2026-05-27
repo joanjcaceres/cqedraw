@@ -10,10 +10,6 @@ import {
 import {
   addEdge,
   addNode,
-  analyzeConcatenateSelection,
-  concatenatePortPairsForSelection,
-  concatenatePreviewBridgesForSelection,
-  concatenateSelection,
   mergeNodes,
   moveGroundEdge,
   removeEdge,
@@ -21,7 +17,6 @@ import {
   renameNode,
   toggleGround,
   updateEdgeValues,
-  type ConcatenatePortPair,
 } from "./graph";
 import {
   buildParameterInputSpecs,
@@ -77,6 +72,7 @@ import { OutputDrawer } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { useAppShortcuts } from "./useAppShortcuts";
 import { useCanvasViewport } from "./useCanvasViewport";
+import { useConcatenateWorkflow } from "./useConcatenateWorkflow";
 import { useEngineWarmup } from "./useEngineWarmup";
 import { useInlineEdgeEditor } from "./useInlineEdgeEditor";
 import { useOutputGeneration } from "./useOutputGeneration";
@@ -150,10 +146,6 @@ export function App() {
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const { clientRef, engineWarmup, setEngineWarmup } = useEngineWarmup();
-  const [concatenatePreviewPairs, setConcatenatePreviewPairs] = useState<
-    ConcatenatePortPair[]
-  >([]);
-  const [concatenateDialogOpen, setConcatenateDialogOpen] = useState(false);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const {
     canRedo,
@@ -194,6 +186,14 @@ export function App() {
     setPanState(null);
     setMarqueeState(null);
     setGroundDragState(null);
+  }, []);
+  const resetTransientInteractionState = useCallback(() => {
+    setPendingEdgeNodeId(null);
+    setNodeDragState(null);
+    setGroundDragState(null);
+    setPanState(null);
+    setMarqueeState(null);
+    setPastePreview(null);
   }, []);
   const {
     canvasRef,
@@ -265,6 +265,30 @@ export function App() {
     project,
     selectedEdgeId,
     setOutputDrawerOpen,
+  });
+  const {
+    concatenateAnalysis,
+    concatenateDialogOpen,
+    concatenatePreviewBridges,
+    closeConcatenateDialog,
+    concatenatePortPairsForPortCount,
+    concatenateSelectedGraphElements,
+    openConcatenateDialog,
+    setConcatenatePreviewPairs,
+  } = useConcatenateWorkflow({
+    concatenateButtonRef,
+    onResetTransientInteractionState: resetTransientInteractionState,
+    project,
+    projectRef,
+    recordProjectHistory,
+    selectedNodeIds,
+    setEngineStatus,
+    setMode,
+    setOutput,
+    setProjectState,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+    setSelectedNodeIds,
   });
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
@@ -1046,58 +1070,6 @@ export function App() {
     setEngineStatus(`Copied ${clipboard.nodes.length} node(s) to clipboard.`);
   }
 
-  function openConcatenateDialog() {
-    if (selectedNodeIds.length === 0) {
-      setEngineStatus("Select at least one node to concatenate.");
-      return;
-    }
-    setPendingEdgeNodeId(null);
-    setNodeDragState(null);
-    setGroundDragState(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview(null);
-    setConcatenatePreviewPairs(concatenateAnalysis.detectedPairs);
-    setConcatenateDialogOpen(true);
-  }
-
-  function closeConcatenateDialog() {
-    setConcatenatePreviewPairs([]);
-    setConcatenateDialogOpen(false);
-    window.requestAnimationFrame(() => concatenateButtonRef.current?.focus());
-  }
-
-  function concatenateSelectedGraphElements(
-    repeats: number,
-    portPairs: ConcatenatePortPair[],
-  ) {
-    const result = concatenateSelection(projectRef.current, selectedNodeIds, repeats, {
-      portPairs,
-    });
-    closeConcatenateDialog();
-    if (!result) {
-      setEngineStatus("No repeatable nodes were added.");
-      return;
-    }
-
-    recordProjectHistory(projectRef.current);
-    setProjectState(result.project);
-    setSelectedNodeIds(result.nodeIds);
-    setSelectedNodeId(result.nodeIds[result.nodeIds.length - 1] ?? null);
-    setSelectedEdgeId(null);
-    setPendingEdgeNodeId(null);
-    setNodeDragState(null);
-    setGroundDragState(null);
-    setPanState(null);
-    setMarqueeState(null);
-    setPastePreview(null);
-    setMode("select");
-    setOutput(null);
-    setEngineStatus(
-      `Concatenated ${repeats} repeat${repeats === 1 ? "" : "s"}; added ${result.nodeIds.length} node(s).`,
-    );
-  }
-
   function startPastePreview() {
     if (!selectionClipboard) {
       setEngineStatus("Clipboard is empty.");
@@ -1365,14 +1337,6 @@ export function App() {
     ? rectFromPoints(marqueeState.start, marqueeState.current)
     : null;
   const activePasteClipboard = pastePreview ? selectionClipboard : null;
-  const concatenateAnalysis = analyzeConcatenateSelection(project, selectedNodeIds);
-  const concatenatePreviewBridges = concatenateDialogOpen
-    ? concatenatePreviewBridgesForSelection(
-        project,
-        selectedNodeIds,
-        concatenatePreviewPairs,
-      )
-    : [];
 
   return (
     <main className="app-shell">
@@ -1535,9 +1499,7 @@ export function App() {
           analysis={concatenateAnalysis}
           onCancel={closeConcatenateDialog}
           onConfirm={concatenateSelectedGraphElements}
-          onPortCountChange={(portCount) =>
-            concatenatePortPairsForSelection(projectRef.current, selectedNodeIds, portCount)
-          }
+          onPortCountChange={concatenatePortPairsForPortCount}
           onPreviewChange={setConcatenatePreviewPairs}
         />
       ) : null}

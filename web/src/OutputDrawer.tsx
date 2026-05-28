@@ -1,5 +1,16 @@
-import { AlertCircle, Check, Copy, Info, LoaderCircle, X } from "lucide-react";
-import type { Ref } from "react";
+import {
+  AlertCircle,
+  BarChart3,
+  Calculator,
+  Check,
+  Copy,
+  Download,
+  Info,
+  LoaderCircle,
+  Menu,
+  X,
+} from "lucide-react";
+import { useState, type Ref } from "react";
 
 import { type SweepSample } from "./analysis";
 import {
@@ -30,6 +41,7 @@ export type OutputDrawerState =
 
 export function OutputDrawer({
   activeSweepParameters,
+  analysisRunning,
   cachedSweepGridPointCount,
   displayedAnalysis,
   hasGeneratedSnippet,
@@ -39,8 +51,10 @@ export function OutputDrawer({
   onClose,
   onCopySnippet,
   onExportAnalysisCsv,
+  onGenerateOutput,
   onParameterInputModeChange,
   onParameterValueChange,
+  onRunModalAnalysis,
   onSweepConfigChange,
   onSweepSliderChange,
   onSweepSliderInteraction,
@@ -64,6 +78,7 @@ export function OutputDrawer({
   tutorialStep,
 }: {
   activeSweepParameters: string[];
+  analysisRunning: boolean;
   cachedSweepGridPointCount: number;
   displayedAnalysis: ModalAnalysisResult | null;
   hasGeneratedSnippet: boolean;
@@ -73,8 +88,10 @@ export function OutputDrawer({
   onClose: () => void;
   onCopySnippet: () => void;
   onExportAnalysisCsv: () => void;
+  onGenerateOutput: () => void;
   onParameterInputModeChange: (name: string, mode: ParameterInputMode) => void;
   onParameterValueChange: (name: string, value: string) => void;
+  onRunModalAnalysis: () => void;
   onSweepConfigChange: (
     name: string,
     updates: Partial<ParameterSweepConfig>,
@@ -113,6 +130,16 @@ export function OutputDrawer({
         <div className="output-panel-heading">
           <h2>Output</h2>
           <div className="output-panel-actions">
+            <OutputActionMenu
+              analysisRunning={analysisRunning}
+              hasProjectContent={hasProjectContent}
+              onCopySnippet={onCopySnippet}
+              onExportAnalysisCsv={onExportAnalysisCsv}
+              onGenerateOutput={onGenerateOutput}
+              onRunModalAnalysis={onRunModalAnalysis}
+              outputBusy={outputBusy}
+              snippetCopied={snippetCopied}
+            />
             <button
               aria-label="Close output"
               className="output-drawer-close"
@@ -230,6 +257,100 @@ export function OutputDrawer({
         </div>
       </section>
     </aside>
+  );
+}
+
+function OutputActionMenu({
+  analysisRunning,
+  hasProjectContent,
+  onCopySnippet,
+  onExportAnalysisCsv,
+  onGenerateOutput,
+  onRunModalAnalysis,
+  outputBusy,
+  snippetCopied,
+}: {
+  analysisRunning: boolean;
+  hasProjectContent: boolean;
+  onCopySnippet: () => void;
+  onExportAnalysisCsv: () => void;
+  onGenerateOutput: () => void;
+  onRunModalAnalysis: () => void;
+  outputBusy: boolean;
+  snippetCopied: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const analysisDisabled = !hasProjectContent || outputBusy || analysisRunning;
+  const exportDisabled = !hasProjectContent || outputBusy || analysisRunning;
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    action();
+  }
+
+  return (
+    <div className="output-action-menu" data-testid="output-action-menu">
+      <button
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
+        aria-label="Output actions"
+        className="output-action-menu-trigger"
+        onClick={() => setMenuOpen((open) => !open)}
+        title="Output actions"
+        type="button"
+      >
+        <Menu size={14} />
+        Actions
+      </button>
+      {menuOpen ? (
+        <div
+          aria-label="Output actions"
+          className="output-action-menu-list"
+          role="menu"
+        >
+          <button
+            disabled={!hasProjectContent || outputBusy}
+            onClick={() => runMenuAction(onGenerateOutput)}
+            role="menuitem"
+            type="button"
+          >
+            <Calculator size={14} />
+            Prepare matrices
+          </button>
+          <button
+            disabled={analysisDisabled}
+            onClick={() => runMenuAction(onRunModalAnalysis)}
+            role="menuitem"
+            type="button"
+          >
+            {analysisRunning ? (
+              <LoaderCircle size={14} />
+            ) : (
+              <BarChart3 size={14} />
+            )}
+            Run analysis
+          </button>
+          <button
+            disabled={!hasProjectContent || outputBusy}
+            onClick={() => runMenuAction(onCopySnippet)}
+            role="menuitem"
+            type="button"
+          >
+            {snippetCopied ? <Check size={14} /> : <Copy size={14} />}
+            Copy matrices
+          </button>
+          <button
+            disabled={exportDisabled}
+            onClick={() => runMenuAction(onExportAnalysisCsv)}
+            role="menuitem"
+            type="button"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

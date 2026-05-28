@@ -83,3 +83,45 @@ test("shows empty and failed Output states inside the drawer", async ({ page }) 
     "Simulated backend failure",
   );
 });
+
+test("groups Output actions and triggers generation and analysis", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await dismissTutorialPromptIfVisible(page);
+
+  const canvas = page.getByTestId("canvas");
+  await page.getByRole("button", { name: "Node" }).click();
+  await canvas.click({ position: { x: 240, y: 220 } });
+
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("cap-input").fill("Cj");
+  await page.getByTestId("jj-ind-input").fill("Lj");
+
+  await page.getByRole("button", { exact: true, name: "Output" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Generated 1 x 1",
+    { timeout: 60_000 },
+  );
+
+  await page.getByRole("button", { name: "Output actions" }).click();
+  await page.getByRole("menuitem", { name: "Prepare matrices" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Generated 1 x 1",
+    { timeout: 60_000 },
+  );
+
+  await page.getByLabel("Value for Cj").fill("80e-15");
+  await page.getByLabel("Value for Lj").fill("8e-9");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByRole("button", { name: "Output actions" }).click();
+  await page.getByRole("menuitem", { name: "Run analysis" }).click();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Computed 1 mode(s)",
+    { timeout: 60_000 },
+  );
+});

@@ -1,6 +1,7 @@
 @import "./styles/base.css";
 @import "./styles/layout.css";
 @import "./styles/canvas.css";
+@import "./styles/output-actions.css";
 @import "./styles/output-analysis.css";
 @import "./styles/output-state.css";
 @import "./styles/tutorial.css";

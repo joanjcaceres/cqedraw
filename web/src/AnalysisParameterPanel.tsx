@@ -40,6 +40,7 @@ export function AnalysisParameterPanel({
   analysisRunning,
   cachedSweepGridPointCount,
   disabled,
+  disabledMessage,
   fixedMissingParameters,
   inputError,
   inputModes,
@@ -65,6 +66,7 @@ export function AnalysisParameterPanel({
   analysisRunning: boolean;
   cachedSweepGridPointCount: number;
   disabled: boolean;
+  disabledMessage?: string;
   fixedMissingParameters: string[];
   inputError: string | null;
   inputModes: Record<string, ParameterInputMode>;
@@ -127,7 +129,9 @@ export function AnalysisParameterPanel({
         </div>
       </div>
       {disabled ? (
-        <p data-testid="parameter-empty">Open Output to prepare matrices for analysis.</p>
+        <p data-testid="parameter-empty">
+          {disabledMessage ?? "Open Output to prepare matrices for analysis."}
+        </p>
       ) : parameters.length === 0 ? (
         <p data-testid="parameter-empty">No parameters.</p>
       ) : (

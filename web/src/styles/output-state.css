@@ -1,0 +1,74 @@
+.output-state-card {
+  align-items: flex-start;
+  background: #f4f8fc;
+  border: 1px solid #d3dfeb;
+  border-radius: 8px;
+  color: #26384e;
+  display: flex;
+  gap: 9px;
+  padding: 9px 10px;
+}
+
+.output-state-card-error {
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #8f1d1d;
+}
+
+.output-state-icon {
+  align-items: center;
+  color: #375b7d;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.output-state-card-error .output-state-icon {
+  color: #b42318;
+}
+
+.output-state-card-warming .output-state-icon svg,
+.output-state-card-generating .output-state-icon svg {
+  animation: output-state-spin 1s linear infinite;
+}
+
+.output-state-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.output-state-copy strong {
+  font-size: 12px;
+}
+
+.output-state-copy span {
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.output-results-placeholder {
+  background: #f7fafc;
+  border: 1px dashed #c7d5e3;
+  border-radius: 8px;
+  color: #516277;
+  font-size: 12px;
+  min-height: 92px;
+  padding: 12px;
+}
+
+@keyframes output-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .output-state-card-warming .output-state-icon svg,
+  .output-state-card-generating .output-state-icon svg {
+    animation: none;
+  }
+}

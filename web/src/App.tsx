@@ -39,7 +39,7 @@ import {
   matrixNodeLabelMap,
 } from "./edgeGeometry";
 import { InspectorPanel } from "./InspectorPanel";
-import { OutputDrawer } from "./OutputDrawer";
+import { OutputDrawer, type OutputDrawerState } from "./OutputDrawer";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { useAppShortcuts } from "./useAppShortcuts";
 import {
@@ -90,6 +90,10 @@ export function App() {
   );
   const [analysisRunning, setAnalysisRunning] = useState(false);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
+  const [outputGenerationError, setOutputGenerationError] = useState<string | null>(
+    null,
+  );
+  const [outputGenerationPending, setOutputGenerationPending] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Ready.");
   const { clientRef, engineWarmup, setEngineWarmup } = useEngineWarmup();
   const [snippetCopied, setSnippetCopied] = useState(false);
@@ -275,6 +279,47 @@ export function App() {
   });
   const hasProjectContent =
     project.state.nodes.length > 0 || project.state.edges.length > 0;
+  const outputDrawerState = useMemo<OutputDrawerState>(() => {
+    if (output) {
+      return null;
+    }
+    if (!hasProjectContent) {
+      return {
+        kind: "empty",
+        title: "No project content",
+        message: "Add nodes or edges before preparing matrices.",
+      };
+    }
+    if (outputGenerationError) {
+      return {
+        kind: "error",
+        title: "Output generation failed",
+        message: outputGenerationError,
+      };
+    }
+    if (outputGenerationPending || outputDrawerOpen) {
+      if (engineWarmup.base === "ready") {
+        return {
+          kind: "generating",
+          title: "Generating matrices",
+          message: "Preparing C and L_inv for the current circuit.",
+        };
+      }
+      return {
+        kind: "warming",
+        title: "Starting Python engine",
+        message: "Loading the Python backend and preparing matrices.",
+      };
+    }
+    return null;
+  }, [
+    engineWarmup.base,
+    hasProjectContent,
+    output,
+    outputDrawerOpen,
+    outputGenerationError,
+    outputGenerationPending,
+  ]);
   const canStartNewProject =
     hasProjectContent || hasUnsavedChanges || output !== null || canUndo || canRedo;
   const {
@@ -365,6 +410,8 @@ export function App() {
     setModalAnalysis,
     setOutput,
     setOutputDrawerOpen,
+    setOutputGenerationError,
+    setOutputGenerationPending,
     setSnippetCopied,
   });
 
@@ -759,6 +806,7 @@ export function App() {
             preserveOutputPanelScroll();
           }}
           output={output}
+          outputDrawerState={outputDrawerState}
           outputPanelRef={outputPanelRef}
           outputParameters={outputParameters}
           parameterInputError={parameterInputError}

@@ -30,7 +30,6 @@ export type OutputDrawerState =
 
 export function OutputDrawer({
   activeSweepParameters,
-  analysisRunning,
   cachedSweepGridPointCount,
   displayedAnalysis,
   hasGeneratedSnippet,
@@ -42,7 +41,6 @@ export function OutputDrawer({
   onExportAnalysisCsv,
   onParameterInputModeChange,
   onParameterValueChange,
-  onRunModalAnalysis,
   onSweepConfigChange,
   onSweepSliderChange,
   onSweepSliderInteraction,
@@ -66,7 +64,6 @@ export function OutputDrawer({
   tutorialStep,
 }: {
   activeSweepParameters: string[];
-  analysisRunning: boolean;
   cachedSweepGridPointCount: number;
   displayedAnalysis: ModalAnalysisResult | null;
   hasGeneratedSnippet: boolean;
@@ -78,7 +75,6 @@ export function OutputDrawer({
   onExportAnalysisCsv: () => void;
   onParameterInputModeChange: (name: string, mode: ParameterInputMode) => void;
   onParameterValueChange: (name: string, value: string) => void;
-  onRunModalAnalysis: () => void;
   onSweepConfigChange: (
     name: string,
     updates: Partial<ParameterSweepConfig>,
@@ -168,17 +164,16 @@ export function OutputDrawer({
           <JosephsonBranchSummary branches={output?.josephson_branches ?? []} />
         </div>
         <div className="output-section output-section-analysis">
-          <div className="output-section-heading">
-            <div>
-              <h3>Frequencies and phase ZPF</h3>
-              <p>Analysis runs automatically when parameter values are complete.</p>
-            </div>
-          </div>
           <div className="analysis-workspace" data-testid="analysis-workspace">
             <div className="analysis-controls">
+              <div className="output-section-heading analysis-section-heading">
+                <div>
+                  <h3>Frequencies and phase ZPF</h3>
+                  <p>Analysis runs automatically when parameter values are complete.</p>
+                </div>
+              </div>
               <AnalysisParameterPanel
                 activeSweepParameters={activeSweepParameters}
-                analysisRunning={analysisRunning}
                 cachedSweepGridPointCount={cachedSweepGridPointCount}
                 disabled={!output}
                 disabledMessage={
@@ -190,7 +185,6 @@ export function OutputDrawer({
                 inputError={parameterInputError}
                 inputModes={parameterInputModes}
                 missingParameters={missingParameterValues}
-                onAnalyze={onRunModalAnalysis}
                 onInputModeChange={onParameterInputModeChange}
                 onParameterChange={onParameterValueChange}
                 onRangeChange={onSweepConfigChange}

@@ -22,6 +22,7 @@ import { formatModalNumber } from "./csvExport";
 import { clamp } from "./viewBox";
 
 export function AnalysisLineChart({
+  plotSelectorControl,
   referenceYBoundsForSeries,
   series,
   seriesSelectThreshold = 6,
@@ -31,6 +32,7 @@ export function AnalysisLineChart({
   xLabel,
   yLabel,
 }: {
+  plotSelectorControl?: ReactNode;
   referenceYBoundsForSeries?: (seriesKeys: string[]) => ChartYBounds | null;
   series: ChartSeries[];
   seriesSelectThreshold?: number;
@@ -117,12 +119,12 @@ export function AnalysisLineChart({
       : chartTicks(displayBounds.minX, displayBounds.maxX);
   const yTicks = chartTicks(displayBounds.minY, displayBounds.maxY);
   const viewWidth = 760;
-  const viewHeight = 370;
+  const viewHeight = 340;
   const plot = {
-    bottom: 320,
+    bottom: 294,
     left: 96,
     right: 736,
-    top: 22,
+    top: 18,
   };
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
@@ -205,6 +207,14 @@ export function AnalysisLineChart({
   function changeYAxisMode(mode: ChartAxisMode) {
     setYAxisMode(mode);
     setZoomDomain(null);
+  }
+
+  function showPointTooltip(point: ChartPoint, seriesLabel: string, color: string) {
+    setHoveredPoint({
+      color,
+      point,
+      seriesLabel,
+    });
   }
 
   function updateManualYMin(value: string) {
@@ -408,82 +418,87 @@ export function AnalysisLineChart({
   return (
     <div className="analysis-chart" data-testid={testId}>
       <div className="analysis-chart-heading">
-        <h3>{title}</h3>
         <div className="analysis-chart-toolbar">
-          {valueModeControl}
-          <div
-            aria-label={`${title} y-axis scale`}
-            className="analysis-chart-axis-mode"
-            role="group"
-          >
-            <button
-              aria-pressed={effectiveYAxisMode === "auto"}
-              data-testid={`${testId}-axis-auto`}
-              onClick={() => changeYAxisMode("auto")}
-              type="button"
-            >
-              Auto
-            </button>
-            <button
-              aria-pressed={effectiveYAxisMode === "fixed"}
-              data-testid={`${testId}-axis-fixed`}
-              disabled={!hasReferenceY}
-              onClick={() => changeYAxisMode("fixed")}
-              title={
-                hasReferenceY
-                  ? "Use cached sweep points for the y-axis"
-                  : "Run a sweep to use cached points for the y-axis"
-              }
-              type="button"
-            >
-              Fixed
-            </button>
-            <button
-              aria-pressed={effectiveYAxisMode === "manual"}
-              data-testid={`${testId}-axis-manual`}
-              onClick={() => changeYAxisMode("manual")}
-              type="button"
-            >
-              Manual
-            </button>
+          <div className="analysis-chart-secondary-controls">
+            {valueModeControl}
+            <div className="analysis-chart-nav">
+              <button
+                aria-label={`${title} box zoom`}
+                aria-pressed={interactionMode === "boxZoom"}
+                data-testid={`${testId}-box-zoom`}
+                onClick={() => toggleInteractionMode("boxZoom")}
+                title="Drag a region to zoom"
+                type="button"
+              >
+                <BoxSelect size={14} />
+              </button>
+              <button
+                aria-label={`${title} zoom in`}
+                data-testid={`${testId}-zoom-in`}
+                onClick={() => zoomChart(0.72)}
+                type="button"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                aria-label={`${title} zoom out`}
+                data-testid={`${testId}-zoom-out`}
+                onClick={() => zoomChart(1.32)}
+                type="button"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <button
+                aria-label={`${title} reset view`}
+                data-testid={`${testId}-reset-view`}
+                disabled={!zoomDomain}
+                onClick={() => setZoomDomain(null)}
+                type="button"
+              >
+                <Maximize2 size={14} />
+              </button>
+            </div>
           </div>
-          <div className="analysis-chart-nav">
-            <button
-              aria-label={`${title} box zoom`}
-              aria-pressed={interactionMode === "boxZoom"}
-              data-testid={`${testId}-box-zoom`}
-              onClick={() => toggleInteractionMode("boxZoom")}
-              title="Drag a region to zoom"
-              type="button"
+          <div className="analysis-chart-primary-controls">
+            {plotSelectorControl}
+            <div
+              aria-label={`${title} y-axis scale`}
+              className="analysis-chart-axis-mode"
+              role="group"
             >
-              <BoxSelect size={14} />
-            </button>
-            <button
-              aria-label={`${title} zoom in`}
-              data-testid={`${testId}-zoom-in`}
-              onClick={() => zoomChart(0.72)}
-              type="button"
-            >
-              <ZoomIn size={14} />
-            </button>
-            <button
-              aria-label={`${title} zoom out`}
-              data-testid={`${testId}-zoom-out`}
-              onClick={() => zoomChart(1.32)}
-              type="button"
-            >
-              <ZoomOut size={14} />
-            </button>
-            <button
-              aria-label={`${title} reset view`}
-              data-testid={`${testId}-reset-view`}
-              disabled={!zoomDomain}
-              onClick={() => setZoomDomain(null)}
-              type="button"
-            >
-              <Maximize2 size={14} />
-            </button>
+              <button
+                aria-pressed={effectiveYAxisMode === "auto"}
+                data-testid={`${testId}-axis-auto`}
+                onClick={() => changeYAxisMode("auto")}
+                type="button"
+              >
+                Auto
+              </button>
+              <button
+                aria-pressed={effectiveYAxisMode === "fixed"}
+                data-testid={`${testId}-axis-fixed`}
+                disabled={!hasReferenceY}
+                onClick={() => changeYAxisMode("fixed")}
+                title={
+                  hasReferenceY
+                    ? "Use cached sweep points for the y-axis"
+                    : "Run a sweep to use cached points for the y-axis"
+                }
+                type="button"
+              >
+                Fixed
+              </button>
+              <button
+                aria-pressed={effectiveYAxisMode === "manual"}
+                data-testid={`${testId}-axis-manual`}
+                onClick={() => changeYAxisMode("manual")}
+                type="button"
+              >
+                Manual
+              </button>
+            </div>
           </div>
+          {seriesControls}
         </div>
       </div>
       {effectiveYAxisMode === "manual" ? (
@@ -520,7 +535,6 @@ export function AnalysisLineChart({
           ) : null}
         </div>
       ) : null}
-      {seriesControls}
       <svg
         aria-label={title}
         className={svgClassName || undefined}
@@ -741,17 +755,55 @@ export function AnalysisLineChart({
                     cy={y}
                     fill={color}
                     onPointerEnter={() =>
-                      setHoveredPoint({
-                        color,
-                        point,
-                        seriesLabel: entry.label,
-                      })
+                      showPointTooltip(point, entry.label, color)
+                    }
+                    onPointerMove={() =>
+                      showPointTooltip(point, entry.label, color)
                     }
                     r="4"
                   />
                 ))}
               </g>
             );
+          })}
+        </g>
+        <g className="analysis-chart-hit-targets">
+          {visibleSeries.map((entry) => {
+            const color = chartColor(
+              Math.max(
+                0,
+                populatedSeries.findIndex(
+                  (seriesEntry) => seriesEntry.key === entry.key,
+                ),
+              ),
+            );
+            return entry.points.map((point, pointIndex) => {
+              const x = xScale(point.x);
+              const y = yScale(point.y);
+              if (
+                x < plot.left ||
+                x > plot.right ||
+                y < plot.top ||
+                y > plot.bottom
+              ) {
+                return null;
+              }
+              return (
+                <circle
+                  key={`${entry.key}-${pointIndex}-hit-target`}
+                  className="analysis-chart-hit-target"
+                  cx={x}
+                  cy={y}
+                  onPointerEnter={() =>
+                    showPointTooltip(point, entry.label, color)
+                  }
+                  onPointerMove={() =>
+                    showPointTooltip(point, entry.label, color)
+                  }
+                  r="10"
+                />
+              );
+            });
           })}
         </g>
         {hoveredPoint && tooltipPosition ? (

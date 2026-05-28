@@ -42,7 +42,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     true,
   );
   await expect(page.getByTestId("analysis-plot-tabs")).toBeVisible();
-  await expect(page.getByTestId("zpf-mode-plot")).toHaveCount(0);
+  await expect(page.getByTestId("zpf-mode-plot")).toBeHidden();
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByTestId("zpf-mode-plot-zero-line")).toHaveCount(1);
@@ -132,6 +132,17 @@ test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const plotTabsBox = await page.getByTestId("analysis-plot-tabs").boundingBox();
+  const frequencyAxisBox = await page
+    .getByTestId("frequency-mode-plot-axis-auto")
+    .boundingBox();
+  if (!plotTabsBox || !frequencyAxisBox) {
+    throw new Error("Expected plot tabs and frequency axis controls.");
+  }
+  expect(Math.abs(plotTabsBox.y - frequencyAxisBox.y)).toBeLessThanOrEqual(8);
+  expect(plotTabsBox.x + plotTabsBox.width).toBeLessThanOrEqual(
+    frequencyAxisBox.x + 1,
+  );
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
 });
@@ -139,6 +150,7 @@ test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
 test("uses a trace selector for many Josephson phase ZPF traces", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1231, height: 675 });
   await page.goto("/");
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -180,9 +192,30 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const frequencyPlotTabsBox = await page
+    .getByTestId("analysis-plot-tabs")
+    .boundingBox();
   await selectAnalysisPlotTab(page, "Phase ZPF");
   const zpfChart = page.getByTestId("zpf-mode-plot");
   await expect(zpfChart).toBeVisible({ timeout: 60_000 });
+  const zpfPlotTabsBox = await page
+    .getByTestId("analysis-plot-tabs")
+    .boundingBox();
+  const zpfAxisBox = await page
+    .getByTestId("zpf-mode-plot-axis-auto")
+    .boundingBox();
+  if (!frequencyPlotTabsBox || !zpfPlotTabsBox || !zpfAxisBox) {
+    throw new Error("Expected stable plot tabs and ZPF axis controls.");
+  }
+  expect(Math.abs(zpfPlotTabsBox.x - frequencyPlotTabsBox.x)).toBeLessThanOrEqual(
+    4,
+  );
+  expect(Math.abs(zpfPlotTabsBox.y - frequencyPlotTabsBox.y)).toBeLessThanOrEqual(
+    4,
+  );
+  expect(zpfPlotTabsBox.x + zpfPlotTabsBox.width).toBeLessThanOrEqual(
+    zpfAxisBox.x + 1,
+  );
   const modalTable = page.getByTestId("modal-analysis");
   await expect(modalTable.locator("summary")).toContainText("7 modes");
   await expect(modalTable.locator("summary")).toContainText("7 JJ columns");
@@ -199,11 +232,32 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
     .toBe(true);
   const traceSelect = page.getByTestId("zpf-mode-plot-trace-select");
   await expect(traceSelect).toBeVisible();
+  const parameterGridBox = await page.getByTestId("parameter-values").boundingBox();
+  const zpfPlotAreaBox = await page
+    .getByTestId("zpf-mode-plot-plot-area")
+    .boundingBox();
+  const viewport = page.viewportSize();
+  if (!parameterGridBox || !zpfPlotAreaBox || !viewport) {
+    throw new Error("Expected parameter controls, ZPF plot, and viewport boxes.");
+  }
+  expect(zpfPlotAreaBox.y).toBeLessThanOrEqual(parameterGridBox.y + 110);
+  expect(zpfPlotAreaBox.height).toBeGreaterThan(240);
+  expect(zpfPlotAreaBox.y + zpfPlotAreaBox.height).toBeLessThanOrEqual(
+    viewport.height - 12,
+  );
   await expect(traceSelect).not.toHaveValue("all");
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(1);
 
   await traceSelect.selectOption("edge_1");
   await page.getByTestId("zpf-mode-plot-add-trace").click();
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
+  await expect(traceSelect).toHaveValue("edge_1");
+
+  await selectAnalysisPlotTab(page, "Frequencies");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await selectAnalysisPlotTab(page, "Phase ZPF");
+  await expect(zpfChart).toBeVisible();
+  await expect(traceSelect).toHaveValue("edge_1");
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
 
   await page.getByTestId("zpf-mode-plot-absolute-values").click();
@@ -345,7 +399,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("parameter-required-message")).toContainText(
     "Enter values for: C12, Cg, L12_inv, Lg_inv",
   );
-  await expect(page.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run sweep" })).toHaveCount(0);
   await expect(page.getByTestId("frequency-mode-plot-placeholder")).toBeVisible();
@@ -365,7 +419,7 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot-zero-line")).toHaveCount(1);
   await expectFrequencyPlotFitsInOutputPanel(page);
   await expectAnalysisResultsUseDrawerScroll(page);
-  await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
   const analysisExportButton = page
     .getByTestId("modal-analysis")
     .getByRole("button", { name: "Export CSV" });

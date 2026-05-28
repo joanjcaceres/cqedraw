@@ -128,10 +128,16 @@ export function ModalAnalysisPlots({
 
   return (
     <div className="analysis-plots" data-testid="modal-analysis-plots">
-      {selectedPlot === "frequency" && hasFrequencyPlot ? (
-        <div id={`${frequencyTestId}-panel`} role="tabpanel">
+      {hasFrequencyPlot ? (
+        <div
+          hidden={selectedPlot !== "frequency"}
+          id={`${frequencyTestId}-panel`}
+          role="tabpanel"
+        >
           <AnalysisLineChart
-            plotSelectorControl={plotSelectorControl}
+            plotSelectorControl={
+              selectedPlot === "frequency" ? plotSelectorControl : null
+            }
             referenceYBoundsForSeries={() =>
               referenceFrequencyYBounds(referenceResults)
             }
@@ -143,10 +149,16 @@ export function ModalAnalysisPlots({
           />
         </div>
       ) : null}
-      {selectedPlot === "zpf" && hasZpfPlot ? (
-        <div id={`${zpfTestId}-panel`} role="tabpanel">
+      {hasZpfPlot ? (
+        <div
+          hidden={selectedPlot !== "zpf"}
+          id={`${zpfTestId}-panel`}
+          role="tabpanel"
+        >
           <AnalysisLineChart
-            plotSelectorControl={plotSelectorControl}
+            plotSelectorControl={
+              selectedPlot === "zpf" ? plotSelectorControl : null
+            }
             referenceYBoundsForSeries={(seriesKeys) =>
               referenceZpfYBounds(
                 referenceResults,

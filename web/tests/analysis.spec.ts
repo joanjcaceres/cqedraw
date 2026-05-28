@@ -42,7 +42,7 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
     true,
   );
   await expect(page.getByTestId("analysis-plot-tabs")).toBeVisible();
-  await expect(page.getByTestId("zpf-mode-plot")).toHaveCount(0);
+  await expect(page.getByTestId("zpf-mode-plot")).toBeHidden();
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByTestId("zpf-mode-plot-zero-line")).toHaveCount(1);
@@ -250,6 +250,14 @@ test("uses a trace selector for many Josephson phase ZPF traces", async ({
 
   await traceSelect.selectOption("edge_1");
   await page.getByTestId("zpf-mode-plot-add-trace").click();
+  await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
+  await expect(traceSelect).toHaveValue("edge_1");
+
+  await selectAnalysisPlotTab(page, "Frequencies");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible();
+  await selectAnalysisPlotTab(page, "Phase ZPF");
+  await expect(zpfChart).toBeVisible();
+  await expect(traceSelect).toHaveValue("edge_1");
   await expect(zpfChart.locator(".analysis-chart-line")).toHaveCount(2);
 
   await page.getByTestId("zpf-mode-plot-absolute-values").click();

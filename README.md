@@ -15,7 +15,7 @@ the linear circuit, then paste the generated matrices into a Python analysis
 that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
 
-[![cQEDraw web editor showing a superconducting circuit graph](assets/web-editor-screenshot.png)](https://cqedraw.org/)
+[![cQEDraw web editor showing an 8-node superconducting circuit graph](assets/web-editor-screenshot.png)](https://cqedraw.org/)
 
 ## What cQEDraw Helps With
 

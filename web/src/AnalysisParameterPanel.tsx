@@ -96,6 +96,10 @@ export function AnalysisParameterPanel({
   const parameterWarningMessage =
     inputError ??
     (activeSweepParameters.length > 0 ? fixedMissingMessage : missingMessage);
+  const sweepGuidanceMessage =
+    activeSweepParameters.length === 0
+      ? "Turn on Sweep for a parameter to configure sliders."
+      : "";
   const sweepValidationMessage =
     disabled
       ? ""
@@ -103,9 +107,14 @@ export function AnalysisParameterPanel({
         ? "Prepare matrices with at least one parameter to sweep."
         : inputError
           ? inputError
-          : activeSweepParameters.length === 0
-            ? "Select Sweep on any parameter to enable sliders."
-            : fixedMissingMessage || validation.error || sweepError || "";
+          : sweepGuidanceMessage ||
+            fixedMissingMessage ||
+            validation.error ||
+            sweepError ||
+            "";
+  const sweepValidationClassName = sweepValidationMessage === sweepGuidanceMessage
+    ? "sweep-summary"
+    : "parameter-panel-warning";
   return (
     <div className="parameter-panel analysis-parameter-panel" data-testid="analysis-parameter-panel">
       <div className="parameter-panel-heading">
@@ -155,7 +164,10 @@ export function AnalysisParameterPanel({
           <h3>Parameter sweep</h3>
         </div>
         {sweepValidationMessage ? (
-          <p className="parameter-panel-warning" data-testid="sweep-validation-message">
+          <p
+            className={sweepValidationClassName}
+            data-testid="sweep-validation-message"
+          >
             {sweepValidationMessage}
           </p>
         ) : running ? (

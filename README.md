@@ -7,13 +7,30 @@ The browser app is the primary interface; new feature work and routine
 refactors target the web app. The standalone Tkinter desktop app remains
 available as a legacy maintenance-only interface.
 
+**Open the web editor:** https://cqedraw.org/
+
 It is the companion GUI matrix-builder for
 [`sccircuits`](https://github.com/joanjcaceres/sccircuits): use the app to draw
 the linear circuit, then paste the generated matrices into a Python analysis
 that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
 
-![cQEDraw web editor showing a superconducting circuit graph](assets/web-editor-screenshot.png)
+[![cQEDraw web editor showing a superconducting circuit graph](assets/web-editor-screenshot.png)](https://cqedraw.org/)
+
+## What cQEDraw Helps With
+
+- Draw superconducting circuit graphs directly in the browser.
+- Generate sparse SciPy capacitance and inverse-inductance matrix snippets.
+- Preserve Josephson-junction branch metadata for Black Box Quantization workflows.
+- Run in-browser modal analysis for supported circuits without local Python setup.
+- Export analysis tables as CSV for downstream notebooks and scripts.
+
+## Share cQEDraw
+
+- Canonical URL: https://cqedraw.org/
+- Tagline: Draw and analyze superconducting circuit graphs for Black Box Quantization workflows.
+- Social preview image: https://cqedraw.org/social-card.png
+- Reusable launch copy: [docs/launch-copy.md](docs/launch-copy.md)
 
 ## v0.2.0 Milestone Scope
 

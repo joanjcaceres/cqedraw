@@ -6,7 +6,7 @@ const webRoot = fileURLToPath(new URL(".", import.meta.url));
 const pythonPackageRoot = fileURLToPath(new URL("../cqedraw", import.meta.url));
 
 export default defineConfig({
-  base: process.env.VITE_BASE_PATH ?? "/",
+  base: process.env.VITE_BASE_PATH ?? "./",
   plugins: [react()],
   worker: {
     format: "es",

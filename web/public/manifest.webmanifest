@@ -1,7 +1,7 @@
 {
   "name": "cQEDraw",
   "short_name": "cQEDraw",
-  "description": "Draw superconducting circuit graphs and generate cQED matrix snippets.",
+  "description": "Draw and analyze superconducting circuit graphs for Black Box Quantization workflows.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

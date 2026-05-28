@@ -44,7 +44,7 @@ jobs:
       - name: Build web app
         run: npm run build
         env:
-          VITE_BASE_PATH: /cqedraw/
+          VITE_BASE_PATH: ./
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

@@ -1,16 +1,19 @@
 # cQEDraw
 
-cQEDraw is an application for drawing superconducting circuit graphs and
-generating sparse capacitance and inverse-inductance matrix snippets for
-Black Box Quantization workflows. The browser app is the primary interface;
-new feature work and routine refactors target the web app. The standalone
-Tkinter desktop app remains available as a legacy maintenance-only interface.
+cQEDraw draws and analyzes superconducting circuit graphs for Black Box
+Quantization workflows. It generates sparse capacitance and inverse-inductance
+matrix snippets and can run in-browser modal analysis for supported circuits.
+The browser app is the primary interface; new feature work and routine
+refactors target the web app. The standalone Tkinter desktop app remains
+available as a legacy maintenance-only interface.
 
 It is the companion GUI matrix-builder for
 [`sccircuits`](https://github.com/joanjcaceres/sccircuits): use the app to draw
 the linear circuit, then paste the generated matrices into a Python analysis
 that constructs `sccircuits.BBQ` objects. The app remains installable on its
 own because it is a launched desktop-style tool, not an imported library API.
+
+![cQEDraw web editor showing a superconducting circuit graph](assets/web-editor-screenshot.png)
 
 ## v0.2.0 Milestone Scope
 
@@ -45,14 +48,16 @@ their own Python analysis.
 
 ### Web App
 
-This is the lowest-friction path once GitHub Pages deployment is enabled:
+This is the lowest-friction path and the actively maintained interface:
 
-1. Open https://joanjcaceres.github.io/cqedraw/
+1. Open https://cqedraw.org/
 2. Use cQEDraw in the browser.
 3. Install it from the browser menu if you want it in the ChromeOS or desktop launcher.
 
 The web app runs the same Python/SymPy output logic in the browser through
 Pyodide. It does not require Python, Pixi, or a terminal on the user's machine.
+The GitHub Pages project URL remains available as a fallback during the custom
+domain rollout.
 
 ### macOS And Windows Legacy Desktop Builds
 

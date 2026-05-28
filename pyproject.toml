@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cqedraw"
 version = "0.2.0"
-description = "Draw superconducting circuit graphs and generate capacitance and inverse-inductance matrix snippets."
+description = "Draw and analyze superconducting circuit graphs for Black Box Quantization workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -59,7 +59,7 @@ dev = [
 cqedraw = "cqedraw.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/joanjcaceres/cqedraw"
+Homepage = "https://cqedraw.org/"
 Repository = "https://github.com/joanjcaceres/cqedraw"
 Issues = "https://github.com/joanjcaceres/cqedraw/issues"
 

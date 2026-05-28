@@ -21,9 +21,10 @@ export async function dismissTutorialPromptIfVisible(page: Page) {
 
 export async function clickBuildMatrices(page: Page) {
   await openOutputDrawer(page);
-  await expect(page.getByTestId("output-status")).toContainText(/Generated \d+ x \d+/, {
-    timeout: 60_000,
-  });
+  await expect(page.getByTestId("output-status")).toContainText(
+    /Generated \d+ x \d+|Computed \d+ mode\(s\)/,
+    { timeout: 60_000 },
+  );
 }
 
 export async function expectRawMatrixEntriesHidden(page: Page) {
@@ -370,4 +371,3 @@ export async function hasBeforeUnloadProtection(page: Page) {
     return !wasAllowed || event.defaultPrevented;
   });
 }
-

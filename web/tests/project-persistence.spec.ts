@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
 import { expect, test } from "./fixtures";
 import {
   CANVAS_WIDTH,
@@ -61,6 +62,68 @@ test("prompts before closing only while the project has unsaved changes", async 
   });
   await expect(page.getByTestId("save-status")).toContainText("Saved");
   await expectBeforeUnloadProtection(page, false);
+});
+
+test("persists Output parameter defaults in saved projects", async ({ page }) => {
+  await page.goto("/");
+
+  const canvas = page.getByTestId("canvas");
+  await canvas.click({ position: { x: 240, y: 220 } });
+  await page.getByRole("button", { name: "Ground" }).click();
+  await page.getByTestId("node-0").click();
+  await page.getByTestId("cap-input").fill("Cj");
+  await page.getByTestId("jj-ind-input").fill("Lj");
+
+  await clickBuildMatrices(page);
+  await page
+    .getByRole("group", { name: "Input representation for Cj" })
+    .getByRole("button", { name: "E_C" })
+    .click();
+  await page
+    .getByRole("group", { name: "Input representation for Lj" })
+    .getByRole("button", { name: "E_J" })
+    .click();
+  await page.getByLabel("Value for Cj").fill("0.25");
+  await page.getByLabel("Value for Lj").fill("20");
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error("Expected saved project download path.");
+  }
+  const savedProject = JSON.parse(await readFile(downloadPath, "utf8"));
+  expect(savedProject.web.output_defaults).toEqual({
+    parameter_input_modes: { Cj: "energy", Lj: "energy" },
+    parameter_values: { Cj: "0.25", Lj: "20" },
+    schema_version: 1,
+  });
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await expectBeforeUnloadProtection(page, false);
+
+  await page.reload();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "saved-output-defaults.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(savedProject)),
+  });
+  await expect(page.getByTestId("save-status")).toContainText("Saved");
+  await clickBuildMatrices(page);
+
+  await expect(page.getByLabel("Value for Cj")).toHaveValue("0.25");
+  await expect(page.getByLabel("Value for Lj")).toHaveValue("20");
+  await expect(
+    page
+      .getByRole("group", { name: "Input representation for Cj" })
+      .getByRole("button", { name: "E_C" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page
+      .getByRole("group", { name: "Input representation for Lj" })
+      .getByRole("button", { name: "E_J" }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("starts a new project after confirmation", async ({ page }) => {

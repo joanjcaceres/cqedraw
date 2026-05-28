@@ -11,6 +11,7 @@ import {
 import type { CircuitProject } from "./types";
 
 interface UseProjectHistoryOptions {
+  dirtySnapshotExtras?: string[];
   onProjectRestored: (message: string) => void;
   onProjectStatus: (message: string) => void;
 }
@@ -21,25 +22,31 @@ const EMPTY_PROJECT_HISTORY: ProjectHistory = {
 };
 
 export function useProjectHistory({
+  dirtySnapshotExtras = [],
   onProjectRestored,
   onProjectStatus,
 }: UseProjectHistoryOptions) {
   const [project, setProject] = useState<CircuitProject>(() => emptyProject());
   const [cleanProjectSnapshot, setCleanProjectSnapshot] = useState(() =>
-    serializeProjectForDirtyCheck(emptyProject()),
+    serializeProjectForDirtyCheck(emptyProject(), dirtySnapshotExtras),
   );
   const [projectHistory, setProjectHistory] =
     useState<ProjectHistory>(EMPTY_PROJECT_HISTORY);
   const projectRef = useRef<CircuitProject>(project);
   const projectHistoryRef = useRef<ProjectHistory>(projectHistory);
+  const dirtySnapshotExtrasRef = useRef(dirtySnapshotExtras);
 
   const currentProjectSnapshot = useMemo(
-    () => serializeProjectForDirtyCheck(project),
-    [project],
+    () => serializeProjectForDirtyCheck(project, dirtySnapshotExtras),
+    [dirtySnapshotExtras, project],
   );
   const hasUnsavedChanges = currentProjectSnapshot !== cleanProjectSnapshot;
   const canUndo = projectHistory.past.length > 0;
   const canRedo = projectHistory.future.length > 0;
+
+  useEffect(() => {
+    dirtySnapshotExtrasRef.current = dirtySnapshotExtras;
+  }, [dirtySnapshotExtras]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -75,8 +82,13 @@ export function useProjectHistory({
     setProjectHistoryState(EMPTY_PROJECT_HISTORY);
   }
 
-  function markProjectClean(nextProject = projectRef.current) {
-    setCleanProjectSnapshot(serializeProjectForDirtyCheck(nextProject));
+  function markProjectClean(
+    nextProject = projectRef.current,
+    nextDirtySnapshotExtras = dirtySnapshotExtrasRef.current,
+  ) {
+    setCleanProjectSnapshot(
+      serializeProjectForDirtyCheck(nextProject, nextDirtySnapshotExtras),
+    );
   }
 
   function recordProjectHistory(previousProject: CircuitProject) {

@@ -11,8 +11,15 @@ export interface SweepSample {
 }
 
 export interface ChartPoint {
+  tooltipLines?: ChartTooltipLine[];
   x: number;
   y: number;
+}
+
+export interface ChartTooltipLine {
+  label: string;
+  unit?: string;
+  value: number | string;
 }
 
 export interface ChartSeries {
@@ -188,7 +195,10 @@ export function buildCurrentFrequencySeries(
     {
       key: "frequency",
       label: "frequency GHz",
-      points: frequencies.map((frequency, index) => ({ x: index, y: frequency })),
+      points: frequencies.map((frequency, index) => ({
+        x: index,
+        y: frequency,
+      })),
     },
   ];
 }
@@ -199,7 +209,11 @@ export function buildCurrentZpfSeries(
   return (analysis?.branches ?? []).map((branch, index) => ({
     key: zpfTraceKey(branch, index),
     label: branchTraceLabel(branch, index),
-    points: branch.phase_zpf.map((zpf, modeIndex) => ({ x: modeIndex, y: zpf })),
+    points: branch.phase_zpf.map((zpf, modeIndex) => ({
+      tooltipLines: frequencyTooltipLines(analysis?.frequencies_ghz, modeIndex),
+      x: modeIndex,
+      y: zpf,
+    })),
   }));
 }
 
@@ -483,6 +497,17 @@ function expandYBounds(bounds: ChartYBounds | null, value: number): ChartYBounds
     maxY: Math.max(bounds.maxY, value),
     minY: Math.min(bounds.minY, value),
   };
+}
+
+function frequencyTooltipLines(
+  frequencies: number[] | undefined,
+  modeIndex: number,
+): ChartTooltipLine[] {
+  const frequency = frequencies?.[modeIndex];
+  if (frequency === undefined) {
+    return [];
+  }
+  return [{ label: "frequency", unit: "GHz", value: frequency }];
 }
 
 function zpfTraceKey(branch: ModalBranchRecord, index: number): string {

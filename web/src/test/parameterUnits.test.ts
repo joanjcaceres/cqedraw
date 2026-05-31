@@ -5,6 +5,7 @@ import {
   convertAnalysisParameterValues,
   convertParameterDisplayValue,
   energyGHzToPhysicalValue,
+  invalidAnalysisParameterNames,
   type ParameterInputMode,
 } from "../parameterUnits";
 import type { CircuitEdge, OutputResult } from "../types";
@@ -119,6 +120,22 @@ describe("parameter unit conversions", () => {
     );
 
     expect(converted.error).toBe("Enter a positive E_C/h value in GHz for C.");
+  });
+
+  it("rejects non-finite physical parameter values", () => {
+    const output = outputWithParameters(["C"]);
+
+    const converted = convertAnalysisParameterValues(
+      output.parameters,
+      { C: "12-e15" },
+      {},
+      {},
+    );
+
+    expect(converted.error).toBe("Parameter C must be a finite number.");
+    expect(
+      invalidAnalysisParameterNames(output.parameters, { C: "12-e15" }, {}, {}),
+    ).toEqual(["C"]);
   });
 });
 

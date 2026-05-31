@@ -91,23 +91,50 @@ export function convertAnalysisParameterValues(
 
     const mode = inputModes[parameter] ?? "physical";
     const spec = inputSpecs[parameter] ?? DEFAULT_PARAMETER_SPEC;
+    const inputError = analysisParameterInputError(
+      parameter,
+      trimmedValue,
+      mode,
+      spec,
+    );
+    if (inputError) {
+      return { error: inputError, values };
+    }
+
     if (mode !== "energy" || !spec.kind) {
       values[parameter] = rawValue;
       continue;
     }
 
     const parsedEnergy = Number(trimmedValue);
-    if (!Number.isFinite(parsedEnergy) || parsedEnergy <= 0) {
-      return {
-        error: `Enter a positive ${spec.energyLabel}/h value in GHz for ${parameter}.`,
-        values,
-      };
-    }
     values[parameter] = formatConvertedParameterValue(
       energyGHzToPhysicalValue(spec.kind, parsedEnergy),
     );
   }
   return { error: null, values };
+}
+
+export function invalidAnalysisParameterNames(
+  parameters: string[],
+  rawValues: Record<string, string>,
+  inputModes: Record<string, ParameterInputMode>,
+  inputSpecs: Record<string, ParameterInputSpec>,
+): string[] {
+  return parameters.filter((parameter) => {
+    const rawValue = rawValues[parameter] ?? "";
+    const trimmedValue = rawValue.trim();
+    if (trimmedValue === "") {
+      return false;
+    }
+    return Boolean(
+      analysisParameterInputError(
+        parameter,
+        trimmedValue,
+        inputModes[parameter] ?? "physical",
+        inputSpecs[parameter] ?? DEFAULT_PARAMETER_SPEC,
+      ),
+    );
+  });
 }
 
 export function convertParameterDisplayValue(
@@ -202,4 +229,20 @@ function isExactComponentParameter(
 
 function formatConvertedParameterValue(value: number): string {
   return Number(value.toPrecision(12)).toString();
+}
+
+function analysisParameterInputError(
+  parameter: string,
+  trimmedValue: string,
+  mode: ParameterInputMode,
+  spec: ParameterInputSpec,
+): string | null {
+  const parsedValue = Number(trimmedValue);
+  if (!Number.isFinite(parsedValue)) {
+    return `Parameter ${parameter} must be a finite number.`;
+  }
+  if (mode === "energy" && spec.kind && parsedValue <= 0) {
+    return `Enter a positive ${spec.energyLabel}/h value in GHz for ${parameter}.`;
+  }
+  return null;
 }

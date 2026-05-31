@@ -154,8 +154,16 @@ describe("analysis helpers", () => {
         key: "edge_7",
         label: "edge 7 phase 0 - 1",
         points: [
-          { x: 0, y: 0.01 },
-          { x: 1, y: -0.02 },
+          {
+            tooltipLines: [{ label: "frequency", unit: "GHz", value: 5 }],
+            x: 0,
+            y: 0.01,
+          },
+          {
+            tooltipLines: [{ label: "frequency", unit: "GHz", value: 7 }],
+            x: 1,
+            y: -0.02,
+          },
         ],
       },
     ]);
@@ -164,8 +172,16 @@ describe("analysis helpers", () => {
         key: "edge_7",
         label: "edge 7 phase 0 - 1",
         points: [
-          { x: 0, y: 0.01 },
-          { x: 1, y: 0.02 },
+          {
+            tooltipLines: [{ label: "frequency", unit: "GHz", value: 5 }],
+            x: 0,
+            y: 0.01,
+          },
+          {
+            tooltipLines: [{ label: "frequency", unit: "GHz", value: 7 }],
+            x: 1,
+            y: 0.02,
+          },
         ],
       },
     ]);

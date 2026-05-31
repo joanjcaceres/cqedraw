@@ -44,6 +44,11 @@ export function AnalysisLineChart({
 }) {
   type ChartAxisMode = "auto" | "fixed" | "manual";
   type ChartInteractionMode = "pan" | "boxZoom";
+  type HoveredPoint = {
+    color: string;
+    point: ChartPoint;
+    seriesLabel: string;
+  };
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
   const [boxZoomCurrent, setBoxZoomCurrent] = useState<{
     x: number;
@@ -53,11 +58,7 @@ export function AnalysisLineChart({
     x: number;
     y: number;
   } | null>(null);
-  const [hoveredPoint, setHoveredPoint] = useState<{
-    color: string;
-    point: ChartPoint;
-    seriesLabel: string;
-  } | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<HoveredPoint | null>(null);
   const [interactionMode, setInteractionMode] =
     useState<ChartInteractionMode>("pan");
   const [manualYMaxText, setManualYMaxText] = useState("");
@@ -403,7 +404,22 @@ export function AnalysisLineChart({
         )}
       </div>
     ) : null;
-  const tooltipSize = { height: 58, width: 172 };
+  const tooltipRows = hoveredPoint
+    ? chartTooltipRows(hoveredPoint, xLabel, yLabel)
+    : [];
+  const tooltipSize = {
+    height: tooltipRows.length > 0 ? 18 + tooltipRows.length * 14 : 58,
+    width:
+      tooltipRows.length > 0
+        ? Math.min(
+            300,
+            Math.max(
+              172,
+              ...tooltipRows.map((row) => row.length * 5.8 + 24),
+            ),
+          )
+        : 172,
+  };
   const tooltipPosition = hoveredPoint
     ? chartTooltipPosition(
         {
@@ -814,15 +830,15 @@ export function AnalysisLineChart({
           >
             <rect width={tooltipSize.width} height={tooltipSize.height} rx="6" />
             <circle cx="12" cy="16" fill={hoveredPoint.color} r="4" />
-            <text x="22" y="20">
-              {hoveredPoint.seriesLabel}
-            </text>
-            <text x="10" y="38">
-              {xLabel}: {formatChartTick(hoveredPoint.point.x)}
-            </text>
-            <text x="10" y="52">
-              {yLabel}: {formatModalNumber(hoveredPoint.point.y)}
-            </text>
+            {tooltipRows.map((row, index) => (
+              <text
+                key={`${index}-${row}`}
+                x={index === 0 ? 22 : 10}
+                y={20 + index * 14}
+              >
+                {row}
+              </text>
+            ))}
           </g>
         ) : null}
       </svg>
@@ -852,4 +868,26 @@ export function AnalysisLineChart({
       ) : null}
     </div>
   );
+}
+
+function chartTooltipRows(
+  hoveredPoint: {
+    point: ChartPoint;
+    seriesLabel: string;
+  },
+  xLabel: string,
+  yLabel: string,
+): string[] {
+  return [
+    hoveredPoint.seriesLabel,
+    `${xLabel}: ${formatChartTick(hoveredPoint.point.x)}`,
+    `${yLabel}: ${formatModalNumber(hoveredPoint.point.y)}`,
+    ...(hoveredPoint.point.tooltipLines ?? []).map((line) => {
+      const value =
+        typeof line.value === "number"
+          ? formatModalNumber(line.value)
+          : line.value;
+      return `${line.label}: ${value}${line.unit ? ` ${line.unit}` : ""}`;
+    }),
+  ];
 }

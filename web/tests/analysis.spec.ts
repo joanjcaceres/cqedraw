@@ -33,6 +33,38 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
     timeout: 60_000,
   });
+  const frequencyPlotTypography = await page
+    .getByTestId("frequency-mode-plot")
+    .evaluate((element) => {
+      const axisLabel = element.querySelector(".analysis-chart-axis-label");
+      const tickLabel = element.querySelector(".analysis-chart-tick");
+      if (!axisLabel || !tickLabel) {
+        return { axisFontSize: 0, hasSerifFallback: false, tickFontSize: 0 };
+      }
+      const axisStyle = getComputedStyle(axisLabel);
+      const tickStyle = getComputedStyle(tickLabel);
+      return {
+        axisFontSize: Number.parseFloat(axisStyle.fontSize),
+        hasSerifFallback: getComputedStyle(element.querySelector("svg")!)
+          .fontFamily.includes("serif"),
+        tickFontSize: Number.parseFloat(tickStyle.fontSize),
+      };
+    });
+  expect(frequencyPlotTypography.axisFontSize).toBeGreaterThanOrEqual(13);
+  expect(frequencyPlotTypography.tickFontSize).toBeGreaterThanOrEqual(12);
+  expect(frequencyPlotTypography.hasSerifFallback).toBe(true);
+  await expect(
+    page.getByRole("img", { exact: true, name: "Mode frequencies" }),
+  ).toContainText("frequency (GHz)");
+  await expect(page.getByTestId("modal-analysis").locator("thead")).toContainText(
+    "phase ZPF (rad)",
+  );
+  await expect(page.getByTestId("modal-analysis").locator("thead")).toContainText(
+    "nodes 0 - GND",
+  );
+  await expect(page.getByTestId("modal-analysis").locator("thead")).not.toContainText(
+    "edge 0 phase",
+  );
   const frequencyModeTicks = await page
     .getByTestId("frequency-mode-plot")
     .locator('[data-axis="x"]')
@@ -45,6 +77,15 @@ test("plots Josephson phase ZPF for JJ sweeps", async ({ page }) => {
   await expect(page.getByTestId("zpf-mode-plot")).toBeHidden();
   await selectAnalysisPlotTab(page, "Phase ZPF");
   await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
+  await page
+    .getByTestId("zpf-mode-plot")
+    .locator(".analysis-chart-point")
+    .first()
+    .hover({ force: true });
+  await expect(page.getByTestId("zpf-mode-plot-tooltip")).toContainText(
+    "frequency",
+  );
+  await expect(page.getByTestId("zpf-mode-plot-tooltip")).toContainText("GHz");
   await expect(page.getByTestId("zpf-mode-plot-zero-line")).toHaveCount(1);
   await expect(page.getByTestId("zpf-mode-plot-signed-values")).toHaveAttribute(
     "aria-pressed",
@@ -406,6 +447,16 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
   await expect(page.getByTestId("frequency-mode-plot")).toHaveCount(0);
   await expectAnalysisResultsRightOfControls(page);
 
+  await page.getByLabel("Value for C12").fill("12-e15");
+  await expect(page.getByTestId("parameter-required-message")).toContainText(
+    "Parameter C12 must be a finite number.",
+  );
+  await expect(page.getByLabel("Value for C12")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(page.getByTestId("frequency-mode-plot")).toHaveCount(0);
+
   await page.getByLabel("Value for C12").fill("2e-15");
   await page.getByLabel("Value for Cg").fill("5e-15");
   await page.getByLabel("Value for L12_inv").fill("1e9");
@@ -424,6 +475,32 @@ test("creates a small circuit and copies generated C and L_inv matrices", async 
     .getByTestId("modal-analysis")
     .getByRole("button", { name: "Export CSV" });
   await expect(analysisExportButton).toBeEnabled();
+  await expect(page.getByTestId("modal-analysis").locator("tbody th")).toHaveText([
+    "0",
+    "1",
+  ]);
+  const resultsContainment = await page
+    .getByTestId("analysis-results")
+    .evaluate((element) => {
+      const table = element.querySelector('[data-testid="modal-analysis"]');
+      if (!table) {
+        return { hasBorder: false, tableInsideResults: false };
+      }
+      const resultsRect = element.getBoundingClientRect();
+      const tableRect = table.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        hasBorder: style.borderTopWidth !== "0px",
+        tableInsideResults:
+          tableRect.left >= resultsRect.left &&
+          tableRect.right <= resultsRect.right + 1 &&
+          tableRect.bottom <= resultsRect.bottom + 1,
+      };
+    });
+  expect(resultsContainment).toEqual({
+    hasBorder: true,
+    tableInsideResults: true,
+  });
 
   await page.getByLabel("Sweep C12").check();
   await expect(page.getByLabel("Value for C12")).toHaveValue("Previous: 2e-15");

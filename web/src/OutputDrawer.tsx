@@ -34,6 +34,7 @@ export function OutputDrawer({
   displayedAnalysis,
   hasGeneratedSnippet,
   hasProjectContent,
+  invalidParameterValues,
   missingParameterValues,
   missingSweepFixedValues,
   onClose,
@@ -68,6 +69,7 @@ export function OutputDrawer({
   displayedAnalysis: ModalAnalysisResult | null;
   hasGeneratedSnippet: boolean;
   hasProjectContent: boolean;
+  invalidParameterValues: string[];
   missingParameterValues: string[];
   missingSweepFixedValues: string[];
   onClose: () => void;
@@ -182,6 +184,7 @@ export function OutputDrawer({
                     : "Open Output to prepare matrices for analysis."
                 }
                 fixedMissingParameters={missingSweepFixedValues}
+                invalidParameters={invalidParameterValues}
                 inputError={parameterInputError}
                 inputModes={parameterInputModes}
                 missingParameters={missingParameterValues}

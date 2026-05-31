@@ -13,6 +13,7 @@ import {
 import {
   buildParameterInputSpecs,
   convertAnalysisParameterValues,
+  invalidAnalysisParameterNames,
   type ParameterInputMode,
 } from "./parameterUnits";
 import {
@@ -489,6 +490,21 @@ export function App() {
       parameterInputSpecs,
     ],
   );
+  const invalidParameterValues = useMemo(
+    () =>
+      invalidAnalysisParameterNames(
+        outputParameters,
+        activeParameterInputValues,
+        parameterInputModes,
+        parameterInputSpecs,
+      ),
+    [
+      activeParameterInputValues,
+      outputParameters,
+      parameterInputModes,
+      parameterInputSpecs,
+    ],
+  );
   const displayedAnalysis = sweepModeActive
     ? selectedSweepSample?.analysis ?? null
     : modalAnalysis;
@@ -827,6 +843,7 @@ export function App() {
           displayedAnalysis={displayedAnalysis}
           hasGeneratedSnippet={hasGeneratedSnippet}
           hasProjectContent={hasProjectContent}
+          invalidParameterValues={invalidParameterValues}
           missingParameterValues={missingParameterValues}
           missingSweepFixedValues={missingSweepFixedValues}
           onClose={() => setOutputDrawerOpen(false)}

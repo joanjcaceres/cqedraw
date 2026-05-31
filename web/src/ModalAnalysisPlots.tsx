@@ -94,7 +94,7 @@ export function ModalAnalysisPlots({
               testId={`${frequencyTestId}-placeholder`}
               title={frequencyTitle}
               xLabel="mode index"
-              yLabel="frequency GHz"
+              yLabel="frequency (GHz)"
             />
           </div>
         ) : (
@@ -103,7 +103,7 @@ export function ModalAnalysisPlots({
               testId={`${zpfTestId}-placeholder`}
               title={zpfTitle}
               xLabel="mode index"
-              yLabel="phase ZPF"
+              yLabel="phase ZPF (rad)"
             />
           </div>
         )}
@@ -145,7 +145,7 @@ export function ModalAnalysisPlots({
             testId={frequencyTestId}
             title={frequencyTitle}
             xLabel="mode index"
-            yLabel="frequency GHz"
+            yLabel="frequency (GHz)"
           />
         </div>
       ) : null}
@@ -195,7 +195,11 @@ export function ModalAnalysisPlots({
                 </button>
               </div>
             }
-            yLabel={zpfValueMode === "absolute" ? "|phase ZPF|" : "phase ZPF"}
+            yLabel={
+              zpfValueMode === "absolute"
+                ? "|phase ZPF| (rad)"
+                : "phase ZPF (rad)"
+            }
           />
         </div>
       ) : null}

@@ -41,6 +41,7 @@ export function AnalysisParameterPanel({
   disabled,
   disabledMessage,
   fixedMissingParameters,
+  invalidParameters,
   inputError,
   inputModes,
   missingParameters,
@@ -65,6 +66,7 @@ export function AnalysisParameterPanel({
   disabled: boolean;
   disabledMessage?: string;
   fixedMissingParameters: string[];
+  invalidParameters: string[];
   inputError: string | null;
   inputModes: Record<string, ParameterInputMode>;
   missingParameters: string[];
@@ -85,6 +87,7 @@ export function AnalysisParameterPanel({
   sweepValues: ParameterSweepConfigs;
 }) {
   const missingParameterSet = new Set(missingParameters);
+  const invalidParameterSet = new Set(invalidParameters);
   const missingMessage =
     missingParameters.length > 0
       ? `Enter values for: ${missingParameters.join(", ")}`
@@ -142,6 +145,7 @@ export function AnalysisParameterPanel({
                 key={name}
                 disabled={disabled}
                 inputMode={inputModes[name] ?? "physical"}
+                invalid={invalidParameterSet.has(name)}
                 missing={missingParameterSet.has(name)}
                 name={name}
                 onInputModeChange={onInputModeChange}
@@ -196,6 +200,7 @@ export function AnalysisParameterPanel({
 function ParameterControlRow({
   disabled,
   inputMode,
+  invalid,
   missing,
   name,
   onInputModeChange,
@@ -211,6 +216,7 @@ function ParameterControlRow({
 }: {
   disabled: boolean;
   inputMode: ParameterInputMode;
+  invalid: boolean;
   missing: boolean;
   name: string;
   onInputModeChange: (name: string, mode: ParameterInputMode) => void;
@@ -337,7 +343,7 @@ function ParameterControlRow({
         <label>
           <span>{name}</span>
           <input
-            aria-invalid={!range.enabled && missing ? true : undefined}
+            aria-invalid={!range.enabled && (missing || invalid) ? true : undefined}
             aria-label={`Value for ${name}`}
             className={range.enabled ? "parameter-sweep-reference-input" : undefined}
             disabled={disabled || range.enabled}
@@ -557,9 +563,11 @@ export function ModalAnalysisTable({
               <th>frequency GHz</th>
               {branches.map((branch, branchIndex) => (
                 <th key={branch.edge_id ?? branchIndex}>
-                  edge {branch.edge_id ?? branchIndex} phase{" "}
-                  {branch.phase_nodes[0] ?? "GND"} -{" "}
-                  {branch.phase_nodes[1] ?? "GND"}
+                  phase ZPF (rad)
+                  <span className="modal-analysis-branch-note">
+                    nodes {branch.phase_nodes[0] ?? "GND"} -{" "}
+                    {branch.phase_nodes[1] ?? "GND"}
+                  </span>
                   <span className="modal-analysis-branch-note">
                     Ej {formatModalNumber(branch.E_j_GHz)} GHz
                   </span>
@@ -570,7 +578,7 @@ export function ModalAnalysisTable({
           <tbody>
             {Array.from({ length: modeCount }, (_, modeIndex) => (
               <tr key={modeIndex}>
-                <th>mode {modeIndex}</th>
+                <th>{modeIndex}</th>
                 <td>
                   {frequencies[modeIndex] === undefined
                     ? ""

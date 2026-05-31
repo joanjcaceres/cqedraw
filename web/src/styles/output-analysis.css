@@ -174,18 +174,27 @@
   margin: 3px 0;
 }
 
-.parameter-panel,
-.modal-analysis {
+.parameter-panel {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
 
+.modal-analysis {
+  background: #ffffff;
+  border: 1px solid #dbe5ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .modal-analysis-summary {
   align-items: center;
   background: #f7fafc;
-  border: 1px solid #dbe5ef;
-  border-radius: 8px;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   display: flex;
   gap: 12px;
@@ -193,6 +202,10 @@
   list-style: none;
   min-height: 38px;
   padding: 8px 10px;
+}
+
+.modal-analysis[open] > .modal-analysis-summary {
+  border-bottom: 1px solid #dbe5ef;
 }
 
 .modal-analysis-summary::-webkit-details-marker {
@@ -278,13 +291,30 @@
 
 .analysis-results {
   align-content: start;
+  background: #ffffff;
+  border: 1px solid #d7e1ea;
+  border-radius: 8px;
   display: grid;
-  gap: 12px;
+  gap: 0;
   max-height: none;
   min-height: 0;
   overflow: visible;
   overflow-anchor: none;
   padding-right: 0;
+}
+
+.analysis-results > .analysis-plots {
+  padding: 12px;
+}
+
+.analysis-results > .modal-analysis {
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid #dbe5ef;
+}
+
+.analysis-results > .output-results-placeholder {
+  margin: 12px;
 }
 
 .parameter-panel-heading {
@@ -768,6 +798,8 @@
   border: 1px solid #d7e1ea;
   border-radius: 8px;
   display: block;
+  font-family: "New Computer Modern", "Latin Modern Roman", "STIX Two Text",
+    "Cambria Math", "Times New Roman", Times, serif;
   height: auto;
   width: 100%;
 }
@@ -814,10 +846,16 @@
   stroke-width: 1.4;
 }
 
-.analysis-chart-axis-label,
 .analysis-chart-tick {
   fill: #516277;
-  font-size: 10px;
+  font-size: 12px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.analysis-chart-axis-label {
+  fill: #516277;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .analysis-chart-grid,

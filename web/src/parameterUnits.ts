@@ -11,11 +11,13 @@ export interface ParameterInputSpec {
   energyButtonLabel: string | null;
   energyButtonTitle: string | null;
   energyLabel: string | null;
+  energyPlaceholder: string | null;
   energyUnit: string | null;
   kind: EnergyParameterKind | null;
   physicalButtonLabel: string;
   physicalButtonTitle: string;
   physicalLabel: string;
+  physicalPlaceholder: string;
   physicalUnit: string;
 }
 
@@ -34,11 +36,13 @@ const DEFAULT_PARAMETER_SPEC: ParameterInputSpec = {
   energyButtonLabel: null,
   energyButtonTitle: null,
   energyLabel: null,
+  energyPlaceholder: null,
   energyUnit: null,
   kind: null,
   physicalButtonLabel: "Value",
   physicalButtonTitle: "Value",
   physicalLabel: "Value",
+  physicalPlaceholder: "e.g. 1.0",
   physicalUnit: "",
 };
 
@@ -47,33 +51,39 @@ const PARAMETER_KIND_SPECS: Record<EnergyParameterKind, ParameterInputSpec> = {
     energyButtonLabel: "GHz",
     energyButtonTitle: "Gigahertz (GHz), equivalent to E_C/h",
     energyLabel: "E_C",
+    energyPlaceholder: "e.g. 0.8",
     energyUnit: "GHz",
     kind: "capacitance",
     physicalButtonLabel: "F",
     physicalButtonTitle: "Farad (F)",
     physicalLabel: "C",
+    physicalPlaceholder: "e.g. 25e-15",
     physicalUnit: "F",
   },
   josephson_inductance: {
     energyButtonLabel: "GHz",
     energyButtonTitle: "Gigahertz (GHz), equivalent to E_J/h",
     energyLabel: "E_J",
+    energyPlaceholder: "e.g. 16",
     energyUnit: "GHz",
     kind: "josephson_inductance",
     physicalButtonLabel: "H",
     physicalButtonTitle: "Henry (H)",
     physicalLabel: "LJ",
+    physicalPlaceholder: "e.g. 10e-9",
     physicalUnit: "H",
   },
   linear_inductance: {
     energyButtonLabel: "GHz",
     energyButtonTitle: "Gigahertz (GHz), equivalent to E_L/h",
     energyLabel: "E_L",
+    energyPlaceholder: "e.g. 16",
     energyUnit: "GHz",
     kind: "linear_inductance",
     physicalButtonLabel: "H",
     physicalButtonTitle: "Henry (H)",
     physicalLabel: "L",
+    physicalPlaceholder: "e.g. 10e-9",
     physicalUnit: "H",
   },
 };

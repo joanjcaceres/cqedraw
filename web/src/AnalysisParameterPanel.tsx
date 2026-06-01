@@ -265,9 +265,9 @@ function ParameterControlRow({
   const activeUnit =
     inputMode === "energy" ? spec?.energyUnit : spec?.physicalUnit;
   const inputPlaceholder =
-    inputMode === "energy" && spec?.energyLabel
-      ? `${spec.energyLabel}/h in ${spec.energyUnit}`
-      : "required";
+    inputMode === "energy" && spec?.energyPlaceholder
+      ? spec.energyPlaceholder
+      : (spec?.physicalPlaceholder ?? "e.g. 1.0");
 
   useEffect(() => {
     setLocalSliderDraft(null);

@@ -66,6 +66,10 @@ describe("parameter unit conversions", () => {
     expect(specs.C.kind).toBe("capacitance");
     expect(specs.L.kind).toBe("linear_inductance");
     expect(specs.Lj.kind).toBe("josephson_inductance");
+    expect(specs.C.physicalButtonLabel).toBe("F");
+    expect(specs.C.energyButtonLabel).toBe("GHz");
+    expect(specs.L.physicalButtonLabel).toBe("H");
+    expect(specs.Lj.physicalButtonLabel).toBe("H");
     expect(specs.Linv.kind).toBeNull();
     expect(specs.shared.kind).toBeNull();
   });

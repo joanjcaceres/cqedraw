@@ -563,7 +563,7 @@ export function HelpDialog({
               <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to refresh matrices.</li>
               <li>Output prepares C and L_inv automatically; Copy matrices copies the Python snippet.</li>
               <li>Enter numeric parameter values in Output to run mode-frequency and Josephson phase-ZPF analysis automatically.</li>
-              <li>For direct component parameters, use the C/E_C, L/E_L, or LJ/E_J toggles to enter either component values or E/h values in GHz.</li>
+              <li>For direct component parameters, use F/GHz for capacitances or H/GHz for inductances to enter either component values or E/h values in GHz.</li>
               <li>Use Sweep on parameter rows to explore values with sliders; chart wheel zoom uses Ctrl/Cmd, and Box zoom selects a plot region.</li>
               <li>Current analysis assumes well-posed C and L_inv matrices and does not include external loop flux or hidden variable reduction.</li>
               <li>Save and Load store the drawing as a cQEDraw JSON project.</li>

@@ -375,19 +375,19 @@ function ParameterControlRow({
               aria-pressed={inputMode === "physical"}
               disabled={disabled}
               onClick={() => onInputModeChange(name, "physical")}
-              title={`Use ${spec?.physicalLabel} in ${spec?.physicalUnit}`}
+              title={spec?.physicalButtonTitle}
               type="button"
             >
-              {spec?.physicalLabel}
+              {spec?.physicalButtonLabel}
             </button>
             <button
               aria-pressed={inputMode === "energy"}
               disabled={disabled}
               onClick={() => onInputModeChange(name, "energy")}
-              title={`Use ${spec?.energyLabel}/h in ${spec?.energyUnit}`}
+              title={spec?.energyButtonTitle ?? undefined}
               type="button"
             >
-              {spec?.energyLabel}
+              {spec?.energyButtonLabel}
             </button>
           </div>
         ) : null}

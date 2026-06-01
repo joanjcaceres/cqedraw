@@ -8,9 +8,13 @@ export type EnergyParameterKind =
 export type ParameterInputMode = "physical" | "energy";
 
 export interface ParameterInputSpec {
+  energyButtonLabel: string | null;
+  energyButtonTitle: string | null;
   energyLabel: string | null;
   energyUnit: string | null;
   kind: EnergyParameterKind | null;
+  physicalButtonLabel: string;
+  physicalButtonTitle: string;
   physicalLabel: string;
   physicalUnit: string;
 }
@@ -27,32 +31,48 @@ const REDUCED_FLUX_QUANTUM_WB =
 const GHZ = 1e9;
 
 const DEFAULT_PARAMETER_SPEC: ParameterInputSpec = {
+  energyButtonLabel: null,
+  energyButtonTitle: null,
   energyLabel: null,
   energyUnit: null,
   kind: null,
+  physicalButtonLabel: "Value",
+  physicalButtonTitle: "Value",
   physicalLabel: "Value",
   physicalUnit: "",
 };
 
 const PARAMETER_KIND_SPECS: Record<EnergyParameterKind, ParameterInputSpec> = {
   capacitance: {
+    energyButtonLabel: "GHz",
+    energyButtonTitle: "Gigahertz (GHz), equivalent to E_C/h",
     energyLabel: "E_C",
     energyUnit: "GHz",
     kind: "capacitance",
+    physicalButtonLabel: "F",
+    physicalButtonTitle: "Farad (F)",
     physicalLabel: "C",
     physicalUnit: "F",
   },
   josephson_inductance: {
+    energyButtonLabel: "GHz",
+    energyButtonTitle: "Gigahertz (GHz), equivalent to E_J/h",
     energyLabel: "E_J",
     energyUnit: "GHz",
     kind: "josephson_inductance",
+    physicalButtonLabel: "H",
+    physicalButtonTitle: "Henry (H)",
     physicalLabel: "LJ",
     physicalUnit: "H",
   },
   linear_inductance: {
+    energyButtonLabel: "GHz",
+    energyButtonTitle: "Gigahertz (GHz), equivalent to E_L/h",
     energyLabel: "E_L",
     energyUnit: "GHz",
     kind: "linear_inductance",
+    physicalButtonLabel: "H",
+    physicalButtonTitle: "Henry (H)",
     physicalLabel: "L",
     physicalUnit: "H",
   },

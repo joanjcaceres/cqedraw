@@ -748,13 +748,6 @@ export function App() {
     zoomCanvas,
   });
 
-  const selectedEdgeLabel = selectedEdge
-    ? selectedEdge.is_ground
-      ? `Ground ${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}`
-      : `${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}-${
-          matrixNodeLabels.get(selectedEdge.nodes[1]) ?? selectedEdge.nodes[1]
-        }`
-    : null;
   const mergeTargetNode =
     selectedNodeIds.length > 1 && selectedNodeId !== null
       ? project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null
@@ -830,6 +823,7 @@ export function App() {
           selectedNodeId={selectedNodeId}
           selectedNodeIds={selectedNodeIds}
           statusIsCopyConfirmation={statusIsCopyConfirmation}
+          tutorialStep={tutorialStep}
           tutorialSurfaceHighlighted={
             tutorialStep === "first-node" || tutorialStep === "second-node"
           }
@@ -845,16 +839,11 @@ export function App() {
             matrixNodeLabels={matrixNodeLabels}
             mergeTargetLabel={mergeTargetLabel}
             nodeCount={project.state.nodes.length}
-            onCloseInlineValueEditor={() => setInlineValueEditorEdgeId(null)}
-            onEdgeValueTextChange={updateEdgeValueText}
             onNodeNameChange={(nodeId, name) =>
               commitProjectChange((current) => renameNode(current, nodeId, name))
             }
-            selectedEdge={selectedEdge}
-            selectedEdgeLabel={selectedEdgeLabel}
             selectedNode={selectedNode}
             selectedNodeIds={selectedNodeIds}
-            tutorialStep={tutorialStep}
           />
         </aside>
       </section>

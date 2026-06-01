@@ -551,7 +551,7 @@ export function HelpDialog({
               <li>Use Node and click the canvas to place circuit nodes.</li>
               <li>Use Edge, then click two nodes to connect them.</li>
               <li>Use Ground, then click a node to add its ground reference; select and delete a ground connection to remove it.</li>
-              <li>Select an edge and enter capacitance, linear inductance, and Josephson inductance in the Inspector.</li>
+              <li>Select an edge and enter capacitance, linear inductance, and Josephson inductance in the value panel beside it.</li>
               <li>Inputs accept SymPy-style values such as Cj, 40e-15, Lgeom, and Lj.</li>
               <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
               <li>Use the canvas buttons, +/=, -, 0, wheel, or trackpad to adjust the view; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>

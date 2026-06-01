@@ -58,7 +58,7 @@ export const TUTORIAL_STEPS: Record<
   "edge-values": {
     progress: "Step 5 of 11",
     title: "Enter edge values",
-    body: "With the edge selected, enter C for Capacitance and L for Linear inductance.",
+    body: "In the value panel next to the edge, enter C for capacitance and L for linear inductance.",
   },
   "ground-mode": {
     progress: "Step 6 of 11",
@@ -73,12 +73,12 @@ export const TUTORIAL_STEPS: Record<
   "ground-values": {
     progress: "Step 8 of 11",
     title: "Enter ground capacitance",
-    body: "For this tutorial, enter Cg for Capacitance and leave Linear inductance empty.",
+    body: "In the value panel next to the ground branch, enter Cg for capacitance and leave L empty.",
   },
   "edit-edge": {
     progress: "Step 9 of 11",
     title: "Edit existing values",
-    body: "Click the edge between the two nodes again. Its C and L values reopen in the Inspector for editing.",
+    body: "Click the edge between the two nodes again. Its C and L values reopen beside the edge.",
   },
   generate: {
     progress: "Step 10 of 11",
@@ -148,8 +148,8 @@ export function tutorialPlacement(step: TutorialStep): TutorialPlacement {
   if (step === "edge-mode" || step === "ground-mode") {
     return "tools";
   }
-  if (step === "edge-values" || step === "ground-values" || step === "generate") {
-    return "inspector";
+  if (step === "generate") {
+    return "actions";
   }
   return "canvas";
 }

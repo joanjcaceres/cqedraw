@@ -47,7 +47,7 @@
   gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 10px;
-  pointer-events: auto;
+  pointer-events: none;
   position: absolute;
   width: 288px;
   z-index: 4;
@@ -66,6 +66,10 @@
   gap: 4px;
 }
 
+.inline-edge-editor .phase-control {
+  grid-column: 1 / -1;
+}
+
 .inline-edge-editor span {
   color: #40536b;
   font-size: 12px;
@@ -79,7 +83,12 @@
   min-height: 34px;
   min-width: 0;
   padding: 6px 8px;
+  pointer-events: auto;
   width: 100%;
+}
+
+.inline-edge-editor button {
+  pointer-events: auto;
 }
 
 .inline-edge-editor input:focus {

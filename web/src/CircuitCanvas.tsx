@@ -26,7 +26,11 @@ import {
 import {
   CircuitEdgeShape,
 } from "./CircuitEdgeShape";
-import type { InlineEdgeEditorPosition } from "./edgeGeometry";
+import {
+  josephsonPhaseLabel,
+  type InlineEdgeEditorPosition,
+} from "./edgeGeometry";
+import type { TutorialStep } from "./tutorialFlow";
 
 export function CircuitCanvas({
   canvasRef,
@@ -63,6 +67,7 @@ export function CircuitCanvas({
   selectedNodeIds,
   statusIsCopyConfirmation,
   emptyWelcomeVisible,
+  tutorialStep,
   tutorialSurfaceHighlighted,
   updateEdgeValueText,
   viewBox,
@@ -108,6 +113,7 @@ export function CircuitCanvas({
   selectedNodeIds: number[];
   statusIsCopyConfirmation: boolean;
   emptyWelcomeVisible: boolean;
+  tutorialStep: TutorialStep | null;
   tutorialSurfaceHighlighted: boolean;
   updateEdgeValueText: (
     edgeId: number,
@@ -115,6 +121,7 @@ export function CircuitCanvas({
       capacitanceText?: string | null;
       inductanceText?: string | null;
       josephsonInductanceText?: string | null;
+      josephsonPhaseSign?: 1 | -1;
     },
   ) => void;
   viewBox: ViewBox;
@@ -253,7 +260,9 @@ export function CircuitCanvas({
             capInputRef={inlineCapInputRef}
             edge={inlineValueEditorEdge}
             editorRef={inlineValueEditorRef}
+            matrixNodeLabels={matrixNodeLabels}
             position={inlineValueEditorPosition}
+            tutorialStep={tutorialStep}
             onClose={onCloseInlineValueEditor}
             onValueChange={updateEdgeValueText}
           />
@@ -361,11 +370,15 @@ function InlineEdgeValueEditor({
   position,
   onClose,
   onValueChange,
+  matrixNodeLabels,
+  tutorialStep,
 }: {
   capInputRef: Ref<HTMLInputElement>;
   edge: CircuitEdge;
   editorRef: Ref<HTMLDivElement>;
+  matrixNodeLabels: Map<number, string>;
   position: InlineEdgeEditorPosition;
+  tutorialStep: TutorialStep | null;
   onClose: () => void;
   onValueChange: (
     edgeId: number,
@@ -373,6 +386,7 @@ function InlineEdgeValueEditor({
       capacitanceText?: string | null;
       inductanceText?: string | null;
       josephsonInductanceText?: string | null;
+      josephsonPhaseSign?: 1 | -1;
     },
   ) => void;
 }) {
@@ -406,7 +420,12 @@ function InlineEdgeValueEditor({
         <span>C</span>
         <input
           aria-label="Inline capacitance"
-          data-testid="inline-cap-input"
+          className={
+            tutorialStep === "edge-values" || tutorialStep === "ground-values"
+              ? "tutorial-highlight-control"
+              : undefined
+          }
+          data-testid="cap-input"
           ref={capInputRef}
           value={edge.capacitance_text ?? ""}
           onChange={(event) =>
@@ -420,7 +439,10 @@ function InlineEdgeValueEditor({
         <span>L</span>
         <input
           aria-label="Inline inductance"
-          data-testid="inline-ind-input"
+          className={
+            tutorialStep === "edge-values" ? "tutorial-highlight-control" : undefined
+          }
+          data-testid="ind-input"
           value={edge.inductance_text ?? ""}
           onChange={(event) =>
             onValueChange(edge.identifier, {
@@ -433,7 +455,7 @@ function InlineEdgeValueEditor({
         <span>LJ</span>
         <input
           aria-label="Inline Josephson inductance"
-          data-testid="inline-jj-ind-input"
+          data-testid="jj-ind-input"
           value={edge.josephson_inductance_text ?? ""}
           onChange={(event) =>
             onValueChange(edge.identifier, {
@@ -442,6 +464,23 @@ function InlineEdgeValueEditor({
           }
         />
       </label>
+      {edge.josephson_inductance_text?.trim() ? (
+        <div className="phase-control" data-testid="jj-phase-control">
+          <span data-testid="jj-phase-label">
+            {josephsonPhaseLabel(edge, matrixNodeLabels)}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              onValueChange(edge.identifier, {
+                josephsonPhaseSign: edge.josephson_phase_sign === -1 ? 1 : -1,
+              })
+            }
+          >
+            Reverse
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

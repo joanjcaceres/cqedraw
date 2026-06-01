@@ -237,7 +237,7 @@ test("undoes and redoes node creation and deletion", async ({ page }) => {
   await expect(page.getByTestId("node-0")).toHaveCount(0);
 });
 
-test("does not intercept native undo while editing inspector fields", async ({
+test("does not intercept native undo while editing inline edge values", async ({
   page,
 }) => {
   await page.goto("/");

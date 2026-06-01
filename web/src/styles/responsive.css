@@ -21,6 +21,26 @@
     max-height: none;
   }
 
+  .canvas-empty-state {
+    left: 18px;
+    max-height: calc(100% - 36px);
+    top: 18px;
+    width: calc(100% - 36px);
+  }
+
+  .canvas-empty-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-empty-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .canvas-empty-actions button {
+    width: 100%;
+  }
+
   .output-drawer {
     width: calc(100vw - 24px);
   }

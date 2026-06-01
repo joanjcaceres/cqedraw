@@ -1,6 +1,11 @@
 import { useEffect, useState, type RefObject } from "react";
 
-import type { CircuitProject, OutputResult, ToolMode } from "./types";
+import type {
+  CircuitProject,
+  ModalAnalysisResult,
+  OutputResult,
+  ToolMode,
+} from "./types";
 import {
   isTutorialDismissed,
   nextTutorialStep,
@@ -12,6 +17,7 @@ interface UseTutorialStateOptions {
   dismissTutorialResetRef: { current: () => void };
   helpButtonRef: RefObject<HTMLButtonElement | null>;
   mode: ToolMode;
+  modalAnalysis: ModalAnalysisResult | null;
   onPrepareGenerateStep: () => void;
   project: CircuitProject;
   selectedEdgeId: number | null;
@@ -23,6 +29,7 @@ export function useTutorialState({
   dismissTutorialResetRef,
   helpButtonRef,
   mode,
+  modalAnalysis,
   onPrepareGenerateStep,
   output,
   project,
@@ -41,7 +48,7 @@ export function useTutorialState({
   }, []);
 
   useEffect(() => {
-    if (tutorialStep === "generate" || tutorialStep === "copy") {
+    if (tutorialStep === "copy") {
       setOutputDrawerOpen(true);
     }
   }, [setOutputDrawerOpen, tutorialStep]);
@@ -64,18 +71,20 @@ export function useTutorialState({
       output,
       selectedEdgeId,
       tutorialCopied,
+      modalAnalysis,
     });
     if (nextStep === "generate" && mode !== "select") {
       onPrepareGenerateStep();
     }
     if (nextStep === "generate") {
-      setOutputDrawerOpen(true);
+      setOutputDrawerOpen(false);
     }
     if (nextStep && nextStep !== tutorialStep) {
       setTutorialStep(nextStep);
     }
   }, [
     mode,
+    modalAnalysis,
     onPrepareGenerateStep,
     output,
     project,

@@ -1,6 +1,7 @@
 import type {
   CircuitEdge,
   CircuitProject,
+  ModalAnalysisResult,
   OutputResult,
   ToolMode,
 } from "./types";
@@ -19,6 +20,8 @@ export type TutorialStep =
   | "ground-values"
   | "edit-edge"
   | "generate"
+  | "parameter-values"
+  | "phase-zpf"
   | "copy"
   | "finish";
 
@@ -36,58 +39,71 @@ export const TUTORIAL_STEPS: Record<
       "and a Python snippet. You can skip it anytime.",
   },
   "first-node": {
-    progress: "Step 1 of 11",
+    progress: "Step 1 of 13",
     title: "Place the first node",
     body: "Use Node mode and click the canvas to place the first circuit node.",
   },
   "second-node": {
-    progress: "Step 2 of 11",
+    progress: "Step 2 of 13",
     title: "Place the second node",
     body: "Click another point on the canvas to place a second node.",
   },
   "edge-mode": {
-    progress: "Step 3 of 11",
+    progress: "Step 3 of 13",
     title: "Switch to Edge",
     body: "Click Edge in the toolbar so the next node clicks create a connection.",
   },
   "connect-edge": {
-    progress: "Step 4 of 11",
+    progress: "Step 4 of 13",
     title: "Connect the nodes",
     body: "Click the first node, then click the second node to create one edge between them.",
   },
   "edge-values": {
-    progress: "Step 5 of 11",
+    progress: "Step 5 of 13",
     title: "Enter edge values",
-    body: "With the edge selected, enter C for Capacitance and L for Linear inductance.",
+    body: "In the value panel next to the edge, enter C for capacitance and L for linear inductance.",
   },
   "ground-mode": {
-    progress: "Step 6 of 11",
+    progress: "Step 6 of 13",
     title: "Switch to Ground",
     body: "Click Ground in the toolbar to add a reference connection.",
   },
   "add-ground": {
-    progress: "Step 7 of 11",
+    progress: "Step 7 of 13",
     title: "Add the ground reference",
     body: "Click the second node to attach a ground reference to it.",
   },
   "ground-values": {
-    progress: "Step 8 of 11",
-    title: "Enter ground capacitance",
-    body: "For this tutorial, enter Cg for Capacitance and leave Linear inductance empty.",
+    progress: "Step 8 of 13",
+    title: "Enter ground values",
+    body:
+      "In the value panel next to the ground branch, enter Cg for capacitance and Lj for Josephson inductance.",
   },
   "edit-edge": {
-    progress: "Step 9 of 11",
+    progress: "Step 9 of 13",
     title: "Edit existing values",
-    body: "Click the edge between the two nodes again. Its C and L values reopen in the Inspector for editing.",
+    body: "Click the edge between the two nodes again. Its C and L values reopen beside the edge.",
   },
   generate: {
-    progress: "Step 10 of 11",
+    progress: "Step 10 of 13",
     title: "Prepare matrices",
     body:
-      "Output prepares C and L_inv with the same engine used by the desktop app.",
+      "Click Output in the toolbar. cQEDraw prepares C and L_inv with the same engine used by the desktop app.",
+  },
+  "parameter-values": {
+    progress: "Step 11 of 13",
+    title: "Enter parameter values",
+    body:
+      "Enter numeric values for C, L, Cg, and Lj in Output. Analysis runs automatically once all variables have values.",
+  },
+  "phase-zpf": {
+    progress: "Step 12 of 13",
+    title: "View phase ZPF",
+    body:
+      "Click Phase ZPF to inspect the Josephson phase zero-point fluctuation for the junction branch.",
   },
   copy: {
-    progress: "Step 11 of 11",
+    progress: "Step 13 of 13",
     title: "Copy matrices",
     body: "Click Copy matrices to place the generated Python matrix snippet on the clipboard.",
   },
@@ -105,7 +121,9 @@ export function nextTutorialStep({
   selectedEdgeId,
   step,
   tutorialCopied,
+  modalAnalysis,
 }: {
+  modalAnalysis: ModalAnalysisResult | null;
   mode: ToolMode;
   output: OutputResult | null;
   project: CircuitProject;
@@ -132,11 +150,13 @@ export function nextTutorialStep({
     case "add-ground":
       return groundEdge ? "ground-values" : null;
     case "ground-values":
-      return hasCapacitanceValue(groundEdge) ? "edit-edge" : null;
+      return hasGroundValues(groundEdge) ? "edit-edge" : null;
     case "edit-edge":
       return regularEdge && selectedEdgeId === regularEdge.identifier ? "generate" : null;
     case "generate":
-      return output ? "copy" : null;
+      return output ? "parameter-values" : null;
+    case "parameter-values":
+      return hasJosephsonPhaseZpf(modalAnalysis) ? "phase-zpf" : null;
     case "copy":
       return tutorialCopied ? "finish" : null;
     default:
@@ -148,8 +168,8 @@ export function tutorialPlacement(step: TutorialStep): TutorialPlacement {
   if (step === "edge-mode" || step === "ground-mode") {
     return "tools";
   }
-  if (step === "edge-values" || step === "ground-values" || step === "generate") {
-    return "inspector";
+  if (step === "generate" || step === "parameter-values") {
+    return "actions";
   }
   return "canvas";
 }
@@ -174,6 +194,17 @@ function hasEdgeValues(edge: CircuitEdge | null | undefined): boolean {
   return Boolean(edge?.capacitance_text?.trim() && edge.inductance_text?.trim());
 }
 
-function hasCapacitanceValue(edge: CircuitEdge | null | undefined): boolean {
-  return Boolean(edge?.capacitance_text?.trim());
+function hasGroundValues(edge: CircuitEdge | null | undefined): boolean {
+  return Boolean(
+    edge?.capacitance_text?.trim() && edge.josephson_inductance_text?.trim(),
+  );
+}
+
+function hasJosephsonPhaseZpf(
+  modalAnalysis: ModalAnalysisResult | null,
+): boolean {
+  return Boolean(
+    modalAnalysis?.available &&
+      modalAnalysis.branches?.some((branch) => branch.phase_zpf.length > 0),
+  );
 }

@@ -77,11 +77,11 @@ test("persists Output parameter defaults in saved projects", async ({ page }) =>
   await clickBuildMatrices(page);
   await page
     .getByRole("group", { name: "Input representation for Cj" })
-    .getByRole("button", { name: "E_C" })
+    .getByRole("button", { exact: true, name: "GHz" })
     .click();
   await page
     .getByRole("group", { name: "Input representation for Lj" })
-    .getByRole("button", { name: "E_J" })
+    .getByRole("button", { exact: true, name: "GHz" })
     .click();
   await page.getByLabel("Value for Cj").fill("0.25");
   await page.getByLabel("Value for Lj").fill("20");
@@ -117,12 +117,12 @@ test("persists Output parameter defaults in saved projects", async ({ page }) =>
   await expect(
     page
       .getByRole("group", { name: "Input representation for Cj" })
-      .getByRole("button", { name: "E_C" }),
+      .getByRole("button", { exact: true, name: "GHz" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page
       .getByRole("group", { name: "Input representation for Lj" })
-      .getByRole("button", { name: "E_J" }),
+      .getByRole("button", { exact: true, name: "GHz" }),
   ).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -237,7 +237,7 @@ test("undoes and redoes node creation and deletion", async ({ page }) => {
   await expect(page.getByTestId("node-0")).toHaveCount(0);
 });
 
-test("does not intercept native undo while editing inspector fields", async ({
+test("does not intercept native undo while editing inline edge values", async ({
   page,
 }) => {
   await page.goto("/");

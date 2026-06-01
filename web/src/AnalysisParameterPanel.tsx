@@ -14,6 +14,7 @@ import {
   type ParameterSweepConfig,
   type ParameterSweepConfigs,
 } from "./sweepState";
+import type { TutorialStep } from "./tutorialFlow";
 import { type ModalAnalysisResult, type OutputResult } from "./types";
 
 const SWEEP_SLIDER_COMMIT_DELAY_MS = 75;
@@ -58,6 +59,7 @@ export function AnalysisParameterPanel({
   selectedValues,
   sweepError,
   validation,
+  tutorialStep,
   values,
   sweepValues,
 }: {
@@ -83,6 +85,7 @@ export function AnalysisParameterPanel({
   selectedValues: Record<string, number>;
   sweepError: string | null;
   validation: MultiSweepValidation;
+  tutorialStep: TutorialStep | null;
   values: Record<string, string>;
   sweepValues: ParameterSweepConfigs;
 }) {
@@ -157,6 +160,7 @@ export function AnalysisParameterPanel({
                 selectedSweepValue={selectedValues[name]}
                 spec={parameterSpecs[name]}
                 sweepValues={validation.parameterValues[name] ?? []}
+                tutorialStep={tutorialStep}
                 value={values[name] ?? ""}
               />
             ))}
@@ -212,6 +216,7 @@ function ParameterControlRow({
   selectedSweepValue,
   spec,
   sweepValues,
+  tutorialStep,
   value,
 }: {
   disabled: boolean;
@@ -228,6 +233,7 @@ function ParameterControlRow({
   selectedSweepValue: number | undefined;
   spec: ParameterInputSpec | undefined;
   sweepValues: number[];
+  tutorialStep: TutorialStep | null;
   value: string;
 }) {
   const [localSliderDraft, setLocalSliderDraft] = useState<{
@@ -259,9 +265,9 @@ function ParameterControlRow({
   const activeUnit =
     inputMode === "energy" ? spec?.energyUnit : spec?.physicalUnit;
   const inputPlaceholder =
-    inputMode === "energy" && spec?.energyLabel
-      ? `${spec.energyLabel}/h in ${spec.energyUnit}`
-      : "required";
+    inputMode === "energy" && spec?.energyPlaceholder
+      ? spec.energyPlaceholder
+      : (spec?.physicalPlaceholder ?? "e.g. 1.0");
 
   useEffect(() => {
     setLocalSliderDraft(null);
@@ -345,7 +351,12 @@ function ParameterControlRow({
           <input
             aria-invalid={!range.enabled && (missing || invalid) ? true : undefined}
             aria-label={`Value for ${name}`}
-            className={range.enabled ? "parameter-sweep-reference-input" : undefined}
+            className={[
+              range.enabled ? "parameter-sweep-reference-input" : "",
+              tutorialStep === "parameter-values" && !range.enabled
+                ? "tutorial-highlight-control"
+                : "",
+            ].join(" ")}
             disabled={disabled || range.enabled}
             inputMode="decimal"
             onChange={(event) => onParameterChange(name, event.target.value)}
@@ -364,19 +375,19 @@ function ParameterControlRow({
               aria-pressed={inputMode === "physical"}
               disabled={disabled}
               onClick={() => onInputModeChange(name, "physical")}
-              title={`Use ${spec?.physicalLabel} in ${spec?.physicalUnit}`}
+              title={spec?.physicalButtonTitle}
               type="button"
             >
-              {spec?.physicalLabel}
+              {spec?.physicalButtonLabel}
             </button>
             <button
               aria-pressed={inputMode === "energy"}
               disabled={disabled}
               onClick={() => onInputModeChange(name, "energy")}
-              title={`Use ${spec?.energyLabel}/h in ${spec?.energyUnit}`}
+              title={spec?.energyButtonTitle ?? undefined}
               type="button"
             >
-              {spec?.energyLabel}
+              {spec?.energyButtonLabel}
             </button>
           </div>
         ) : null}

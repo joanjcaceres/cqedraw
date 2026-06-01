@@ -13,6 +13,14 @@ import {
   type ConcatenatePortPair,
   type ConcatenateSelectionAnalysis,
 } from "./graph";
+import {
+  APP_VERSION,
+  CITATION_URL,
+  CONTACT_EMAIL,
+  ISSUES_URL,
+  REPOSITORY_URL,
+  SITE_URL,
+} from "./appMetadata";
 import { clamp } from "./viewBox";
 
 interface ConcatenatePairRow {
@@ -501,27 +509,67 @@ export function HelpDialog({
             </button>
           </div>
         </header>
-        <ol>
-          <li>Use Node and click the canvas to place circuit nodes.</li>
-          <li>Use Edge, then click two nodes to connect them.</li>
-          <li>Use Ground, then click a node to add its ground reference; select and delete a ground connection to remove it.</li>
-          <li>Select an edge and enter capacitance, linear inductance, and Josephson inductance in the Inspector.</li>
-          <li>Inputs accept SymPy-style values such as Cj, 40e-15, Lgeom, and Lj.</li>
-          <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
-          <li>Use the canvas buttons, +/=, -, 0, wheel, or trackpad to adjust the view; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
-          <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
-          <li>Use Concatenate to repeat the selected block to the right.</li>
-          <li>Use New project to clear the drawing and start from a default canvas.</li>
-          <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
-          <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
-          <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to refresh matrices.</li>
-          <li>Output prepares C and L_inv automatically; Copy matrices copies the Python snippet.</li>
-          <li>Enter numeric parameter values in Output to run mode-frequency and Josephson phase-ZPF analysis automatically.</li>
-          <li>For direct component parameters, use the C/E_C, L/E_L, or LJ/E_J toggles to enter either component values or E/h values in GHz.</li>
-          <li>Use Sweep on parameter rows to explore values with sliders; chart wheel zoom uses Ctrl/Cmd, and Box zoom selects a plot region.</li>
-          <li>Current analysis assumes well-posed C and L_inv matrices and does not include external loop flux or hidden variable reduction.</li>
-          <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
-        </ol>
+        <div className="help-dialog-body">
+          <section aria-labelledby="help-overview-title" className="help-section">
+            <h3 id="help-overview-title">What cQEDraw produces</h3>
+            <p>
+              Draw a superconducting circuit graph, then use Output to generate
+              sparse SciPy C and L_inv matrices and run supported modal analysis
+              in the browser.
+            </p>
+          </section>
+          <section aria-labelledby="help-cite-title" className="help-section">
+            <h3 id="help-cite-title">Cite and support</h3>
+            <p>
+              Citation: Joan Caceres, cQEDraw: Superconducting Circuit Graph
+              Editor, v{APP_VERSION}, {SITE_URL}
+            </p>
+            <ul>
+              <li>
+                <a href={CITATION_URL} target="_blank" rel="noreferrer">
+                  Citation file
+                </a>
+              </li>
+              <li>
+                <a href={REPOSITORY_URL} target="_blank" rel="noreferrer">
+                  cQEDraw repository
+                </a>
+              </li>
+              <li>
+                <a href={ISSUES_URL} target="_blank" rel="noreferrer">
+                  Report an issue
+                </a>
+              </li>
+              <li>
+                <a href={`mailto:${CONTACT_EMAIL}`}>Contact Joan</a>
+              </li>
+            </ul>
+          </section>
+          <section aria-labelledby="help-workflow-title" className="help-section">
+            <h3 id="help-workflow-title">Workflow</h3>
+            <ol>
+              <li>Use Node and click the canvas to place circuit nodes.</li>
+              <li>Use Edge, then click two nodes to connect them.</li>
+              <li>Use Ground, then click a node to add its ground reference; select and delete a ground connection to remove it.</li>
+              <li>Select an edge and enter capacitance, linear inductance, and Josephson inductance in the value panel beside it.</li>
+              <li>Inputs accept SymPy-style values such as Cj, 40e-15, Lgeom, and Lj.</li>
+              <li>Hover over toolbar icons or tab to them to see their labels and shortcuts.</li>
+              <li>Use the canvas buttons, +/=, -, 0, wheel, or trackpad to adjust the view; use Select and drag empty canvas to pan, or use Box Select to select an area.</li>
+              <li>Use Copy Selection and Paste, or Ctrl/Cmd+C and Ctrl/Cmd+V, to duplicate selected nodes and their contained connections.</li>
+              <li>Use Concatenate to repeat the selected block to the right.</li>
+              <li>Use New project to clear the drawing and start from a default canvas.</li>
+              <li>Shortcuts: V Select, B Box Select, N Node, E Edge, G Ground, M Merge, D Concatenate, Esc cancel, Delete remove selection.</li>
+              <li>Use Ctrl/Cmd+Z and Ctrl/Cmd+Y to move through project edits.</li>
+              <li>Use Ctrl/Cmd+S to save, Ctrl/Cmd+O to load, and Ctrl/Cmd+Enter to refresh matrices.</li>
+              <li>Output prepares C and L_inv automatically; Copy matrices copies the Python snippet.</li>
+              <li>Enter numeric parameter values in Output to run mode-frequency and Josephson phase-ZPF analysis automatically.</li>
+              <li>For direct component parameters, use F/GHz for capacitances or H/GHz for inductances to enter either component values or E/h values in GHz.</li>
+              <li>Use Sweep on parameter rows to explore values with sliders; chart wheel zoom uses Ctrl/Cmd, and Box zoom selects a plot region.</li>
+              <li>Current analysis assumes well-posed C and L_inv matrices and does not include external loop flux or hidden variable reduction.</li>
+              <li>Save and Load store the drawing as a cQEDraw JSON project.</li>
+            </ol>
+          </section>
+        </div>
       </section>
     </div>
   );

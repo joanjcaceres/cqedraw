@@ -14,7 +14,6 @@ import {
   type ToolMode,
 } from "./types";
 import {
-  CANVAS_WIDTH,
   GRID_TILE_SIZE,
   NODE_RADIUS,
   ZOOM_IN_FACTOR,
@@ -27,7 +26,11 @@ import {
 import {
   CircuitEdgeShape,
 } from "./CircuitEdgeShape";
-import type { InlineEdgeEditorPosition } from "./edgeGeometry";
+import {
+  josephsonPhaseLabel,
+  type InlineEdgeEditorPosition,
+} from "./edgeGeometry";
+import type { TutorialStep } from "./tutorialFlow";
 
 export function CircuitCanvas({
   canvasRef,
@@ -51,6 +54,9 @@ export function CircuitCanvas({
   matrixNodeLabels,
   mode,
   onCloseInlineValueEditor,
+  onLoadExample,
+  onOpenHelp,
+  onStartTutorial,
   pastePreview,
   pastePreviewClipboard,
   panActive,
@@ -60,6 +66,8 @@ export function CircuitCanvas({
   selectedNodeId,
   selectedNodeIds,
   statusIsCopyConfirmation,
+  emptyWelcomeVisible,
+  tutorialStep,
   tutorialSurfaceHighlighted,
   updateEdgeValueText,
   viewBox,
@@ -92,6 +100,9 @@ export function CircuitCanvas({
   matrixNodeLabels: Map<number, string>;
   mode: ToolMode;
   onCloseInlineValueEditor: () => void;
+  onLoadExample: () => void;
+  onOpenHelp: () => void;
+  onStartTutorial: () => void;
   pastePreview: { anchor: Point } | null;
   pastePreviewClipboard: SelectionClipboard | null;
   panActive: boolean;
@@ -101,6 +112,8 @@ export function CircuitCanvas({
   selectedNodeId: number | null;
   selectedNodeIds: number[];
   statusIsCopyConfirmation: boolean;
+  emptyWelcomeVisible: boolean;
+  tutorialStep: TutorialStep | null;
   tutorialSurfaceHighlighted: boolean;
   updateEdgeValueText: (
     edgeId: number,
@@ -108,12 +121,19 @@ export function CircuitCanvas({
       capacitanceText?: string | null;
       inductanceText?: string | null;
       josephsonInductanceText?: string | null;
+      josephsonPhaseSign?: 1 | -1;
     },
   ) => void;
   viewBox: ViewBox;
   zoomCanvas: (factor: number) => void;
 }) {
   const gridRect = gridRectForView(viewBox);
+  const tutorialTargetNodeIds = tutorialNodeTargetIds(
+    project,
+    pendingEdgeNodeId,
+    tutorialStep,
+  );
+  const tutorialTargetEdgeIds = tutorialEdgeTargetIds(project, tutorialStep);
 
   return (
     <div className="canvas-pane">
@@ -189,13 +209,13 @@ export function CircuitCanvas({
               height={marqueeRect.height}
             />
           ) : null}
-          {project.state.nodes.length === 0 ? <CanvasHint /> : null}
           {project.state.edges.map((edge) => (
             <CircuitEdgeShape
               key={edge.identifier}
               edge={edge}
               nodes={project.state.nodes}
               selected={selectedEdgeId === edge.identifier}
+              tutorialTarget={tutorialTargetEdgeIds.has(edge.identifier)}
               onPointerDown={handleEdgePointerDown}
               onGroundPointerDown={handleGroundPointerDown}
             />
@@ -212,6 +232,9 @@ export function CircuitCanvas({
                   selectedNodeIds.includes(node.identifier) ? "selected" : "",
                   selectedNodeId === node.identifier ? "focused" : "",
                   pendingEdgeNodeId === node.identifier ? "pending" : "",
+                  tutorialTargetNodeIds.has(node.identifier)
+                    ? "tutorial-target"
+                    : "",
                 ].join(" ")}
                 cx={node.x}
                 cy={node.y}
@@ -235,12 +258,21 @@ export function CircuitCanvas({
             />
           ) : null}
         </svg>
+        {project.state.nodes.length === 0 && emptyWelcomeVisible ? (
+          <EmptyCanvasWelcome
+            onLoadExample={onLoadExample}
+            onOpenHelp={onOpenHelp}
+            onStartTutorial={onStartTutorial}
+          />
+        ) : null}
         {inlineValueEditorEdge && inlineValueEditorPosition ? (
           <InlineEdgeValueEditor
             capInputRef={inlineCapInputRef}
             edge={inlineValueEditorEdge}
             editorRef={inlineValueEditorRef}
+            matrixNodeLabels={matrixNodeLabels}
             position={inlineValueEditorPosition}
+            tutorialStep={tutorialStep}
             onClose={onCloseInlineValueEditor}
             onValueChange={updateEdgeValueText}
           />
@@ -261,24 +293,98 @@ export function CircuitCanvas({
   );
 }
 
-function CanvasHint() {
+function tutorialNodeTargetIds(
+  project: CircuitProject,
+  pendingEdgeNodeId: number | null,
+  tutorialStep: TutorialStep | null,
+): Set<number> {
+  const [firstNode, secondNode] = project.state.nodes;
+  if (!firstNode || !secondNode) {
+    return new Set();
+  }
+
+  if (tutorialStep === "connect-edge") {
+    if (pendingEdgeNodeId === null) {
+      return new Set([firstNode.identifier]);
+    }
+
+    return new Set(
+      project.state.nodes
+        .filter((node) => node.identifier !== pendingEdgeNodeId)
+        .map((node) => node.identifier),
+    );
+  }
+
+  if (tutorialStep === "add-ground") {
+    return new Set([secondNode.identifier]);
+  }
+
+  return new Set();
+}
+
+function tutorialEdgeTargetIds(
+  project: CircuitProject,
+  tutorialStep: TutorialStep | null,
+): Set<number> {
+  if (tutorialStep !== "edit-edge") {
+    return new Set();
+  }
+
+  const regularEdge = project.state.edges.find((edge) => !edge.is_ground);
+  return regularEdge ? new Set([regularEdge.identifier]) : new Set();
+}
+
+function EmptyCanvasWelcome({
+  onLoadExample,
+  onOpenHelp,
+  onStartTutorial,
+}: {
+  onLoadExample: () => void;
+  onOpenHelp: () => void;
+  onStartTutorial: () => void;
+}) {
   return (
-    <g className="canvas-hint" data-testid="canvas-hint">
-      <text x={CANVAS_WIDTH / 2} y={250} textAnchor="middle">
-        <tspan className="canvas-hint-title" x={CANVAS_WIDTH / 2}>
-          Click the canvas to place nodes.
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Use Edge to connect nodes, Ground to add a reference,
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="24">
-          then select an edge to enter C/L/LJ.
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Open Output to prepare matrices; Copy matrices exports the Python snippet.
-        </tspan>
-      </text>
-    </g>
+    <section
+      aria-label="First-run guide"
+      className="canvas-empty-state"
+      data-testid="canvas-hint"
+    >
+      <span className="canvas-empty-eyebrow">Superconducting circuit graph editor</span>
+      <h2>Build circuit graphs into matrices</h2>
+      <p>
+        Draw nodes, edges, and ground references. cQEDraw prepares sparse C and
+        L_inv matrices, then runs supported modal analysis in the browser.
+      </p>
+      <ol className="canvas-empty-flow" aria-label="cQEDraw workflow">
+        <li>
+          <strong>Draw</strong>
+          <span>Place a circuit graph on the canvas.</span>
+        </li>
+        <li>
+          <strong>Generate</strong>
+          <span>Prepare Python-ready C and L_inv snippets.</span>
+        </li>
+        <li>
+          <strong>Analyze</strong>
+          <span>Explore supported modes and parameter sweeps.</span>
+        </li>
+      </ol>
+      <div className="canvas-empty-actions">
+        <button type="button" onClick={onStartTutorial}>
+          Start tutorial
+        </button>
+        <button type="button" onClick={onLoadExample}>
+          Load example circuit
+        </button>
+        <button
+          className="canvas-empty-secondary"
+          type="button"
+          onClick={onOpenHelp}
+        >
+          Cite and support
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -315,11 +421,15 @@ function InlineEdgeValueEditor({
   position,
   onClose,
   onValueChange,
+  matrixNodeLabels,
+  tutorialStep,
 }: {
   capInputRef: Ref<HTMLInputElement>;
   edge: CircuitEdge;
   editorRef: Ref<HTMLDivElement>;
+  matrixNodeLabels: Map<number, string>;
   position: InlineEdgeEditorPosition;
+  tutorialStep: TutorialStep | null;
   onClose: () => void;
   onValueChange: (
     edgeId: number,
@@ -327,6 +437,7 @@ function InlineEdgeValueEditor({
       capacitanceText?: string | null;
       inductanceText?: string | null;
       josephsonInductanceText?: string | null;
+      josephsonPhaseSign?: 1 | -1;
     },
   ) => void;
 }) {
@@ -360,7 +471,12 @@ function InlineEdgeValueEditor({
         <span>C</span>
         <input
           aria-label="Inline capacitance"
-          data-testid="inline-cap-input"
+          className={
+            tutorialStep === "edge-values" || tutorialStep === "ground-values"
+              ? "tutorial-highlight-control"
+              : undefined
+          }
+          data-testid="cap-input"
           ref={capInputRef}
           value={edge.capacitance_text ?? ""}
           onChange={(event) =>
@@ -374,7 +490,10 @@ function InlineEdgeValueEditor({
         <span>L</span>
         <input
           aria-label="Inline inductance"
-          data-testid="inline-ind-input"
+          className={
+            tutorialStep === "edge-values" ? "tutorial-highlight-control" : undefined
+          }
+          data-testid="ind-input"
           value={edge.inductance_text ?? ""}
           onChange={(event) =>
             onValueChange(edge.identifier, {
@@ -387,7 +506,12 @@ function InlineEdgeValueEditor({
         <span>LJ</span>
         <input
           aria-label="Inline Josephson inductance"
-          data-testid="inline-jj-ind-input"
+          className={
+            tutorialStep === "ground-values"
+              ? "tutorial-highlight-control"
+              : undefined
+          }
+          data-testid="jj-ind-input"
           value={edge.josephson_inductance_text ?? ""}
           onChange={(event) =>
             onValueChange(edge.identifier, {
@@ -396,6 +520,23 @@ function InlineEdgeValueEditor({
           }
         />
       </label>
+      {edge.josephson_inductance_text?.trim() ? (
+        <div className="phase-control" data-testid="jj-phase-control">
+          <span data-testid="jj-phase-label">
+            {josephsonPhaseLabel(edge, matrixNodeLabels)}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              onValueChange(edge.identifier, {
+                josephsonPhaseSign: edge.josephson_phase_sign === -1 ? 1 : -1,
+              })
+            }
+          >
+            Reverse
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

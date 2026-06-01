@@ -151,21 +151,41 @@ test("accepts Ec and Ej values for modal analysis", async ({ page }) => {
   await page.getByTestId("jj-ind-input").fill("Lj");
 
   await clickBuildMatrices(page);
-  await page
-    .getByRole("group", { name: "Input representation for Cj" })
-    .getByRole("button", { name: "E_C" })
-    .click();
-  await page
-    .getByRole("group", { name: "Input representation for Lj" })
-    .getByRole("button", { name: "E_J" })
-    .click();
+  const cjInputMode = page.getByRole("group", {
+    name: "Input representation for Cj",
+  });
+  const ljInputMode = page.getByRole("group", {
+    name: "Input representation for Lj",
+  });
+  await expect(
+    cjInputMode.getByRole("button", { exact: true, name: "F" }),
+  ).toHaveAttribute("title", "Farad (F)");
+  await expect(
+    cjInputMode.getByRole("button", { exact: true, name: "GHz" }),
+  ).toHaveAttribute("title", "Gigahertz (GHz), equivalent to E_C/h");
+  await expect(
+    ljInputMode.getByRole("button", { exact: true, name: "H" }),
+  ).toHaveAttribute("title", "Henry (H)");
+  await expect(
+    ljInputMode.getByRole("button", { exact: true, name: "GHz" }),
+  ).toHaveAttribute("title", "Gigahertz (GHz), equivalent to E_J/h");
   await expect(page.getByLabel("Value for Cj")).toHaveAttribute(
     "placeholder",
-    "E_C/h in GHz",
+    "e.g. 25e-15",
   );
   await expect(page.getByLabel("Value for Lj")).toHaveAttribute(
     "placeholder",
-    "E_J/h in GHz",
+    "e.g. 10e-9",
+  );
+  await cjInputMode.getByRole("button", { exact: true, name: "GHz" }).click();
+  await ljInputMode.getByRole("button", { exact: true, name: "GHz" }).click();
+  await expect(page.getByLabel("Value for Cj")).toHaveAttribute(
+    "placeholder",
+    "e.g. 0.8",
+  );
+  await expect(page.getByLabel("Value for Lj")).toHaveAttribute(
+    "placeholder",
+    "e.g. 16",
   );
 
   await page.getByLabel("Value for Cj").fill("0.25");

@@ -5,24 +5,35 @@ import {
   expectRawMatrixEntriesHidden,
   closeOutputDrawer,
   expectBeforeUnloadProtection,
+  selectAnalysisPlotTab,
 } from "./helpers";
 
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
   await page.goto("/");
 
   const canvas = page.getByTestId("canvas");
-  await expect(page.getByTestId("canvas-hint")).toContainText(
-    "Click the canvas to place nodes.",
-  );
-  await expect(page.getByTestId("canvas-hint")).toContainText(
-    "Open Output to prepare matrices; Copy matrices exports the Python snippet.",
-  );
+  const canvasHint = page.getByTestId("canvas-hint");
+  await expect(canvasHint).toContainText("Build circuit graphs into matrices");
+  await expect(canvasHint).toContainText("Python-ready C and L_inv snippets");
+  await expect(canvasHint).toContainText("Explore supported modes");
+  await expect(
+    canvasHint.getByRole("button", { name: "Start tutorial" }),
+  ).toBeVisible();
+  await expect(
+    canvasHint.getByRole("button", { name: "Load example circuit" }),
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Help" }).click();
+  await canvasHint.getByRole("button", { name: "Cite and support" }).click();
   const helpDialog = page.getByRole("dialog", { name: "Help" });
   const helpButton = page.getByRole("button", { name: "Help" });
   const closeButton = page.getByRole("button", { name: "Close" });
   await expect(helpDialog).toBeVisible();
+  await expect(helpDialog).toContainText("What cQEDraw produces");
+  await expect(helpDialog).toContainText("Citation: Joan Caceres");
+  await expect(helpDialog).toContainText("v0.2.0");
+  await expect(helpDialog.getByRole("link", { name: "Citation file" })).toBeVisible();
+  await expect(helpDialog.getByRole("link", { name: "Report an issue" })).toBeVisible();
+  await expect(helpDialog.getByRole("link", { name: "Contact Joan" })).toBeVisible();
   await expect(helpDialog).toContainText("Use Node and click the canvas");
   await expect(helpDialog).toContainText("Use New project to clear the drawing");
   await expect(helpDialog).toContainText("Cj, 40e-15, Lgeom, and Lj");
@@ -30,7 +41,7 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   await expect(helpDialog).toContainText("does not include external loop flux");
   await expect(closeButton).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(helpDialog.getByRole("button", { name: "Start tutorial" })).toBeFocused();
+  await expect(helpDialog.getByRole("link", { name: "Citation file" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(helpDialog).toBeHidden();
   await expect(helpButton).toBeFocused();
@@ -40,8 +51,31 @@ test("guides a first-time web user without blocking drawing", async ({ page }) =
   await closeButton.click();
   await expect(helpDialog).toBeHidden();
 
-  await canvas.click({ position: { x: 160, y: 220 } });
+  await canvas.click({ position: { x: 820, y: 520 } });
+  await expect(canvasHint).toBeHidden();
+});
+
+test("loads a sample circuit from the first-run canvas", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("cqedraw.tutorial.v1", "dismissed");
+  });
+  await page.goto("/");
+
+  await page
+    .getByTestId("canvas-hint")
+    .getByRole("button", { name: "Load example circuit" })
+    .click();
+
   await expect(page.getByTestId("canvas-hint")).toBeHidden();
+  await expect(page.getByTestId("node-0")).toBeVisible();
+  await expect(page.getByTestId("node-1")).toBeVisible();
+  await expect(page.getByTestId("node-2")).toBeVisible();
+  await expect(page.getByTestId("edge-0")).toBeVisible();
+  await expect(page.getByTestId("edge-1")).toBeVisible();
+  await expect(page.getByTestId("output-status")).toContainText(
+    "Loaded example circuit.",
+  );
+  await expect(page.getByTestId("save-status")).toContainText("Unsaved changes");
 });
 
 test("keeps compact toolbar buttons accessible with hover and keyboard-focus tooltips", async ({
@@ -114,10 +148,9 @@ test("keeps compact toolbar buttons accessible with hover and keyboard-focus too
     "title",
     "Save (Ctrl/Cmd+S)",
   );
-  await expect(page.getByRole("button", { name: "Load" })).toHaveAttribute(
-    "title",
-    "Load (Ctrl/Cmd+O)",
-  );
+  await expect(
+    page.getByRole("button", { exact: true, name: "Load" }),
+  ).toHaveAttribute("title", "Load (Ctrl/Cmd+O)");
   await expect(
     page.getByRole("button", { name: "Copy Selection" }),
   ).toHaveAttribute("title", "Copy Selection (Ctrl/Cmd+C)");
@@ -182,7 +215,7 @@ test("restarts the tutorial from Help and confirms before clearing a project", a
     page.getByTestId("tutorial-callout").getByRole("button", { name: "Start" }),
   ).toBeFocused();
   await expect(page.getByTestId("node-0")).toBeHidden();
-  await expect(page.getByTestId("canvas-hint")).toBeVisible();
+  await expect(page.getByTestId("canvas-hint")).toBeHidden();
 });
 
 test("completes the optional onboarding tutorial", async ({ context, page }) => {
@@ -215,8 +248,10 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
 
   await page.getByRole("button", { name: "Edge" }).click();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Connect the nodes");
+  await expect(page.getByTestId("node-0")).toHaveClass(/tutorial-target/);
 
   await page.getByTestId("node-0").click();
+  await expect(page.getByTestId("node-1")).toHaveClass(/tutorial-target/);
   await page.getByTestId("node-1").click();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Enter edge values");
 
@@ -228,27 +263,73 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("tutorial-callout")).toContainText(
     "Add the ground reference",
   );
+  await expect(page.getByTestId("node-1")).toHaveClass(/tutorial-target/);
 
   await page.getByTestId("node-1").click();
   await expect(page.getByTestId("tutorial-callout")).toContainText(
-    "Enter ground capacitance",
+    "Enter ground values",
   );
   await expect(page.getByTestId("cap-input")).toHaveClass(/tutorial-highlight-control/);
+  await expect(page.getByTestId("jj-ind-input")).toHaveClass(
+    /tutorial-highlight-control/,
+  );
   await expect(page.getByTestId("ind-input")).not.toHaveClass(
     /tutorial-highlight-control/,
   );
 
   await page.getByTestId("cap-input").fill("Cg");
+  await expect(page.getByTestId("tutorial-callout")).toContainText(
+    "Enter ground values",
+  );
+  await page.getByTestId("jj-ind-input").fill("Lj");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Edit existing values");
+  await expect(page.getByTestId("edge-symbol-0")).toHaveClass(/tutorial-target/);
   await page.getByTestId("edge-0").click({ force: true });
   await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
+  const outputButton = page.getByRole("button", { exact: true, name: "Output" });
+  await expect(outputButton).toHaveClass(/tutorial-highlight/);
+  await expect(page.getByTestId("output-drawer")).toHaveCount(0);
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
+  await expect(page.getByTestId("output-drawer")).toHaveCount(0);
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
+  await expect(page.getByTestId("jj-branches")).toContainText(
+    "1 Josephson branch included in the copied Python snippet.",
+  );
+  await expect(page.getByTestId("tutorial-callout")).toContainText(
+    "Enter parameter values",
+  );
+  await expect(page.getByLabel("Value for C", { exact: true })).toHaveClass(
+    /tutorial-highlight-control/,
+  );
+  await page.getByLabel("Value for C", { exact: true }).fill("80e-15");
+  await page.getByLabel("Value for L", { exact: true }).fill("12e-9");
+  await page.getByLabel("Value for Cg", { exact: true }).fill("40e-15");
+  await page.getByLabel("Value for Lj", { exact: true }).fill("8e-9");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("tutorial-callout")).toContainText("View phase ZPF");
+  await expect(page.getByTestId("analysis-plot-tab-zpf")).toHaveClass(
+    /tutorial-highlight-control/,
+  );
+  await selectAnalysisPlotTab(page, "Phase ZPF");
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Copy matrices");
+  const copyMatricesButton = page.getByRole("button", {
+    exact: true,
+    name: "Copy matrices",
+  });
+  await expect(copyMatricesButton).toHaveClass(/tutorial-highlight-control/);
+  await expect(copyMatricesButton).toHaveCSS(
+    "background-color",
+    "rgb(246, 195, 67)",
+  );
 
-  await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
+  await copyMatricesButton.click();
   await expect(page.getByTestId("output-status")).toContainText(
     "Copied matrices to clipboard. Paste them into Python or a notebook.",
   );

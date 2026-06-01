@@ -23,6 +23,7 @@ import {
   ToolMode,
 } from "./types";
 import {
+  fitProjectView,
   rectFromPoints,
 } from "./viewBox";
 import {
@@ -36,6 +37,7 @@ import {
 } from "./AppDialogs";
 import { AppToolbar } from "./AppToolbar";
 import { CircuitCanvas } from "./CircuitCanvas";
+import { buildExampleProject } from "./exampleProject";
 import {
   matrixNodeLabelMap,
 } from "./edgeGeometry";
@@ -268,6 +270,7 @@ export function App() {
     dismissTutorialResetRef,
     helpButtonRef,
     mode,
+    modalAnalysis,
     onPrepareGenerateStep: prepareTutorialGenerateStep,
     output,
     project,
@@ -659,6 +662,22 @@ export function App() {
     setSelectedNodeIds([]);
     setSelectedNodeId(null);
   }
+
+  function loadExampleProject() {
+    const next = buildExampleProject();
+    dismissTutorial();
+    commitProjectChange(() => next);
+    resetProjectInteractionState();
+    setParameterValues({});
+    setParameterInputModes({});
+    setOutput(null);
+    clearSweepResults();
+    setOutputDrawerOpen(false);
+    setMode("select");
+    setViewBox(fitProjectView(next));
+    setEngineStatus("Loaded example circuit.");
+  }
+
   const {
     handleCanvasPointerCancel,
     handleCanvasPointerDown,
@@ -730,13 +749,6 @@ export function App() {
     zoomCanvas,
   });
 
-  const selectedEdgeLabel = selectedEdge
-    ? selectedEdge.is_ground
-      ? `Ground ${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}`
-      : `${matrixNodeLabels.get(selectedEdge.nodes[0]) ?? selectedEdge.nodes[0]}-${
-          matrixNodeLabels.get(selectedEdge.nodes[1]) ?? selectedEdge.nodes[1]
-        }`
-    : null;
   const mergeTargetNode =
     selectedNodeIds.length > 1 && selectedNodeId !== null
       ? project.state.nodes.find((node) => node.identifier === selectedNodeId) ?? null
@@ -800,6 +812,9 @@ export function App() {
           matrixNodeLabels={matrixNodeLabels}
           mode={mode}
           onCloseInlineValueEditor={() => setInlineValueEditorEdgeId(null)}
+          onLoadExample={loadExampleProject}
+          onOpenHelp={() => setHelpOpen(true)}
+          onStartTutorial={requestTutorialStart}
           pastePreview={pastePreview}
           pastePreviewClipboard={activePasteClipboard}
           panActive={Boolean(panState)}
@@ -809,9 +824,11 @@ export function App() {
           selectedNodeId={selectedNodeId}
           selectedNodeIds={selectedNodeIds}
           statusIsCopyConfirmation={statusIsCopyConfirmation}
+          tutorialStep={tutorialStep}
           tutorialSurfaceHighlighted={
             tutorialStep === "first-node" || tutorialStep === "second-node"
           }
+          emptyWelcomeVisible={tutorialStep === null}
           updateEdgeValueText={updateEdgeValueText}
           viewBox={viewBox}
           zoomCanvas={zoomCanvas}
@@ -823,16 +840,11 @@ export function App() {
             matrixNodeLabels={matrixNodeLabels}
             mergeTargetLabel={mergeTargetLabel}
             nodeCount={project.state.nodes.length}
-            onCloseInlineValueEditor={() => setInlineValueEditorEdgeId(null)}
-            onEdgeValueTextChange={updateEdgeValueText}
             onNodeNameChange={(nodeId, name) =>
               commitProjectChange((current) => renameNode(current, nodeId, name))
             }
-            selectedEdge={selectedEdge}
-            selectedEdgeLabel={selectedEdgeLabel}
             selectedNode={selectedNode}
             selectedNodeIds={selectedNodeIds}
-            tutorialStep={tutorialStep}
           />
         </aside>
       </section>
@@ -861,6 +873,7 @@ export function App() {
             markSweepSliderInteraction();
             preserveOutputPanelScroll();
           }}
+          onTutorialPhaseZpfViewed={() => setTutorialStep("copy")}
           output={output}
           outputDrawerState={outputDrawerState}
           outputPanelRef={outputPanelRef}

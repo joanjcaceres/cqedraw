@@ -26,8 +26,8 @@ test("edits newly created edge and ground values inline", async ({ page }) => {
   await page.getByTestId("node-1").click();
 
   const inlineEditor = page.getByTestId("inline-edge-value-editor");
-  const inlineCapInput = page.getByTestId("inline-cap-input");
-  const inlineIndInput = page.getByTestId("inline-ind-input");
+  const inlineCapInput = page.getByTestId("cap-input");
+  const inlineIndInput = page.getByTestId("ind-input");
   await expect(inlineEditor).toBeVisible();
   await expect(inlineCapInput).toBeFocused();
   await expectInlineEditorCenteredOnEdge(page, "edge-0", inlineEditor);
@@ -156,7 +156,7 @@ test("renders component symbols for regular and ground edge values", async ({
     capLabelBox.y + capLabelBox.height / 2,
   );
   await expect(page.getByTestId("inline-edge-value-editor")).toBeVisible();
-  await expect(page.getByTestId("inline-cap-input")).toHaveValue("C12");
+  await expect(page.getByTestId("cap-input")).toHaveValue("C12");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("inline-edge-value-editor")).toHaveCount(0);
 

@@ -24,6 +24,17 @@ describe("crawl metadata", () => {
     expect(indexHtml).not.toContain("http://cqedraw.org");
   });
 
+  it("exposes brand-search metadata before the app hydrates", () => {
+    const indexHtml = readWebFile("index.html");
+
+    expect(indexHtml).toContain('<meta name="application-name" content="cQEDraw" />');
+    expect(indexHtml).toContain('"name": "cQEDraw"');
+    expect(indexHtml).toContain('"alternateName": ["CQEDraw", "cQEDraw web editor"]');
+    expect(indexHtml).toContain('"codeRepository": "https://github.com/joanjcaceres/cqedraw"');
+    expect(indexHtml).toContain("<h1>cQEDraw</h1>");
+    expect(indexHtml).toContain("browser-based superconducting circuit graph editor");
+  });
+
   it("points crawlers only at the HTTPS sitemap URL", () => {
     const robotsTxt = readPublicFile("robots.txt");
     const sitemapXml = readPublicFile("sitemap.xml");

@@ -6,8 +6,9 @@
     <title>cQEDraw: Superconducting Circuit Graph Editor</title>
     <meta
       name="description"
-      content="Draw and analyze superconducting circuit graphs for Black Box Quantization workflows."
+      content="cQEDraw is a browser-based superconducting circuit graph editor for circuit QED and Black Box Quantization workflows."
     />
+    <meta name="application-name" content="cQEDraw" />
     <meta name="theme-color" content="#071327" />
     <link rel="canonical" href="https://cqedraw.org/" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
@@ -19,7 +20,7 @@
     <meta property="og:title" content="cQEDraw: Superconducting Circuit Graph Editor" />
     <meta
       property="og:description"
-      content="Draw and analyze superconducting circuit graphs for Black Box Quantization workflows."
+      content="cQEDraw is a browser-based superconducting circuit graph editor for circuit QED and Black Box Quantization workflows."
     />
     <meta property="og:image" content="https://cqedraw.org/social-card.png" />
     <meta property="og:image:type" content="image/png" />
@@ -33,16 +34,57 @@
     <meta name="twitter:title" content="cQEDraw: Superconducting Circuit Graph Editor" />
     <meta
       name="twitter:description"
-      content="Draw and analyze superconducting circuit graphs for Black Box Quantization workflows."
+      content="cQEDraw is a browser-based superconducting circuit graph editor for circuit QED and Black Box Quantization workflows."
     />
     <meta name="twitter:image" content="https://cqedraw.org/social-card.png" />
     <meta
       name="twitter:image:alt"
       content="cQEDraw web editor showing a superconducting circuit graph"
     />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "cQEDraw",
+        "alternateName": ["CQEDraw", "cQEDraw web editor"],
+        "url": "https://cqedraw.org/",
+        "description": "cQEDraw is a browser-based superconducting circuit graph editor for circuit QED and Black Box Quantization workflows.",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Any",
+        "softwareVersion": "0.2.0",
+        "isAccessibleForFree": true,
+        "codeRepository": "https://github.com/joanjcaceres/cqedraw",
+        "keywords": [
+          "cQEDraw",
+          "circuit QED",
+          "superconducting circuits",
+          "Black Box Quantization",
+          "quantum circuits",
+          "sccircuits"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>cQEDraw</h1>
+        <p>
+          cQEDraw is a browser-based superconducting circuit graph editor for
+          circuit QED and Black Box Quantization workflows.
+        </p>
+        <p>
+          Use cQEDraw to draw superconducting circuit graphs, generate sparse
+          capacitance and inverse-inductance matrix snippets, and prepare
+          circuit metadata for analysis with sccircuits.
+        </p>
+        <p>
+          The cQEDraw source code is available at
+          <a href="https://github.com/joanjcaceres/cqedraw">GitHub</a>.
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

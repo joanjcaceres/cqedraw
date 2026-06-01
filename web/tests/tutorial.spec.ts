@@ -247,8 +247,10 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
 
   await page.getByRole("button", { name: "Edge" }).click();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Connect the nodes");
+  await expect(page.getByTestId("node-0")).toHaveClass(/tutorial-target/);
 
   await page.getByTestId("node-0").click();
+  await expect(page.getByTestId("node-1")).toHaveClass(/tutorial-target/);
   await page.getByTestId("node-1").click();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Enter edge values");
 
@@ -260,6 +262,7 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("tutorial-callout")).toContainText(
     "Add the ground reference",
   );
+  await expect(page.getByTestId("node-1")).toHaveClass(/tutorial-target/);
 
   await page.getByTestId("node-1").click();
   await expect(page.getByTestId("tutorial-callout")).toContainText(

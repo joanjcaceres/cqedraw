@@ -151,6 +151,12 @@
   fill: #f25f5c;
 }
 
+.node-circle.tutorial-target {
+  fill: #f6c343;
+  stroke: #7a5400;
+  stroke-width: 4;
+}
+
 .node-label,
 .edge-label {
   fill: #172033;

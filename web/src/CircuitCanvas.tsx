@@ -128,6 +128,11 @@ export function CircuitCanvas({
   zoomCanvas: (factor: number) => void;
 }) {
   const gridRect = gridRectForView(viewBox);
+  const tutorialTargetNodeIds = tutorialNodeTargetIds(
+    project,
+    pendingEdgeNodeId,
+    tutorialStep,
+  );
 
   return (
     <div className="canvas-pane">
@@ -225,6 +230,9 @@ export function CircuitCanvas({
                   selectedNodeIds.includes(node.identifier) ? "selected" : "",
                   selectedNodeId === node.identifier ? "focused" : "",
                   pendingEdgeNodeId === node.identifier ? "pending" : "",
+                  tutorialTargetNodeIds.has(node.identifier)
+                    ? "tutorial-target"
+                    : "",
                 ].join(" ")}
                 cx={node.x}
                 cy={node.y}
@@ -281,6 +289,35 @@ export function CircuitCanvas({
       </div>
     </div>
   );
+}
+
+function tutorialNodeTargetIds(
+  project: CircuitProject,
+  pendingEdgeNodeId: number | null,
+  tutorialStep: TutorialStep | null,
+): Set<number> {
+  const [firstNode, secondNode] = project.state.nodes;
+  if (!firstNode || !secondNode) {
+    return new Set();
+  }
+
+  if (tutorialStep === "connect-edge") {
+    if (pendingEdgeNodeId === null) {
+      return new Set([firstNode.identifier]);
+    }
+
+    return new Set(
+      project.state.nodes
+        .filter((node) => node.identifier !== pendingEdgeNodeId)
+        .map((node) => node.identifier),
+    );
+  }
+
+  if (tutorialStep === "add-ground") {
+    return new Set([secondNode.identifier]);
+  }
+
+  return new Set();
 }
 
 function EmptyCanvasWelcome({

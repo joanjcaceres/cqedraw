@@ -217,7 +217,8 @@
 }
 
 .form-grid input.tutorial-highlight-control,
-.inline-edge-editor input.tutorial-highlight-control {
+.inline-edge-editor input.tutorial-highlight-control,
+.parameter-control-main input.tutorial-highlight-control {
   border-color: #c28a00;
   box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
 }

@@ -8,6 +8,7 @@ import {
   referenceZpfYBounds,
 } from "./analysis";
 import { AnalysisLineChart } from "./AnalysisLineChart";
+import type { TutorialStep } from "./tutorialFlow";
 import type { ModalAnalysisResult } from "./types";
 
 export function ModalAnalysisPlots({
@@ -16,6 +17,8 @@ export function ModalAnalysisPlots({
   placeholderAvailable = false,
   placeholderZpfAvailable = false,
   result,
+  tutorialStep = null,
+  onTutorialPhaseZpfViewed,
   yReferenceResults = [],
   zpfTestId = "zpf-mode-plot",
   zpfTitle = "JJ phase ZPF",
@@ -25,6 +28,8 @@ export function ModalAnalysisPlots({
   placeholderAvailable?: boolean;
   placeholderZpfAvailable?: boolean;
   result: ModalAnalysisResult | null;
+  tutorialStep?: TutorialStep | null;
+  onTutorialPhaseZpfViewed?: () => void;
   yReferenceResults?: ModalAnalysisResult[];
   zpfTestId?: string;
   zpfTitle?: string;
@@ -120,8 +125,10 @@ export function ModalAnalysisPlots({
   const plotSelectorControl = showPlotTabs ? (
     <AnalysisPlotTabs
       frequencyPanelId={`${frequencyTestId}-panel`}
+      onPhaseZpfViewed={onTutorialPhaseZpfViewed}
       onSelect={setActivePlot}
       selectedPlot={selectedPlot}
+      tutorialStep={tutorialStep}
       zpfPanelId={`${zpfTestId}-panel`}
     />
   ) : null;
@@ -209,15 +216,26 @@ export function ModalAnalysisPlots({
 
 function AnalysisPlotTabs({
   frequencyPanelId,
+  onPhaseZpfViewed,
   onSelect,
   selectedPlot,
+  tutorialStep,
   zpfPanelId,
 }: {
   frequencyPanelId: string;
+  onPhaseZpfViewed?: () => void;
   onSelect: (plot: "frequency" | "zpf") => void;
   selectedPlot: "frequency" | "zpf";
+  tutorialStep: TutorialStep | null;
   zpfPanelId: string;
 }): ReactNode {
+  function selectZpfPlot() {
+    onSelect("zpf");
+    if (tutorialStep === "phase-zpf") {
+      onPhaseZpfViewed?.();
+    }
+  }
+
   return (
     <div
       aria-label="Analysis plot"
@@ -238,8 +256,11 @@ function AnalysisPlotTabs({
       <button
         aria-controls={zpfPanelId}
         aria-selected={selectedPlot === "zpf"}
+        className={
+          tutorialStep === "phase-zpf" ? "tutorial-highlight-control" : undefined
+        }
         data-testid="analysis-plot-tab-zpf"
-        onClick={() => onSelect("zpf")}
+        onClick={selectZpfPlot}
         role="tab"
         type="button"
       >

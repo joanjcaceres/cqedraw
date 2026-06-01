@@ -179,6 +179,11 @@
   stroke-width: 6;
 }
 
+.edge-line.tutorial-target {
+  stroke: #c28a00;
+  stroke-width: 6;
+}
+
 .edge-hit-target {
   cursor: pointer;
   pointer-events: stroke;
@@ -206,6 +211,11 @@
 .edge-component-symbol.selected {
   stroke: #0aa6c2;
   stroke-width: 4;
+}
+
+.edge-component-symbol.tutorial-target {
+  stroke: #c28a00;
+  stroke-width: 5;
 }
 
 .edge-component-symbol .component-plate {

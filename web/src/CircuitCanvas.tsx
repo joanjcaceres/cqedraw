@@ -133,6 +133,7 @@ export function CircuitCanvas({
     pendingEdgeNodeId,
     tutorialStep,
   );
+  const tutorialTargetEdgeIds = tutorialEdgeTargetIds(project, tutorialStep);
 
   return (
     <div className="canvas-pane">
@@ -214,6 +215,7 @@ export function CircuitCanvas({
               edge={edge}
               nodes={project.state.nodes}
               selected={selectedEdgeId === edge.identifier}
+              tutorialTarget={tutorialTargetEdgeIds.has(edge.identifier)}
               onPointerDown={handleEdgePointerDown}
               onGroundPointerDown={handleGroundPointerDown}
             />
@@ -318,6 +320,18 @@ function tutorialNodeTargetIds(
   }
 
   return new Set();
+}
+
+function tutorialEdgeTargetIds(
+  project: CircuitProject,
+  tutorialStep: TutorialStep | null,
+): Set<number> {
+  if (tutorialStep !== "edit-edge") {
+    return new Set();
+  }
+
+  const regularEdge = project.state.edges.find((edge) => !edge.is_ground);
+  return regularEdge ? new Set([regularEdge.identifier]) : new Set();
 }
 
 function EmptyCanvasWelcome({
@@ -492,6 +506,11 @@ function InlineEdgeValueEditor({
         <span>LJ</span>
         <input
           aria-label="Inline Josephson inductance"
+          className={
+            tutorialStep === "ground-values"
+              ? "tutorial-highlight-control"
+              : undefined
+          }
           data-testid="jj-ind-input"
           value={edge.josephson_inductance_text ?? ""}
           onChange={(event) =>

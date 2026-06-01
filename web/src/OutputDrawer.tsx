@@ -45,6 +45,7 @@ export function OutputDrawer({
   onSweepConfigChange,
   onSweepSliderChange,
   onSweepSliderInteraction,
+  onTutorialPhaseZpfViewed,
   output,
   outputDrawerState,
   outputPanelRef,
@@ -83,6 +84,7 @@ export function OutputDrawer({
   ) => void;
   onSweepSliderChange: (name: string, value: number) => void;
   onSweepSliderInteraction: () => void;
+  onTutorialPhaseZpfViewed: () => void;
   output: OutputResult | null;
   outputDrawerState: OutputDrawerState;
   outputPanelRef: Ref<HTMLElement>;
@@ -200,6 +202,7 @@ export function OutputDrawer({
                 samples={sweepSamples}
                 selectedValues={sweepSliderValues}
                 sweepError={sweepError}
+                tutorialStep={tutorialStep}
                 validation={sweepValidation}
                 values={parameterValues}
                 sweepValues={sweepConfig}
@@ -210,6 +213,8 @@ export function OutputDrawer({
                 placeholderAvailable={Boolean(output && outputParameters.length > 0)}
                 placeholderZpfAvailable={Boolean(output?.josephson_branches?.length)}
                 result={displayedAnalysis}
+                tutorialStep={tutorialStep}
+                onTutorialPhaseZpfViewed={onTutorialPhaseZpfViewed}
                 yReferenceResults={
                   sweepModeActive ? sweepSamples.map((sample) => sample.analysis) : []
                 }

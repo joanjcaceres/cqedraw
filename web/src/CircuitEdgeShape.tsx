@@ -31,12 +31,14 @@ export function CircuitEdgeShape({
   edge,
   nodes,
   selected,
+  tutorialTarget,
   onGroundPointerDown,
   onPointerDown,
 }: {
   edge: CircuitEdge;
   nodes: CircuitNode[];
   selected: boolean;
+  tutorialTarget?: boolean;
   onGroundPointerDown: (
     event: PointerEvent<SVGGElement>,
     edgeId: number,
@@ -79,7 +81,11 @@ export function CircuitEdgeShape({
       />
       {componentKind === "none" ? (
         <line
-          className={selected ? "edge-line selected" : "edge-line"}
+          className={[
+            "edge-line",
+            selected ? "selected" : "",
+            tutorialTarget ? "tutorial-target" : "",
+          ].join(" ")}
           x1={start.x}
           y1={start.y}
           x2={end.x}
@@ -90,6 +96,7 @@ export function CircuitEdgeShape({
           edgeId={edge.identifier}
           kind={componentKind}
           selected={selected}
+          tutorialTarget={tutorialTarget}
           start={start}
           end={end}
         />
@@ -125,12 +132,14 @@ function EdgeComponentSymbol({
   end,
   kind,
   selected,
+  tutorialTarget,
   start,
 }: {
   edgeId: number;
   end: Point;
   kind: Exclude<EdgeComponentKind, "none">;
   selected: boolean;
+  tutorialTarget?: boolean;
   start: Point;
 }) {
   const geometry = edgeGeometry(start, end);
@@ -140,7 +149,11 @@ function EdgeComponentSymbol({
 
   return (
     <g
-      className={selected ? "edge-component-symbol selected" : "edge-component-symbol"}
+      className={[
+        "edge-component-symbol",
+        selected ? "selected" : "",
+        tutorialTarget ? "tutorial-target" : "",
+      ].join(" ")}
       data-component-kind={kind}
       data-testid={`edge-symbol-${edgeId}`}
       transform={`translate(${geometry.center.x} ${geometry.center.y}) rotate(${geometry.angle})`}

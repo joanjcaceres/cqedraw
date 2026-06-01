@@ -5,6 +5,7 @@ import {
   expectRawMatrixEntriesHidden,
   closeOutputDrawer,
   expectBeforeUnloadProtection,
+  selectAnalysisPlotTab,
 } from "./helpers";
 
 test("guides a first-time web user without blocking drawing", async ({ page }) => {
@@ -266,15 +267,23 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
 
   await page.getByTestId("node-1").click();
   await expect(page.getByTestId("tutorial-callout")).toContainText(
-    "Enter ground capacitance",
+    "Enter ground values",
   );
   await expect(page.getByTestId("cap-input")).toHaveClass(/tutorial-highlight-control/);
+  await expect(page.getByTestId("jj-ind-input")).toHaveClass(
+    /tutorial-highlight-control/,
+  );
   await expect(page.getByTestId("ind-input")).not.toHaveClass(
     /tutorial-highlight-control/,
   );
 
   await page.getByTestId("cap-input").fill("Cg");
+  await expect(page.getByTestId("tutorial-callout")).toContainText(
+    "Enter ground values",
+  );
+  await page.getByTestId("jj-ind-input").fill("Lj");
   await expect(page.getByTestId("tutorial-callout")).toContainText("Edit existing values");
+  await expect(page.getByTestId("edge-symbol-0")).toHaveClass(/tutorial-target/);
   await page.getByTestId("edge-0").click({ force: true });
   await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
   const outputButton = page.getByRole("button", { exact: true, name: "Output" });
@@ -287,6 +296,28 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
+  await expect(page.getByTestId("jj-branches")).toContainText(
+    "1 Josephson branch included in the copied Python snippet.",
+  );
+  await expect(page.getByTestId("tutorial-callout")).toContainText(
+    "Enter parameter values",
+  );
+  await expect(page.getByLabel("Value for C", { exact: true })).toHaveClass(
+    /tutorial-highlight-control/,
+  );
+  await page.getByLabel("Value for C", { exact: true }).fill("80e-15");
+  await page.getByLabel("Value for L", { exact: true }).fill("12e-9");
+  await page.getByLabel("Value for Cg", { exact: true }).fill("40e-15");
+  await page.getByLabel("Value for Lj", { exact: true }).fill("8e-9");
+  await expect(page.getByTestId("frequency-mode-plot")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("tutorial-callout")).toContainText("View phase ZPF");
+  await expect(page.getByTestId("analysis-plot-tab-zpf")).toHaveClass(
+    /tutorial-highlight-control/,
+  );
+  await selectAnalysisPlotTab(page, "Phase ZPF");
+  await expect(page.getByTestId("zpf-mode-plot")).toBeVisible();
   await expect(page.getByTestId("tutorial-callout")).toContainText("Copy matrices");
   const copyMatricesButton = page.getByRole("button", {
     exact: true,

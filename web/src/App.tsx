@@ -270,6 +270,7 @@ export function App() {
     dismissTutorialResetRef,
     helpButtonRef,
     mode,
+    modalAnalysis,
     onPrepareGenerateStep: prepareTutorialGenerateStep,
     output,
     project,
@@ -872,6 +873,7 @@ export function App() {
             markSweepSliderInteraction();
             preserveOutputPanelScroll();
           }}
+          onTutorialPhaseZpfViewed={() => setTutorialStep("copy")}
           output={output}
           outputDrawerState={outputDrawerState}
           outputPanelRef={outputPanelRef}

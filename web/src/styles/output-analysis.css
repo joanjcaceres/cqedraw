@@ -641,6 +641,11 @@
   color: #ffffff;
 }
 
+.analysis-plot-tabs button.tutorial-highlight-control {
+  background: #f6c343;
+  color: #172033;
+}
+
 .analysis-chart {
   display: grid;
   gap: 6px;

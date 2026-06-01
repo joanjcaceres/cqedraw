@@ -282,8 +282,17 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
   await expectRawMatrixEntriesHidden(page);
   await expect(page.getByTestId("tutorial-callout")).toContainText("Copy matrices");
+  const copyMatricesButton = page.getByRole("button", {
+    exact: true,
+    name: "Copy matrices",
+  });
+  await expect(copyMatricesButton).toHaveClass(/tutorial-highlight-control/);
+  await expect(copyMatricesButton).toHaveCSS(
+    "background-color",
+    "rgb(246, 195, 67)",
+  );
 
-  await page.getByRole("button", { exact: true, name: "Copy matrices" }).click();
+  await copyMatricesButton.click();
   await expect(page.getByTestId("output-status")).toContainText(
     "Copied matrices to clipboard. Paste them into Python or a notebook.",
   );

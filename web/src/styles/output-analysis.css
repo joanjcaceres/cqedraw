@@ -93,8 +93,14 @@
 }
 
 .output-action-button.tutorial-highlight-control {
+  background: #f6c343;
   border-color: #c28a00;
   box-shadow: 0 0 0 3px rgba(246, 195, 67, 0.34);
+  color: #172033;
+}
+
+.output-action-button.tutorial-highlight-control:hover {
+  background: #e5b536;
 }
 
 .output-copy-button {

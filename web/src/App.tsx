@@ -23,6 +23,7 @@ import {
   ToolMode,
 } from "./types";
 import {
+  fitProjectView,
   rectFromPoints,
 } from "./viewBox";
 import {
@@ -36,6 +37,7 @@ import {
 } from "./AppDialogs";
 import { AppToolbar } from "./AppToolbar";
 import { CircuitCanvas } from "./CircuitCanvas";
+import { buildExampleProject } from "./exampleProject";
 import {
   matrixNodeLabelMap,
 } from "./edgeGeometry";
@@ -659,6 +661,22 @@ export function App() {
     setSelectedNodeIds([]);
     setSelectedNodeId(null);
   }
+
+  function loadExampleProject() {
+    const next = buildExampleProject();
+    dismissTutorial();
+    commitProjectChange(() => next);
+    resetProjectInteractionState();
+    setParameterValues({});
+    setParameterInputModes({});
+    setOutput(null);
+    clearSweepResults();
+    setOutputDrawerOpen(false);
+    setMode("select");
+    setViewBox(fitProjectView(next));
+    setEngineStatus("Loaded example circuit.");
+  }
+
   const {
     handleCanvasPointerCancel,
     handleCanvasPointerDown,
@@ -800,6 +818,9 @@ export function App() {
           matrixNodeLabels={matrixNodeLabels}
           mode={mode}
           onCloseInlineValueEditor={() => setInlineValueEditorEdgeId(null)}
+          onLoadExample={loadExampleProject}
+          onOpenHelp={() => setHelpOpen(true)}
+          onStartTutorial={requestTutorialStart}
           pastePreview={pastePreview}
           pastePreviewClipboard={activePasteClipboard}
           panActive={Boolean(panState)}
@@ -812,6 +833,7 @@ export function App() {
           tutorialSurfaceHighlighted={
             tutorialStep === "first-node" || tutorialStep === "second-node"
           }
+          emptyWelcomeVisible={tutorialStep === null}
           updateEdgeValueText={updateEdgeValueText}
           viewBox={viewBox}
           zoomCanvas={zoomCanvas}

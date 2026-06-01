@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use cQEDraw in academic work, please cite the software and include the version you used."
+title: "cQEDraw: Superconducting Circuit Graph Editor"
+type: software
+authors:
+  - family-names: "Caceres"
+    given-names: "Joan"
+    email: "contact@joancaceres.com"
+version: "0.2.0"
+license: MIT
+repository-code: "https://github.com/joanjcaceres/cqedraw"
+url: "https://cqedraw.org/"
+abstract: "cQEDraw draws and analyzes superconducting circuit graphs for Black Box Quantization workflows."
+keywords:
+  - black box quantization
+  - superconducting circuits
+  - circuit graph
+  - modal analysis

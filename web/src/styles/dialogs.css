@@ -42,6 +42,16 @@
   margin: 8px 0 0;
 }
 
+.help-dialog h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.help-dialog a {
+  color: #0f6f7f;
+  font-weight: 700;
+}
+
 .help-dialog form {
   margin: 0;
 }
@@ -183,9 +193,21 @@
   justify-content: flex-end;
 }
 
-.help-dialog ol {
+.help-dialog-body {
   overflow: auto;
   margin: 16px 0 0;
+  padding-right: 4px;
+}
+
+.help-section + .help-section {
+  border-top: 1px solid #d7e1ea;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.help-dialog ol,
+.help-dialog ul {
+  margin: 10px 0 0;
   padding-left: 22px;
 }
 

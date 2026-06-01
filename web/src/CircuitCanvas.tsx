@@ -14,7 +14,6 @@ import {
   type ToolMode,
 } from "./types";
 import {
-  CANVAS_WIDTH,
   GRID_TILE_SIZE,
   NODE_RADIUS,
   ZOOM_IN_FACTOR,
@@ -51,6 +50,9 @@ export function CircuitCanvas({
   matrixNodeLabels,
   mode,
   onCloseInlineValueEditor,
+  onLoadExample,
+  onOpenHelp,
+  onStartTutorial,
   pastePreview,
   pastePreviewClipboard,
   panActive,
@@ -60,6 +62,7 @@ export function CircuitCanvas({
   selectedNodeId,
   selectedNodeIds,
   statusIsCopyConfirmation,
+  emptyWelcomeVisible,
   tutorialSurfaceHighlighted,
   updateEdgeValueText,
   viewBox,
@@ -92,6 +95,9 @@ export function CircuitCanvas({
   matrixNodeLabels: Map<number, string>;
   mode: ToolMode;
   onCloseInlineValueEditor: () => void;
+  onLoadExample: () => void;
+  onOpenHelp: () => void;
+  onStartTutorial: () => void;
   pastePreview: { anchor: Point } | null;
   pastePreviewClipboard: SelectionClipboard | null;
   panActive: boolean;
@@ -101,6 +107,7 @@ export function CircuitCanvas({
   selectedNodeId: number | null;
   selectedNodeIds: number[];
   statusIsCopyConfirmation: boolean;
+  emptyWelcomeVisible: boolean;
   tutorialSurfaceHighlighted: boolean;
   updateEdgeValueText: (
     edgeId: number,
@@ -189,7 +196,6 @@ export function CircuitCanvas({
               height={marqueeRect.height}
             />
           ) : null}
-          {project.state.nodes.length === 0 ? <CanvasHint /> : null}
           {project.state.edges.map((edge) => (
             <CircuitEdgeShape
               key={edge.identifier}
@@ -235,6 +241,13 @@ export function CircuitCanvas({
             />
           ) : null}
         </svg>
+        {project.state.nodes.length === 0 && emptyWelcomeVisible ? (
+          <EmptyCanvasWelcome
+            onLoadExample={onLoadExample}
+            onOpenHelp={onOpenHelp}
+            onStartTutorial={onStartTutorial}
+          />
+        ) : null}
         {inlineValueEditorEdge && inlineValueEditorPosition ? (
           <InlineEdgeValueEditor
             capInputRef={inlineCapInputRef}
@@ -261,24 +274,57 @@ export function CircuitCanvas({
   );
 }
 
-function CanvasHint() {
+function EmptyCanvasWelcome({
+  onLoadExample,
+  onOpenHelp,
+  onStartTutorial,
+}: {
+  onLoadExample: () => void;
+  onOpenHelp: () => void;
+  onStartTutorial: () => void;
+}) {
   return (
-    <g className="canvas-hint" data-testid="canvas-hint">
-      <text x={CANVAS_WIDTH / 2} y={250} textAnchor="middle">
-        <tspan className="canvas-hint-title" x={CANVAS_WIDTH / 2}>
-          Click the canvas to place nodes.
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Use Edge to connect nodes, Ground to add a reference,
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="24">
-          then select an edge to enter C/L/LJ.
-        </tspan>
-        <tspan x={CANVAS_WIDTH / 2} dy="28">
-          Open Output to prepare matrices; Copy matrices exports the Python snippet.
-        </tspan>
-      </text>
-    </g>
+    <section
+      aria-label="First-run guide"
+      className="canvas-empty-state"
+      data-testid="canvas-hint"
+    >
+      <span className="canvas-empty-eyebrow">Superconducting circuit graph editor</span>
+      <h2>Build circuit graphs into matrices</h2>
+      <p>
+        Draw nodes, edges, and ground references. cQEDraw prepares sparse C and
+        L_inv matrices, then runs supported modal analysis in the browser.
+      </p>
+      <ol className="canvas-empty-flow" aria-label="cQEDraw workflow">
+        <li>
+          <strong>Draw</strong>
+          <span>Place a circuit graph on the canvas.</span>
+        </li>
+        <li>
+          <strong>Generate</strong>
+          <span>Prepare Python-ready C and L_inv snippets.</span>
+        </li>
+        <li>
+          <strong>Analyze</strong>
+          <span>Explore supported modes and parameter sweeps.</span>
+        </li>
+      </ol>
+      <div className="canvas-empty-actions">
+        <button type="button" onClick={onStartTutorial}>
+          Start tutorial
+        </button>
+        <button type="button" onClick={onLoadExample}>
+          Load example circuit
+        </button>
+        <button
+          className="canvas-empty-secondary"
+          type="button"
+          onClick={onOpenHelp}
+        >
+          Cite and support
+        </button>
+      </div>
+    </section>
   );
 }
 

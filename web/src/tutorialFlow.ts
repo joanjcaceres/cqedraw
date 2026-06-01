@@ -84,7 +84,7 @@ export const TUTORIAL_STEPS: Record<
     progress: "Step 10 of 11",
     title: "Prepare matrices",
     body:
-      "Output prepares C and L_inv with the same engine used by the desktop app.",
+      "Click Output in the toolbar. cQEDraw prepares C and L_inv with the same engine used by the desktop app.",
   },
   copy: {
     progress: "Step 11 of 11",

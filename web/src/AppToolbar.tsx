@@ -191,6 +191,7 @@ export function AppToolbar({
         />
         <ToolButton
           active={outputDrawerOpen}
+          highlight={tutorialStep === "generate"}
           icon={<Menu size={17} />}
           iconOnly={false}
           label="Output"

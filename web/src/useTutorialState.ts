@@ -41,7 +41,7 @@ export function useTutorialState({
   }, []);
 
   useEffect(() => {
-    if (tutorialStep === "generate" || tutorialStep === "copy") {
+    if (tutorialStep === "copy") {
       setOutputDrawerOpen(true);
     }
   }, [setOutputDrawerOpen, tutorialStep]);
@@ -69,7 +69,7 @@ export function useTutorialState({
       onPrepareGenerateStep();
     }
     if (nextStep === "generate") {
-      setOutputDrawerOpen(true);
+      setOutputDrawerOpen(false);
     }
     if (nextStep && nextStep !== tutorialStep) {
       setTutorialStep(nextStep);

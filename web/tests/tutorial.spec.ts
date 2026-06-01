@@ -277,6 +277,12 @@ test("completes the optional onboarding tutorial", async ({ context, page }) => 
   await expect(page.getByTestId("tutorial-callout")).toContainText("Edit existing values");
   await page.getByTestId("edge-0").click({ force: true });
   await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
+  const outputButton = page.getByRole("button", { exact: true, name: "Output" });
+  await expect(outputButton).toHaveClass(/tutorial-highlight/);
+  await expect(page.getByTestId("output-drawer")).toHaveCount(0);
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("tutorial-callout")).toContainText("Prepare matrices");
+  await expect(page.getByTestId("output-drawer")).toHaveCount(0);
 
   await clickBuildMatrices(page);
   await expect(page.getByTestId("output-status")).toContainText("Generated 2 x 2");
